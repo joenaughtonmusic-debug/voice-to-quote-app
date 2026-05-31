@@ -1,9 +1,46 @@
 "use client"
 
-import { ArrowLeft, Check, Send, Download } from "lucide-react"
+import { useState } from "react"
+import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
+import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
+import { processedQuoteToEditableSections, type ProcessedQuote } from "@/lib/processed-quote"
 
-export function QuoteDraft({ onBack }: { onBack: () => void }) {
+type SaveState = "idle" | "saving" | "success" | "error"
+
+export function QuoteDraft({
+  onBack,
+  onSaved,
+  rawTranscript,
+  processedQuote,
+}: {
+  onBack: () => void
+  onSaved: () => void
+  rawTranscript: string
+  processedQuote: ProcessedQuote
+}) {
+  const [saveState, setSaveState] = useState<SaveState>("idle")
+  const [saveMessage, setSaveMessage] = useState("")
+
+  async function handleSaveDraft() {
+    setSaveState("saving")
+    setSaveMessage("")
+
+    const result = await saveGeneratedQuoteDraft(
+      rawTranscript,
+      processedQuote,
+      processedQuoteToEditableSections(processedQuote),
+    )
+
+    setSaveState(result.ok ? "success" : "error")
+    setSaveMessage(result.message)
+
+    if (result.ok) {
+      onSaved()
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-secondary/60">
       {/* Header */}
@@ -105,23 +142,36 @@ export function QuoteDraft({ onBack }: { onBack: () => void }) {
 
       {/* Sticky actions */}
       <div className="fixed inset-x-0 bottom-0 border-t border-border bg-card px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div className="mx-auto flex max-w-md items-center gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-sm font-semibold text-foreground active:scale-[0.99]"
-          >
-            <Download className="h-4 w-4" />
-            Save PDF
-          </button>
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex flex-[1.4] items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 active:scale-[0.99]"
-          >
-            <Send className="h-4 w-4" />
-            Send to Customer
-          </button>
+        <div className="mx-auto max-w-md">
+          {saveMessage && (
+            <p
+              className={cn(
+                "mb-3 text-center text-xs leading-relaxed",
+                saveState === "success" ? "text-success" : "text-destructive",
+              )}
+            >
+              {saveMessage}
+            </p>
+          )}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={saveState === "saving"}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-sm font-semibold text-foreground active:scale-[0.99]"
+            >
+              {saveState === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save Draft
+            </button>
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex flex-[1.4] items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 active:scale-[0.99]"
+            >
+              <Send className="h-4 w-4" />
+              Send to Customer
+            </button>
+          </div>
         </div>
       </div>
     </div>

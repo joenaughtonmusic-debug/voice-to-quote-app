@@ -1,2 +1,16 @@
-{"timestamp":"00:00:01.453","source":"Server","level":"LOG","message":""}
-{"timestamp":"00:00:15.427","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:00:00.621","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:01.231","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:01:02.356","source":"Browser","level":"LOG","message":"Calling /api/transcribe {\"audioSize\":133604,\"audioType\":\"audio/webm;codecs=opus\",\"formDataKey\":\"audio\"}"}
+{"timestamp":"00:01:04.291","source":"Browser","level":"LOG","message":"Received /api/transcribe response {\"ok\":true,\"result\":{\"transcript\":\"Hello, this is John Dover at 15 Donovan Street, Blockhouse Bay.\"},\"status\":200}"}
+{"timestamp":"00:04:51.451","source":"Server","level":"LOG","message":"✓ Compiled in 89ms"}
+{"timestamp":"00:04:51.613","source":"Server","level":"LOG","message":"✓ Compiled in 95ms"}
+{"timestamp":"00:04:51.739","source":"Server","level":"LOG","message":"✓ Compiled in 56ms"}
+{"timestamp":"00:04:51.828","source":"Server","level":"LOG","message":"✓ Compiled in 20ms"}
+{"timestamp":"00:04:51.951","source":"Server","level":"LOG","message":"✓ Compiled in 24ms"}
+{"timestamp":"00:05:01.066","source":"Server","level":"LOG","message":"✓ Compiled in 50ms"}
+{"timestamp":"00:08:08.373","source":"Server","level":"LOG","message":"✓ Compiled in 51ms"}
+{"timestamp":"00:09:12.158","source":"Server","level":"LOG","message":"✓ Compiled in 189ms"}
+{"timestamp":"00:09:27.971","source":"Server","level":"LOG","message":"✓ Compiled in 61ms"}
+{"timestamp":"00:09:34.559","source":"Server","level":"LOG","message":"✓ Compiled in 160ms"}
+{"timestamp":"00:10:23.007","source":"Server","level":"LOG","message":"✓ Compiled in 114ms"}
+{"timestamp":"00:10:36.286","source":"Server","level":"LOG","message":"✓ Compiled in 71ms"}
