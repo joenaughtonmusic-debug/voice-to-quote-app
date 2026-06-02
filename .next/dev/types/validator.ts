@@ -56,6 +56,24 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../../app/api/analyse-uploaded-quote/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/analyse-uploaded-quote">> = Specific
+  const handler = {} as typeof import("../../../app/api/analyse-uploaded-quote/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../../app/api/correct-transcript/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/correct-transcript">> = Specific
+  const handler = {} as typeof import("../../../app/api/correct-transcript/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../../app/api/process-quote/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/process-quote">> = Specific

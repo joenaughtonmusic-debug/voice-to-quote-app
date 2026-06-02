@@ -7,6 +7,7 @@ export async function saveGeneratedQuoteDraft(
   rawTranscript: string,
   processedQuote: ProcessedQuote,
   quoteSections: EditableQuoteSection[],
+  draftId?: string | null,
 ) {
   const {
     data: { user },
@@ -20,7 +21,7 @@ export async function saveGeneratedQuoteDraft(
     }
   }
 
-  const { error } = await supabase.from("quote_drafts").insert({
+  const payload = {
     user_id: user.id,
     client_name: processedQuote.client_name || null,
     site_address: processedQuote.site_address || null,
@@ -30,7 +31,11 @@ export async function saveGeneratedQuoteDraft(
     quote_sections: quoteSections,
     line_items: processedQuote.line_items,
     status: "Needs Review",
-  })
+  }
+
+  const { error } = draftId
+    ? await supabase.from("quote_drafts").update(payload).eq("id", draftId).eq("user_id", user.id)
+    : await supabase.from("quote_drafts").insert(payload)
 
   if (error) {
     return {
@@ -41,6 +46,6 @@ export async function saveGeneratedQuoteDraft(
 
   return {
     ok: true,
-    message: "Draft saved to Supabase.",
+    message: draftId ? "Draft updated in Supabase." : "Draft saved to Supabase.",
   }
 }

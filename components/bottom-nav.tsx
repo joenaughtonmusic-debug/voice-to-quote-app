@@ -1,15 +1,14 @@
 "use client"
 
-import { Mic, FileText, LayoutTemplate, CloudUpload, Settings2 } from "lucide-react"
+import { Mic, FileText, BookOpen, Settings2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-export type Tab = "record" | "drafts" | "templates" | "uploads" | "settings"
+export type Tab = "record" | "drafts" | "knowledge" | "settings"
 
 const tabs: { id: Tab; label: string; icon: typeof Mic }[] = [
   { id: "record", label: "Record", icon: Mic },
   { id: "drafts", label: "Drafts", icon: FileText },
-  { id: "templates", label: "Templates", icon: LayoutTemplate },
-  { id: "uploads", label: "Uploads", icon: CloudUpload },
+  { id: "knowledge", label: "Knowledge", icon: BookOpen },
   { id: "settings", label: "Settings", icon: Settings2 },
 ]
 

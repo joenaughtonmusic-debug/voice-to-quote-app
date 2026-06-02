@@ -4,8 +4,7 @@ import { useEffect, useState } from "react"
 import { BottomNav, type Tab } from "@/components/bottom-nav"
 import { RecordScreen } from "@/components/record-screen"
 import { DraftsScreen } from "@/components/drafts-screen"
-import { TemplatesScreen } from "@/components/templates-screen"
-import { UploadsScreen } from "@/components/uploads-screen"
+import { KnowledgeBaseScreen } from "@/components/knowledge-base-screen"
 import { SettingsScreen } from "@/components/settings-screen"
 import { QuoteReview } from "@/components/quote-review"
 import { QuoteDraft } from "@/components/quote-draft"
@@ -13,7 +12,13 @@ import { AuthStatus } from "@/components/auth-status"
 import { useAuth } from "@/hooks/use-auth"
 import { LockKeyhole } from "lucide-react"
 import { EMPTY_TRANSCRIPT } from "@/components/record-screen"
-import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "@/lib/processed-quote"
+import {
+  EMPTY_PROCESSED_QUOTE,
+  savedDraftToEditableState,
+  type EditableQuoteSection,
+  type ProcessedQuote,
+} from "@/lib/processed-quote"
+import { supabase } from "@/lib/supabase"
 
 export function VoiceQuoteApp() {
   const [tab, setTab] = useState<Tab>("record")
@@ -21,7 +26,12 @@ export function VoiceQuoteApp() {
   const [draftOpen, setDraftOpen] = useState(false)
   const [draftsRefreshKey, setDraftsRefreshKey] = useState(0)
   const [rawTranscript, setRawTranscript] = useState(EMPTY_TRANSCRIPT)
+  const [correctedTranscript, setCorrectedTranscript] = useState(EMPTY_TRANSCRIPT)
   const [processedQuote, setProcessedQuote] = useState<ProcessedQuote>(EMPTY_PROCESSED_QUOTE)
+  const [quoteSections, setQuoteSections] = useState<EditableQuoteSection[] | null>(null)
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
+  const [openDraftLoading, setOpenDraftLoading] = useState(false)
+  const [openDraftError, setOpenDraftError] = useState("")
   const { user, loading, displayName, signInWithGoogle, signOut } = useAuth()
   const signedIn = Boolean(user)
 
@@ -35,14 +45,64 @@ export function VoiceQuoteApp() {
     setDraftsRefreshKey((key) => key + 1)
   }
 
-  function handleQuoteProcessed(nextRawTranscript: string, nextProcessedQuote: ProcessedQuote) {
+  function handleQuoteProcessed(
+    nextRawTranscript: string,
+    nextCorrectedTranscript: string,
+    nextProcessedQuote: ProcessedQuote,
+  ) {
     setRawTranscript(nextRawTranscript)
+    setCorrectedTranscript(nextCorrectedTranscript)
     setProcessedQuote(nextProcessedQuote)
+    setQuoteSections(null)
+    setEditingDraftId(null)
+    setOpenDraftError("")
     setReviewOpen(true)
   }
 
   function handleQuoteEdited(nextProcessedQuote: ProcessedQuote) {
     setProcessedQuote(nextProcessedQuote)
+  }
+
+  function handleSectionsEdited(nextSections: EditableQuoteSection[]) {
+    setQuoteSections(nextSections)
+  }
+
+  async function handleOpenDraft(draftId: string) {
+    setOpenDraftLoading(true)
+    setOpenDraftError("")
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      setOpenDraftLoading(false)
+      setOpenDraftError(userError?.message ?? "Sign in to open quote drafts.")
+      return
+    }
+
+    const { data, error } = await supabase
+      .from("quote_drafts")
+      .select("id, client_name, site_address, quote_title, job_type, raw_transcript, quote_sections, line_items")
+      .eq("id", draftId)
+      .eq("user_id", user.id)
+      .single()
+
+    setOpenDraftLoading(false)
+
+    if (error || !data) {
+      setOpenDraftError(error?.message ?? "Could not open quote draft.")
+      return
+    }
+
+    const editableState = savedDraftToEditableState(data)
+    setRawTranscript(editableState.rawTranscript)
+    setCorrectedTranscript(editableState.rawTranscript)
+    setProcessedQuote(editableState.processedQuote)
+    setQuoteSections(editableState.sections)
+    setEditingDraftId(data.id)
+    setReviewOpen(true)
   }
 
   return (
@@ -65,26 +125,39 @@ export function VoiceQuoteApp() {
         )}
         {tab === "drafts" && (
           signedIn ? (
-            <DraftsScreen onOpen={() => setReviewOpen(true)} refreshKey={draftsRefreshKey} />
+            <DraftsScreen onOpen={handleOpenDraft} refreshKey={draftsRefreshKey} />
           ) : (
             <SignInRequired onSignIn={signInWithGoogle} />
           )
         )}
-        {tab === "templates" && <TemplatesScreen />}
-        {tab === "uploads" && <UploadsScreen />}
+        {tab === "knowledge" && <KnowledgeBaseScreen />}
         {tab === "settings" && <SettingsScreen />}
       </main>
 
       <BottomNav active={tab} onChange={setTab} />
+
+      {(openDraftLoading || openDraftError) && (
+        <div className="fixed inset-x-5 top-20 z-50 mx-auto max-w-md rounded-2xl border border-border bg-card p-4 text-sm shadow-lg">
+          {openDraftLoading ? (
+            <p className="text-muted-foreground">Opening draft...</p>
+          ) : (
+            <p className="text-destructive">{openDraftError}</p>
+          )}
+        </div>
+      )}
 
       {signedIn && reviewOpen && (
         <QuoteReview
           onClose={() => setReviewOpen(false)}
           onPreviewDraft={() => setDraftOpen(true)}
           onSaved={handleDraftSaved}
-          rawTranscript={rawTranscript}
+          rawTranscript={correctedTranscript || rawTranscript}
+          originalTranscript={rawTranscript}
           processedQuote={processedQuote}
           onQuoteEdited={handleQuoteEdited}
+          onSectionsEdited={handleSectionsEdited}
+          draftId={editingDraftId}
+          initialSections={quoteSections}
         />
       )}
       {signedIn && draftOpen && (
@@ -93,6 +166,8 @@ export function VoiceQuoteApp() {
           onSaved={handleDraftSaved}
           rawTranscript={rawTranscript}
           processedQuote={processedQuote}
+          draftId={editingDraftId}
+          quoteSections={quoteSections}
         />
       )}
     </div>

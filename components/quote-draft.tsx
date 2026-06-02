@@ -5,7 +5,11 @@ import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
-import { processedQuoteToEditableSections, type ProcessedQuote } from "@/lib/processed-quote"
+import {
+  processedQuoteToEditableSections,
+  type EditableQuoteSection,
+  type ProcessedQuote,
+} from "@/lib/processed-quote"
 
 type SaveState = "idle" | "saving" | "success" | "error"
 
@@ -14,11 +18,15 @@ export function QuoteDraft({
   onSaved,
   rawTranscript,
   processedQuote,
+  draftId,
+  quoteSections,
 }: {
   onBack: () => void
   onSaved: () => void
   rawTranscript: string
   processedQuote: ProcessedQuote
+  draftId?: string | null
+  quoteSections?: EditableQuoteSection[] | null
 }) {
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveMessage, setSaveMessage] = useState("")
@@ -30,7 +38,8 @@ export function QuoteDraft({
     const result = await saveGeneratedQuoteDraft(
       rawTranscript,
       processedQuote,
-      processedQuoteToEditableSections(processedQuote),
+      quoteSections ?? processedQuoteToEditableSections(processedQuote),
+      draftId,
     )
 
     setSaveState(result.ok ? "success" : "error")

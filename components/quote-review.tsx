@@ -28,21 +28,29 @@ export function QuoteReview({
   onPreviewDraft,
   onSaved,
   rawTranscript,
+  originalTranscript,
   processedQuote,
   onQuoteEdited,
+  onSectionsEdited,
+  draftId,
+  initialSections,
 }: {
   onClose: () => void
   onPreviewDraft: () => void
   onSaved: () => void
   rawTranscript: string
+  originalTranscript: string
   processedQuote: ProcessedQuote
   onQuoteEdited: (processedQuote: ProcessedQuote) => void
+  onSectionsEdited: (sections: EditableQuoteSection[]) => void
+  draftId?: string | null
+  initialSections?: EditableQuoteSection[] | null
 }) {
   const [view, setView] = useState<View>("internal")
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveMessage, setSaveMessage] = useState("")
   const [sections, setSections] = useState<EditableQuoteSection[]>(() =>
-    processedQuoteToEditableSections(processedQuote),
+    initialSections ?? processedQuoteToEditableSections(processedQuote),
   )
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
 
@@ -57,7 +65,7 @@ export function QuoteReview({
     setSaveMessage("")
 
     const editedQuote = editableSectionsToProcessedQuote(sections, processedQuote)
-    const result = await saveGeneratedQuoteDraft(rawTranscript, editedQuote, sections)
+    const result = await saveGeneratedQuoteDraft(originalTranscript, editedQuote, sections, draftId)
 
     setSaveState(result.ok ? "success" : "error")
     setSaveMessage(result.message)
@@ -72,6 +80,7 @@ export function QuoteReview({
     setSections((current) => {
       const nextSections = current.map((section) => (section.key === key ? { ...section, content } : section))
       onQuoteEdited(editableSectionsToProcessedQuote(nextSections, processedQuote))
+      onSectionsEdited(nextSections)
       return nextSections
     })
     setDirtyKeys((current) => new Set(current).add(key))

@@ -11,6 +11,37 @@ const quoteSchema = {
     site_address: { type: "string" },
     quote_title: { type: "string" },
     job_type: { type: "string" },
+    selected_template_id: { type: "string" },
+    selected_template_name: { type: "string" },
+    template_match_confidence: { type: "string" },
+    learned_rules_applied: { type: "array", items: { type: "string" } },
+    primary_quote: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        quote_title: { type: "string" },
+        job_type: { type: "string" },
+        scope: { type: "array", items: { type: "string" } },
+        cadence: { type: "string" },
+        notes: { type: "array", items: { type: "string" } },
+      },
+      required: ["quote_title", "job_type", "scope", "cadence", "notes"],
+    },
+    optional_quotes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          quote_title: { type: "string" },
+          job_type: { type: "string" },
+          scope: { type: "array", items: { type: "string" } },
+          cadence: { type: "string" },
+          notes: { type: "array", items: { type: "string" } },
+        },
+        required: ["quote_title", "job_type", "scope", "cadence", "notes"],
+      },
+    },
     customer_scope: { type: "array", items: { type: "string" } },
     internal_notes: { type: "array", items: { type: "string" } },
     labour_allowance: { type: "string" },
@@ -42,6 +73,12 @@ const quoteSchema = {
     "site_address",
     "quote_title",
     "job_type",
+    "selected_template_id",
+    "selected_template_name",
+    "template_match_confidence",
+    "learned_rules_applied",
+    "primary_quote",
+    "optional_quotes",
     "customer_scope",
     "internal_notes",
     "labour_allowance",
@@ -69,6 +106,42 @@ function getOutputText(result: any) {
   return null
 }
 
+function getStringArray(value: unknown, limit = 8) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim())
+    .slice(0, limit)
+}
+
+function getTemplateContext(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item) => {
+      const template = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+      const id = typeof template.id === "string" ? template.id.trim() : ""
+      const templateName = typeof template.template_name === "string" ? template.template_name.trim() : ""
+      const category = typeof template.category === "string" ? template.category.trim() : "custom"
+
+      if (!id || !templateName) return null
+
+      return {
+        id,
+        template_name: templateName,
+        category,
+        default_scope: getStringArray(template.default_scope),
+        default_exclusions: getStringArray(template.default_exclusions),
+        default_pricing_structure: getStringArray(template.default_pricing_structure),
+        reusable_wording: getStringArray(template.reusable_wording),
+        ai_prompt_rules: getStringArray(template.ai_prompt_rules),
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 12)
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -77,6 +150,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     const transcript = typeof body?.transcript === "string" ? body.transcript.trim() : ""
+    const templateContext = getTemplateContext(body?.template_context)
 
     if (!transcript) {
       return NextResponse.json({ error: "Transcript text is required." }, { status: 400 })
@@ -94,11 +168,41 @@ export async function POST(request: Request) {
           {
             role: "system",
             content:
-              "You extract quote drafts for NZ gardening and property maintenance businesses. Use plain NZ trade wording. Do not invent details. If information is missing, put it in missing_information. If a line item or value is uncertain, put the concern in confidence_warnings and confidence_note. Return only structured JSON matching the schema.",
+              `You extract quote drafts for NZ gardening and property maintenance businesses. Use plain NZ trade wording. Do not invent details. If information is missing, put it in missing_information. If a line item or value is uncertain, put the concern in confidence_warnings and confidence_note. Return only structured JSON matching the schema.
+
+Template-driven quoting:
+- You may receive quote_templates belonging to the authenticated user. Use them as reusable business knowledge, not as facts about the current customer/site.
+- If the transcript explicitly mentions a template name, category, or phrase such as "use the three-monthly maintenance template", choose the best matching template as the base.
+- If no template is clearly mentioned, suggest/use the closest relevant template only when it genuinely fits the transcript. Do not force a template.
+- If no template fits, return empty selected_template_id, empty selected_template_name, template_match_confidence "none", and an empty learned_rules_applied array.
+- When using a template, use relevant template wording, exclusions, pricing rules, line item structure, and future AI prompt rules.
+- Preserve every site-specific note, caution, plant instruction, access issue, frequency, and customer request from the transcript.
+- Never hardcode old client names, addresses, dates, quote references, or one-off prices from templates.
+- Replace template variables like {client_name}, {site_address}, {quote_date}, {expiry_date}, {frequency}, and {price_or_estimate_range} with transcript details where available.
+- If a template variable is needed but missing from the transcript, add the variable/detail to missing_information.
+- Return selected_template_id, selected_template_name, template_match_confidence ("high", "medium", "low", or "none"), and learned_rules_applied as practical bullet points explaining exactly which template rules/wording were used.
+
+Gardening transcription corrections and cautions:
+- Speech-to-text often mishears plant names. Treat "flecks" as likely "flax" when the context is garden plants. Preserve the plant caution in the quote text, and add a confidence warning noting the transcript said "flecks" but likely means flax.
+- Treat grislynia / griselinia / grisalinea variants as likely Griselinia.
+- Treat ficus tuffy / ficus tuffi / tuffy as likely Ficus Tuffi when the context is hedging.
+- Treat buxus and box hedge as the same likely plant/hedge reference.
+- Treat pittosporum variants as likely Pittosporum.
+- If a phrase sounds like a plant name, preserve it in scope/notes and add a confidence warning instead of silently changing it.
+- If the transcript says not to remove a plant, keep it as an internal/site caution and include it customer-facing when appropriate. Example: "do not remove any flecks" should become "Do not remove any flax" with a confidence warning.
+
+Multiple quote intent handling:
+- Detect when one transcript contains more than one quote opportunity.
+- Put the main immediate job in primary_quote.
+- Put secondary or recurring options in optional_quotes.
+- If there is more than one quote option, include "Multiple quote options detected" in confidence_warnings.
+- For a transcript with an initial garden tidy and ongoing two-monthly maintenance, make the initial tidy the primary_quote and the two-monthly maintenance an optional quote.
+
+Keep customer_scope focused on the primary quote, but mention important site cautions like "Do not remove flax" when customer-visible.`,
           },
           {
             role: "user",
-            content: `Extract a quote draft from this transcript:\n\n${transcript}`,
+            content: `Extract a quote draft from this transcript:\n\n${transcript}\n\nAuthenticated user's concise quote template context:\n${JSON.stringify(templateContext, null, 2)}`,
           },
         ],
         text: {

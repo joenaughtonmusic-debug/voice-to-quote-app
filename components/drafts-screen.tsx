@@ -43,7 +43,13 @@ function formatDate(value: string | null) {
   }).format(new Date(value))
 }
 
-export function DraftsScreen({ onOpen, refreshKey = 0 }: { onOpen: () => void; refreshKey?: number }) {
+export function DraftsScreen({
+  onOpen,
+  refreshKey = 0,
+}: {
+  onOpen: (draftId: string) => void
+  refreshKey?: number
+}) {
   const [filter, setFilter] = useState<Filter>("all")
   const [drafts, setDrafts] = useState<QuoteDraftRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -163,7 +169,7 @@ export function DraftsScreen({ onOpen, refreshKey = 0 }: { onOpen: () => void; r
             <button
               key={row.id}
               type="button"
-              onClick={onOpen}
+              onClick={() => onOpen(row.id)}
               className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-shadow active:scale-[0.99]"
             >
               <div className="min-w-0 flex-1">

@@ -42,6 +42,18 @@
       "namedRegex": "^/_not\\-found(?:/)?$"
     },
     {
+      "page": "/api/analyse-uploaded-quote",
+      "regex": "^/api/analyse\\-uploaded\\-quote(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/analyse\\-uploaded\\-quote(?:/)?$"
+    },
+    {
+      "page": "/api/correct-transcript",
+      "regex": "^/api/correct\\-transcript(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/correct\\-transcript(?:/)?$"
+    },
+    {
       "page": "/api/process-quote",
       "regex": "^/api/process\\-quote(?:/)?$",
       "routeKeys": {},

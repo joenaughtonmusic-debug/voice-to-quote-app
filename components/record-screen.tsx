@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Mic, Pause, Square, Trash2, Play, Sparkles, Radio, Waypoints, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ProcessedQuote } from "@/lib/processed-quote"
+import { supabase } from "@/lib/supabase"
 
 type RecState = "idle" | "recording" | "paused" | "stopped" | "processing"
 
@@ -20,6 +21,8 @@ const waveBars = Array.from({ length: 32 })
 
 const aiStages = [
   "Transcribing...",
+  "Correcting trade terms",
+  "Loading quote templates",
   "Extracting client & site",
   "Identifying job scope",
   "Pricing line items",
@@ -54,10 +57,78 @@ function getAudioFileName(blob: Blob) {
   return "recording.webm"
 }
 
+type QuoteTemplateContext = {
+  id: string
+  template_name: string
+  category: string
+  default_scope: string[]
+  default_exclusions: string[]
+  default_pricing_structure: string[]
+  reusable_wording: string[]
+  ai_prompt_rules: string[]
+}
+
+function toStringArray(value: unknown, limit = 8) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.trim())
+      .slice(0, limit)
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, limit)
+  }
+
+  return []
+}
+
+function getTemplateContentArray(templateContent: unknown, key: string) {
+  if (!templateContent || typeof templateContent !== "object") return []
+  return toStringArray((templateContent as Record<string, unknown>)[key])
+}
+
+async function loadQuoteTemplateContext() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    throw new Error(userError?.message ?? "Sign in before processing quote templates.")
+  }
+
+  const { data, error } = await supabase
+    .from("quote_templates")
+    .select("id, template_name, category, default_scope, default_exclusions, default_pricing_structure, template_content")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(12)
+
+  if (error) {
+    throw new Error(`Could not load quote templates: ${error.message}`)
+  }
+
+  return (data ?? []).map((template): QuoteTemplateContext => ({
+    id: String(template.id ?? ""),
+    template_name: String(template.template_name ?? "Untitled template"),
+    category: String(template.category ?? "custom"),
+    default_scope: toStringArray(template.default_scope),
+    default_exclusions: toStringArray(template.default_exclusions),
+    default_pricing_structure: toStringArray(template.default_pricing_structure),
+    reusable_wording: getTemplateContentArray(template.template_content, "reusable_customer_wording"),
+    ai_prompt_rules: getTemplateContentArray(template.template_content, "ai_prompt_rules"),
+  }))
+}
+
 export function RecordScreen({
   onProcess,
 }: {
-  onProcess: (rawTranscript: string, processedQuote: ProcessedQuote) => void
+  onProcess: (rawTranscript: string, correctedTranscript: string, processedQuote: ProcessedQuote) => void
 }) {
   const [state, setState] = useState<RecState>("idle")
   const [seconds, setSeconds] = useState(0)
@@ -273,16 +344,45 @@ export function RecordScreen({
         throw new Error("Transcription completed but no text was returned.")
       }
 
-      const nextTranscript = result.transcript.trim()
-      setTranscript(nextTranscript)
+      const rawTranscript = result.transcript.trim()
+      setTranscript(rawTranscript)
       setStage(1)
+
+      const correctionResponse = await fetch("/api/correct-transcript", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ transcript: rawTranscript }),
+      })
+
+      const correctionResult = await correctionResponse.json().catch(() => null)
+
+      if (!correctionResponse.ok) {
+        const message =
+          typeof correctionResult?.error === "string"
+            ? correctionResult.error
+            : "Transcript correction failed. Please try again."
+        throw new Error(message)
+      }
+
+      const correctedTranscript =
+        typeof correctionResult?.corrected_transcript === "string" && correctionResult.corrected_transcript.trim()
+          ? correctionResult.corrected_transcript.trim()
+          : rawTranscript
+
+      setTranscript(correctedTranscript)
+      setStage(2)
+
+      const templateContext = await loadQuoteTemplateContext()
+      setStage(3)
 
       const quoteResponse = await fetch("/api/process-quote", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ transcript: nextTranscript }),
+        body: JSON.stringify({ transcript: correctedTranscript, template_context: templateContext }),
       })
 
       const processedQuote = await quoteResponse.json().catch(() => null)
@@ -295,12 +395,12 @@ export function RecordScreen({
         throw new Error(message)
       }
 
-      for (let nextStage = 2; nextStage < aiStages.length; nextStage += 1) {
+      for (let nextStage = 4; nextStage < aiStages.length; nextStage += 1) {
         setStage(nextStage)
         await sleep(500)
       }
 
-      onProcess(nextTranscript, processedQuote as ProcessedQuote)
+      onProcess(rawTranscript, correctedTranscript, processedQuote as ProcessedQuote)
     } catch (error) {
       setState("stopped")
       setStage(0)

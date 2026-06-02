@@ -7,11 +7,25 @@ export type QuoteLineItem = {
   confidence_note: string
 }
 
+export type QuoteOption = {
+  quote_title: string
+  job_type: string
+  scope: string[]
+  cadence: string
+  notes: string[]
+}
+
 export type ProcessedQuote = {
   client_name: string
   site_address: string
   quote_title: string
   job_type: string
+  selected_template_id: string
+  selected_template_name: string
+  template_match_confidence: string
+  learned_rules_applied: string[]
+  primary_quote: QuoteOption
+  optional_quotes: QuoteOption[]
   customer_scope: string[]
   internal_notes: string[]
   labour_allowance: string
@@ -33,11 +47,34 @@ export type EditableQuoteSection = {
   kind: "field" | "list" | "warnings"
 }
 
+export type SavedQuoteDraft = {
+  id: string
+  client_name: string | null
+  site_address: string | null
+  quote_title: string | null
+  job_type: string | null
+  raw_transcript: string | null
+  quote_sections: unknown
+  line_items: unknown
+}
+
 export const EMPTY_PROCESSED_QUOTE: ProcessedQuote = {
   client_name: "",
   site_address: "",
   quote_title: "",
   job_type: "",
+  selected_template_id: "",
+  selected_template_name: "",
+  template_match_confidence: "",
+  learned_rules_applied: [],
+  primary_quote: {
+    quote_title: "",
+    job_type: "",
+    scope: [],
+    cadence: "",
+    notes: [],
+  },
+  optional_quotes: [],
   customer_scope: [],
   internal_notes: [],
   labour_allowance: "",
@@ -54,6 +91,16 @@ function lines(items: string[]) {
   return items.join("\n")
 }
 
+function quoteOptionLines(option: QuoteOption) {
+  return [
+    option.quote_title ? `Title: ${option.quote_title}` : "",
+    option.job_type ? `Job type: ${option.job_type}` : "",
+    option.cadence ? `Cadence: ${option.cadence}` : "",
+    ...option.scope.map((item) => `Scope: ${item}`),
+    ...option.notes.map((item) => `Note: ${item}`),
+  ].filter(Boolean)
+}
+
 function splitLines(value: string) {
   return value
     .split("\n")
@@ -63,6 +110,28 @@ function splitLines(value: string) {
 
 export function processedQuoteToEditableSections(quote: ProcessedQuote): EditableQuoteSection[] {
   return [
+    {
+      key: "selected_template",
+      title: "Selected template",
+      content: [
+        quote.selected_template_name ? `Template: ${quote.selected_template_name}` : "",
+        quote.selected_template_id ? `ID: ${quote.selected_template_id}` : "",
+        quote.template_match_confidence ? `Confidence: ${quote.template_match_confidence}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      customer_visible: false,
+      internal_visible: true,
+      kind: "field",
+    },
+    {
+      key: "learned_rules_applied",
+      title: "Learned rules applied",
+      content: lines(quote.learned_rules_applied),
+      customer_visible: false,
+      internal_visible: true,
+      kind: "list",
+    },
     {
       key: "client_name",
       title: "Customer details",
@@ -86,6 +155,22 @@ export function processedQuoteToEditableSections(quote: ProcessedQuote): Editabl
       customer_visible: true,
       internal_visible: true,
       kind: "field",
+    },
+    {
+      key: "primary_quote",
+      title: "Primary quote",
+      content: lines(quoteOptionLines(quote.primary_quote)),
+      customer_visible: true,
+      internal_visible: true,
+      kind: "list",
+    },
+    {
+      key: "optional_quotes",
+      title: "Optional / secondary quotes",
+      content: lines(quote.optional_quotes.flatMap(quoteOptionLines)),
+      customer_visible: true,
+      internal_visible: true,
+      kind: "list",
     },
     {
       key: "customer_scope",
@@ -154,6 +239,71 @@ export function processedQuoteToEditableSections(quote: ProcessedQuote): Editabl
   ]
 }
 
+function isEditableQuoteSection(value: unknown): value is EditableQuoteSection {
+  if (!value || typeof value !== "object") return false
+  const section = value as Partial<EditableQuoteSection>
+
+  return (
+    typeof section.key === "string" &&
+    typeof section.title === "string" &&
+    typeof section.content === "string" &&
+    typeof section.customer_visible === "boolean" &&
+    typeof section.internal_visible === "boolean" &&
+    (section.kind === "field" || section.kind === "list" || section.kind === "warnings")
+  )
+}
+
+function quoteSectionsFromSaved(value: unknown, fallbackQuote: ProcessedQuote) {
+  if (Array.isArray(value) && value.every(isEditableQuoteSection)) {
+    return value
+  }
+
+  return processedQuoteToEditableSections(fallbackQuote)
+}
+
+function lineItemsFromSaved(value: unknown): QuoteLineItem[] {
+  if (!Array.isArray(value)) return []
+
+  return value.map((item) => {
+    const lineItem = item && typeof item === "object" ? (item as Partial<QuoteLineItem>) : {}
+
+    return {
+      label: String(lineItem.label ?? ""),
+      detail: String(lineItem.detail ?? ""),
+      quantity: String(lineItem.quantity ?? ""),
+      unit_rate: String(lineItem.unit_rate ?? ""),
+      amount: String(lineItem.amount ?? ""),
+      confidence_note: String(lineItem.confidence_note ?? ""),
+    }
+  })
+}
+
+export function savedDraftToEditableState(draft: SavedQuoteDraft) {
+  const fallbackQuote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: draft.client_name ?? "",
+    site_address: draft.site_address ?? "",
+    quote_title: draft.quote_title ?? "",
+    job_type: draft.job_type ?? "",
+    primary_quote: {
+      quote_title: draft.quote_title ?? "",
+      job_type: draft.job_type ?? "",
+      scope: [],
+      cadence: "",
+      notes: [],
+    },
+    line_items: lineItemsFromSaved(draft.line_items),
+  }
+  const sections = quoteSectionsFromSaved(draft.quote_sections, fallbackQuote)
+  const processedQuote = editableSectionsToProcessedQuote(sections, fallbackQuote)
+
+  return {
+    rawTranscript: draft.raw_transcript ?? "",
+    processedQuote,
+    sections,
+  }
+}
+
 export function editableSectionsToProcessedQuote(
   sections: EditableQuoteSection[],
   baseQuote: ProcessedQuote,
@@ -168,6 +318,24 @@ export function editableSectionsToProcessedQuote(
     site_address: byKey.get("site_address")?.trim() ?? "",
     job_type: byKey.get("job_type")?.trim() ?? "",
     quote_title: baseQuote.quote_title || byKey.get("job_type")?.trim() || "Generated Quote",
+    primary_quote: {
+      ...baseQuote.primary_quote,
+      quote_title: baseQuote.primary_quote.quote_title || baseQuote.quote_title,
+      job_type: baseQuote.primary_quote.job_type || byKey.get("job_type")?.trim() || "",
+      notes: splitLines(byKey.get("primary_quote") ?? ""),
+    },
+    optional_quotes:
+      splitLines(byKey.get("optional_quotes") ?? "").length > 0
+        ? [
+            {
+              quote_title: "Optional quote",
+              job_type: "",
+              scope: splitLines(byKey.get("optional_quotes") ?? ""),
+              cadence: "",
+              notes: [],
+            },
+          ]
+        : baseQuote.optional_quotes,
     customer_scope: splitLines(byKey.get("customer_scope") ?? ""),
     internal_notes: splitLines(byKey.get("internal_notes") ?? ""),
     labour_allowance: byKey.get("labour_allowance")?.trim() ?? "",
@@ -177,5 +345,9 @@ export function editableSectionsToProcessedQuote(
     follow_up_tasks: splitLines(byKey.get("follow_up_tasks") ?? ""),
     missing_information: splitLines(byKey.get("missing_information") ?? ""),
     confidence_warnings: splitLines(byKey.get("confidence_warnings") ?? ""),
+    selected_template_id: baseQuote.selected_template_id,
+    selected_template_name: baseQuote.selected_template_name,
+    template_match_confidence: baseQuote.template_match_confidence,
+    learned_rules_applied: splitLines(byKey.get("learned_rules_applied") ?? ""),
   }
 }

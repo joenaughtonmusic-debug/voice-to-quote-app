@@ -153,6 +153,7 @@ const waveBars = Array.from({
 });
 const aiStages = [
     "Transcribing...",
+    "Correcting trade terms",
     "Extracting client & site",
     "Identifying job scope",
     "Pricing line items",
@@ -373,16 +374,33 @@ function RecordScreen({ onProcess }) {
             if (typeof result?.transcript !== "string" || !result.transcript.trim()) {
                 throw new Error("Transcription completed but no text was returned.");
             }
-            const nextTranscript = result.transcript.trim();
-            setTranscript(nextTranscript);
+            const rawTranscript = result.transcript.trim();
+            setTranscript(rawTranscript);
             setStage(1);
+            const correctionResponse = await fetch("/api/correct-transcript", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    transcript: rawTranscript
+                })
+            });
+            const correctionResult = await correctionResponse.json().catch(()=>null);
+            if (!correctionResponse.ok) {
+                const message = typeof correctionResult?.error === "string" ? correctionResult.error : "Transcript correction failed. Please try again.";
+                throw new Error(message);
+            }
+            const correctedTranscript = typeof correctionResult?.corrected_transcript === "string" && correctionResult.corrected_transcript.trim() ? correctionResult.corrected_transcript.trim() : rawTranscript;
+            setTranscript(correctedTranscript);
+            setStage(2);
             const quoteResponse = await fetch("/api/process-quote", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                 },
                 body: JSON.stringify({
-                    transcript: nextTranscript
+                    transcript: correctedTranscript
                 })
             });
             const processedQuote = await quoteResponse.json().catch(()=>null);
@@ -390,11 +408,11 @@ function RecordScreen({ onProcess }) {
                 const message = typeof processedQuote?.error === "string" ? processedQuote.error : "Quote extraction failed. Please try again.";
                 throw new Error(message);
             }
-            for(let nextStage = 2; nextStage < aiStages.length; nextStage += 1){
+            for(let nextStage = 3; nextStage < aiStages.length; nextStage += 1){
                 setStage(nextStage);
                 await sleep(500);
             }
-            onProcess(nextTranscript, processedQuote);
+            onProcess(rawTranscript, correctedTranscript, processedQuote);
         } catch (error) {
             setState("stopped");
             setStage(0);
@@ -418,12 +436,12 @@ function RecordScreen({ onProcess }) {
                                     strokeWidth: 2.4
                                 }, void 0, false, {
                                     fileName: "[project]/components/record-screen.tsx",
-                                    lineNumber: 328,
+                                    lineNumber: 355,
                                     columnNumber: 13
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 327,
+                                lineNumber: 354,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -431,13 +449,13 @@ function RecordScreen({ onProcess }) {
                                 children: "voicequote"
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 330,
+                                lineNumber: 357,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 326,
+                        lineNumber: 353,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -447,20 +465,20 @@ function RecordScreen({ onProcess }) {
                                 className: (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$utils$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["cn"])("h-1.5 w-1.5 rounded-full", state === "recording" ? "bg-destructive animate-pulse" : state === "idle" || state === "paused" ? "bg-muted-foreground" : "bg-primary animate-pulse-soft")
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 342,
+                                lineNumber: 369,
                                 columnNumber: 11
                             }, this),
                             statusLabel
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 332,
+                        lineNumber: 359,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 325,
+                lineNumber: 352,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -471,7 +489,7 @@ function RecordScreen({ onProcess }) {
                         children: state === "processing" ? "Building your quote" : state === "stopped" ? "Recording captured" : "Speak the job.\nGet the quote."
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 358,
+                        lineNumber: 385,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -479,13 +497,13 @@ function RecordScreen({ onProcess }) {
                         children: state === "processing" ? "Our estimator is structuring everything you said into a priced draft." : "Walk the site, talk it through, and let the AI estimator handle the paperwork."
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 365,
+                        lineNumber: 392,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 357,
+                lineNumber: 384,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -495,7 +513,7 @@ function RecordScreen({ onProcess }) {
                         className: "bg-grid absolute inset-x-0 top-0 h-60 opacity-40 [mask-image:radial-gradient(circle_at_center,black,transparent_70%)]"
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 374,
+                        lineNumber: 401,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -505,7 +523,7 @@ function RecordScreen({ onProcess }) {
                                 className: "record-glow absolute inset-0 rounded-full blur-xl animate-pulse-soft"
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 377,
+                                lineNumber: 404,
                                 columnNumber: 13
                             }, this),
                             state === "recording" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Fragment"], {
@@ -514,14 +532,14 @@ function RecordScreen({ onProcess }) {
                                         className: "absolute inline-flex h-48 w-48 rounded-full border border-primary/30 animate-ping-ring"
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 381,
+                                        lineNumber: 408,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                         className: "absolute inline-flex h-48 w-48 rounded-full border border-primary/20 animate-ping-ring [animation-delay:.7s]"
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 382,
+                                        lineNumber: 409,
                                         columnNumber: 15
                                     }, this)
                                 ]
@@ -534,7 +552,7 @@ function RecordScreen({ onProcess }) {
                                         strokeWidth: 1.6
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 388,
+                                        lineNumber: 415,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -542,13 +560,13 @@ function RecordScreen({ onProcess }) {
                                         children: stage === 0 ? "transcribing..." : "analysing..."
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 389,
+                                        lineNumber: 416,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 387,
+                                lineNumber: 414,
                                 columnNumber: 13
                             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                                 type: "button",
@@ -560,7 +578,7 @@ function RecordScreen({ onProcess }) {
                                         className: "absolute inset-2 rounded-full border border-primary/30 transition-colors group-hover:border-primary/60"
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 408,
+                                        lineNumber: 435,
                                         columnNumber: 17
                                     }, this),
                                     state === "recording" ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$pause$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Pause$3e$__["Pause"], {
@@ -568,33 +586,33 @@ function RecordScreen({ onProcess }) {
                                         strokeWidth: 2
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 411,
+                                        lineNumber: 438,
                                         columnNumber: 17
                                     }, this) : state === "paused" ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$play$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Play$3e$__["Play"], {
                                         className: "h-16 w-16",
                                         strokeWidth: 2
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 413,
+                                        lineNumber: 440,
                                         columnNumber: 17
                                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$mic$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Mic$3e$__["Mic"], {
                                         className: "h-16 w-16",
                                         strokeWidth: 1.6
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 415,
+                                        lineNumber: 442,
                                         columnNumber: 17
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 394,
+                                lineNumber: 421,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 375,
+                        lineNumber: 402,
                         columnNumber: 9
                     }, this),
                     isLive && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -610,12 +628,12 @@ function RecordScreen({ onProcess }) {
                                         }
                                     }, i, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 426,
+                                        lineNumber: 453,
                                         columnNumber: 17
                                     }, this))
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 424,
+                                lineNumber: 451,
                                 columnNumber: 13
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -626,7 +644,7 @@ function RecordScreen({ onProcess }) {
                                         children: formatTime(seconds)
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 434,
+                                        lineNumber: 461,
                                         columnNumber: 15
                                     }, this),
                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -641,18 +659,18 @@ function RecordScreen({ onProcess }) {
                                                     className: "h-5 w-5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/record-screen.tsx",
-                                                    lineNumber: 444,
+                                                    lineNumber: 471,
                                                     columnNumber: 44
                                                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$play$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Play$3e$__["Play"], {
                                                     className: "h-5 w-5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/record-screen.tsx",
-                                                    lineNumber: 444,
+                                                    lineNumber: 471,
                                                     columnNumber: 76
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/components/record-screen.tsx",
-                                                lineNumber: 438,
+                                                lineNumber: 465,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -665,12 +683,12 @@ function RecordScreen({ onProcess }) {
                                                     fill: "currentColor"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/record-screen.tsx",
-                                                    lineNumber: 452,
+                                                    lineNumber: 479,
                                                     columnNumber: 19
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/components/record-screen.tsx",
-                                                lineNumber: 446,
+                                                lineNumber: 473,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -682,30 +700,30 @@ function RecordScreen({ onProcess }) {
                                                     className: "h-5 w-5"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/record-screen.tsx",
-                                                    lineNumber: 460,
+                                                    lineNumber: 487,
                                                     columnNumber: 19
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/components/record-screen.tsx",
-                                                lineNumber: 454,
+                                                lineNumber: 481,
                                                 columnNumber: 17
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 437,
+                                        lineNumber: 464,
                                         columnNumber: 15
                                     }, this)
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 433,
+                                lineNumber: 460,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 423,
+                        lineNumber: 450,
                         columnNumber: 11
                     }, this),
                     state === "idle" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -713,7 +731,7 @@ function RecordScreen({ onProcess }) {
                         children: "tap mic to record"
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 469,
+                        lineNumber: 496,
                         columnNumber: 11
                     }, this),
                     state === "stopped" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -724,20 +742,20 @@ function RecordScreen({ onProcess }) {
                                 children: formatTime(seconds)
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 473,
+                                lineNumber: 500,
                                 columnNumber: 13
                             }, this),
                             " captured · ready to process"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 472,
+                        lineNumber: 499,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 373,
+                lineNumber: 400,
                 columnNumber: 7
             }, this),
             errorMessage && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -745,7 +763,7 @@ function RecordScreen({ onProcess }) {
                 children: errorMessage
             }, void 0, false, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 479,
+                lineNumber: 506,
                 columnNumber: 9
             }, this),
             state === "processing" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -761,24 +779,24 @@ function RecordScreen({ onProcess }) {
                                         className: "h-3 w-3"
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 501,
+                                        lineNumber: 528,
                                         columnNumber: 21
                                     }, this) : i === stage ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$loader$2d$circle$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Loader2$3e$__["Loader2"], {
                                         className: "h-3 w-3 animate-spin"
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 503,
+                                        lineNumber: 530,
                                         columnNumber: 21
                                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                         className: "h-1.5 w-1.5 rounded-full bg-current opacity-40"
                                     }, void 0, false, {
                                         fileName: "[project]/components/record-screen.tsx",
-                                        lineNumber: 505,
+                                        lineNumber: 532,
                                         columnNumber: 21
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/components/record-screen.tsx",
-                                    lineNumber: 490,
+                                    lineNumber: 517,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -786,23 +804,23 @@ function RecordScreen({ onProcess }) {
                                     children: label
                                 }, void 0, false, {
                                     fileName: "[project]/components/record-screen.tsx",
-                                    lineNumber: 508,
+                                    lineNumber: 535,
                                     columnNumber: 17
                                 }, this)
                             ]
                         }, label, true, {
                             fileName: "[project]/components/record-screen.tsx",
-                            lineNumber: 489,
+                            lineNumber: 516,
                             columnNumber: 15
                         }, this))
                 }, void 0, false, {
                     fileName: "[project]/components/record-screen.tsx",
-                    lineNumber: 487,
+                    lineNumber: 514,
                     columnNumber: 11
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 486,
+                lineNumber: 513,
                 columnNumber: 9
             }, this),
             state !== "processing" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -816,7 +834,7 @@ function RecordScreen({ onProcess }) {
                                 children: "recording note"
                             }, void 0, false, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 519,
+                                lineNumber: 546,
                                 columnNumber: 13
                             }, this),
                             transcript && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -827,13 +845,13 @@ function RecordScreen({ onProcess }) {
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/record-screen.tsx",
-                                lineNumber: 523,
+                                lineNumber: 550,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 518,
+                        lineNumber: 545,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -844,32 +862,32 @@ function RecordScreen({ onProcess }) {
                             children: transcript
                         }, void 0, false, {
                             fileName: "[project]/components/record-screen.tsx",
-                            lineNumber: 531,
+                            lineNumber: 558,
                             columnNumber: 15
                         }, this) : isLive ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                             className: "text-muted-foreground",
                             children: "Recording audio in this browser. Live transcription is not connected yet."
                         }, void 0, false, {
                             fileName: "[project]/components/record-screen.tsx",
-                            lineNumber: 535,
+                            lineNumber: 562,
                             columnNumber: 15
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                             className: "text-muted-foreground",
                             children: "Record the client, the site, and the scope of work. The transcript will appear after processing."
                         }, void 0, false, {
                             fileName: "[project]/components/record-screen.tsx",
-                            lineNumber: 539,
+                            lineNumber: 566,
                             columnNumber: 15
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 526,
+                        lineNumber: 553,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 517,
+                lineNumber: 544,
                 columnNumber: 9
             }, this),
             state === "idle" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -881,14 +899,14 @@ function RecordScreen({ onProcess }) {
                         className: "h-4 w-4"
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 554,
+                        lineNumber: 581,
                         columnNumber: 11
                     }, this),
                     "Record actual site visit instead"
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 549,
+                lineNumber: 576,
                 columnNumber: 9
             }, this),
             state !== "processing" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -901,14 +919,14 @@ function RecordScreen({ onProcess }) {
                         className: "h-5 w-5"
                     }, void 0, false, {
                         fileName: "[project]/components/record-screen.tsx",
-                        lineNumber: 572,
+                        lineNumber: 599,
                         columnNumber: 11
                     }, this),
                     "Process Quote into Draft"
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 561,
+                lineNumber: 588,
                 columnNumber: 9
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -916,13 +934,13 @@ function RecordScreen({ onProcess }) {
                 children: "Speak naturally. Mention the client name, location, job scope, dimensions, and any specific materials used."
             }, void 0, false, {
                 fileName: "[project]/components/record-screen.tsx",
-                lineNumber: 577,
+                lineNumber: 604,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/record-screen.tsx",
-        lineNumber: 323,
+        lineNumber: 350,
         columnNumber: 5
     }, this);
 }
@@ -1047,7 +1065,7 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                         children: "Drafts"
                     }, void 0, false, {
                         fileName: "[project]/components/drafts-screen.tsx",
-                        lineNumber: 106,
+                        lineNumber: 112,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1055,13 +1073,13 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                         children: loading ? "Loading quote drafts..." : `${drafts.length} saved quote drafts`
                     }, void 0, false, {
                         fileName: "[project]/components/drafts-screen.tsx",
-                        lineNumber: 107,
+                        lineNumber: 113,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/drafts-screen.tsx",
-                lineNumber: 105,
+                lineNumber: 111,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1079,19 +1097,19 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                 children: count
                             }, void 0, false, {
                                 fileName: "[project]/components/drafts-screen.tsx",
-                                lineNumber: 129,
+                                lineNumber: 135,
                                 columnNumber: 15
                             }, this)
                         ]
                     }, f.id, true, {
                         fileName: "[project]/components/drafts-screen.tsx",
-                        lineNumber: 117,
+                        lineNumber: 123,
                         columnNumber: 13
                     }, this);
                 })
             }, void 0, false, {
                 fileName: "[project]/components/drafts-screen.tsx",
-                lineNumber: 113,
+                lineNumber: 119,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1104,14 +1122,14 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                 className: "h-4 w-4 animate-spin"
                             }, void 0, false, {
                                 fileName: "[project]/components/drafts-screen.tsx",
-                                lineNumber: 146,
+                                lineNumber: 152,
                                 columnNumber: 13
                             }, this),
                             "Loading drafts"
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/drafts-screen.tsx",
-                        lineNumber: 145,
+                        lineNumber: 151,
                         columnNumber: 11
                     }, this),
                     !loading && errorMessage && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1123,32 +1141,32 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                     className: "mt-0.5 h-4 w-4 shrink-0"
                                 }, void 0, false, {
                                     fileName: "[project]/components/drafts-screen.tsx",
-                                    lineNumber: 154,
+                                    lineNumber: 160,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
                                     children: errorMessage
                                 }, void 0, false, {
                                     fileName: "[project]/components/drafts-screen.tsx",
-                                    lineNumber: 155,
+                                    lineNumber: 161,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/drafts-screen.tsx",
-                            lineNumber: 153,
+                            lineNumber: 159,
                             columnNumber: 13
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/drafts-screen.tsx",
-                        lineNumber: 152,
+                        lineNumber: 158,
                         columnNumber: 11
                     }, this),
                     rows.map((row)=>{
                         const status = statusStyles[getStatusKey(row.status)];
                         return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
                             type: "button",
-                            onClick: onOpen,
+                            onClick: ()=>onOpen(row.id),
                             className: "flex items-center gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition-shadow active:scale-[0.99]",
                             children: [
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1162,7 +1180,7 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                                     children: row.client_name || "Untitled client"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/drafts-screen.tsx",
-                                                    lineNumber: 171,
+                                                    lineNumber: 177,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -1170,13 +1188,13 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                                     children: row.status || status.label
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/drafts-screen.tsx",
-                                                    lineNumber: 172,
+                                                    lineNumber: 178,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/drafts-screen.tsx",
-                                            lineNumber: 170,
+                                            lineNumber: 176,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1186,14 +1204,14 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                                     className: "h-3 w-3 shrink-0"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/drafts-screen.tsx",
-                                                    lineNumber: 177,
+                                                    lineNumber: 183,
                                                     columnNumber: 19
                                                 }, this),
                                                 row.site_address || "No site address"
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/drafts-screen.tsx",
-                                            lineNumber: 176,
+                                            lineNumber: 182,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -1204,7 +1222,7 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                                     children: row.job_type || "No job type"
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/drafts-screen.tsx",
-                                                    lineNumber: 181,
+                                                    lineNumber: 187,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1215,7 +1233,7 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/drafts-screen.tsx",
-                                                    lineNumber: 182,
+                                                    lineNumber: 188,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -1226,32 +1244,32 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                                                     ]
                                                 }, void 0, true, {
                                                     fileName: "[project]/components/drafts-screen.tsx",
-                                                    lineNumber: 183,
+                                                    lineNumber: 189,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, void 0, true, {
                                             fileName: "[project]/components/drafts-screen.tsx",
-                                            lineNumber: 180,
+                                            lineNumber: 186,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/drafts-screen.tsx",
-                                    lineNumber: 169,
+                                    lineNumber: 175,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$chevron$2d$right$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__ChevronRight$3e$__["ChevronRight"], {
                                     className: "h-5 w-5 shrink-0 text-muted-foreground"
                                 }, void 0, false, {
                                     fileName: "[project]/components/drafts-screen.tsx",
-                                    lineNumber: 186,
+                                    lineNumber: 192,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, row.id, true, {
                             fileName: "[project]/components/drafts-screen.tsx",
-                            lineNumber: 163,
+                            lineNumber: 169,
                             columnNumber: 13
                         }, this);
                     }),
@@ -1260,19 +1278,19 @@ function DraftsScreen({ onOpen, refreshKey = 0 }) {
                         children: drafts.length === 0 ? "No quote drafts saved yet." : "No quotes in this filter."
                     }, void 0, false, {
                         fileName: "[project]/components/drafts-screen.tsx",
-                        lineNumber: 192,
+                        lineNumber: 198,
                         columnNumber: 11
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/drafts-screen.tsx",
-                lineNumber: 143,
+                lineNumber: 149,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/drafts-screen.tsx",
-        lineNumber: 104,
+        lineNumber: 110,
         columnNumber: 5
     }, this);
 }
@@ -2783,13 +2801,23 @@ __turbopack_context__.s([
     "editableSectionsToProcessedQuote",
     ()=>editableSectionsToProcessedQuote,
     "processedQuoteToEditableSections",
-    ()=>processedQuoteToEditableSections
+    ()=>processedQuoteToEditableSections,
+    "savedDraftToEditableState",
+    ()=>savedDraftToEditableState
 ]);
 const EMPTY_PROCESSED_QUOTE = {
     client_name: "",
     site_address: "",
     quote_title: "",
     job_type: "",
+    primary_quote: {
+        quote_title: "",
+        job_type: "",
+        scope: [],
+        cadence: "",
+        notes: []
+    },
+    optional_quotes: [],
     customer_scope: [],
     internal_notes: [],
     labour_allowance: "",
@@ -2803,6 +2831,15 @@ const EMPTY_PROCESSED_QUOTE = {
 };
 function lines(items) {
     return items.join("\n");
+}
+function quoteOptionLines(option) {
+    return [
+        option.quote_title ? `Title: ${option.quote_title}` : "",
+        option.job_type ? `Job type: ${option.job_type}` : "",
+        option.cadence ? `Cadence: ${option.cadence}` : "",
+        ...option.scope.map((item)=>`Scope: ${item}`),
+        ...option.notes.map((item)=>`Note: ${item}`)
+    ].filter(Boolean);
 }
 function splitLines(value) {
     return value.split("\n").map((item)=>item.trim()).filter(Boolean);
@@ -2832,6 +2869,22 @@ function processedQuoteToEditableSections(quote) {
             customer_visible: true,
             internal_visible: true,
             kind: "field"
+        },
+        {
+            key: "primary_quote",
+            title: "Primary quote",
+            content: lines(quoteOptionLines(quote.primary_quote)),
+            customer_visible: true,
+            internal_visible: true,
+            kind: "list"
+        },
+        {
+            key: "optional_quotes",
+            title: "Optional / secondary quotes",
+            content: lines(quote.optional_quotes.flatMap(quoteOptionLines)),
+            customer_visible: true,
+            internal_visible: true,
+            kind: "list"
         },
         {
             key: "customer_scope",
@@ -2902,6 +2955,55 @@ function processedQuoteToEditableSections(quote) {
         }
     ];
 }
+function isEditableQuoteSection(value) {
+    if (!value || typeof value !== "object") return false;
+    const section = value;
+    return typeof section.key === "string" && typeof section.title === "string" && typeof section.content === "string" && typeof section.customer_visible === "boolean" && typeof section.internal_visible === "boolean" && (section.kind === "field" || section.kind === "list" || section.kind === "warnings");
+}
+function quoteSectionsFromSaved(value, fallbackQuote) {
+    if (Array.isArray(value) && value.every(isEditableQuoteSection)) {
+        return value;
+    }
+    return processedQuoteToEditableSections(fallbackQuote);
+}
+function lineItemsFromSaved(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map((item)=>{
+        const lineItem = item && typeof item === "object" ? item : {};
+        return {
+            label: String(lineItem.label ?? ""),
+            detail: String(lineItem.detail ?? ""),
+            quantity: String(lineItem.quantity ?? ""),
+            unit_rate: String(lineItem.unit_rate ?? ""),
+            amount: String(lineItem.amount ?? ""),
+            confidence_note: String(lineItem.confidence_note ?? "")
+        };
+    });
+}
+function savedDraftToEditableState(draft) {
+    const fallbackQuote = {
+        ...EMPTY_PROCESSED_QUOTE,
+        client_name: draft.client_name ?? "",
+        site_address: draft.site_address ?? "",
+        quote_title: draft.quote_title ?? "",
+        job_type: draft.job_type ?? "",
+        primary_quote: {
+            quote_title: draft.quote_title ?? "",
+            job_type: draft.job_type ?? "",
+            scope: [],
+            cadence: "",
+            notes: []
+        },
+        line_items: lineItemsFromSaved(draft.line_items)
+    };
+    const sections = quoteSectionsFromSaved(draft.quote_sections, fallbackQuote);
+    const processedQuote = editableSectionsToProcessedQuote(sections, fallbackQuote);
+    return {
+        rawTranscript: draft.raw_transcript ?? "",
+        processedQuote,
+        sections
+    };
+}
 function editableSectionsToProcessedQuote(sections, baseQuote) {
     const byKey = new Map(sections.map((section)=>[
             section.key,
@@ -2915,6 +3017,21 @@ function editableSectionsToProcessedQuote(sections, baseQuote) {
         site_address: byKey.get("site_address")?.trim() ?? "",
         job_type: byKey.get("job_type")?.trim() ?? "",
         quote_title: baseQuote.quote_title || byKey.get("job_type")?.trim() || "Generated Quote",
+        primary_quote: {
+            ...baseQuote.primary_quote,
+            quote_title: baseQuote.primary_quote.quote_title || baseQuote.quote_title,
+            job_type: baseQuote.primary_quote.job_type || byKey.get("job_type")?.trim() || "",
+            notes: splitLines(byKey.get("primary_quote") ?? "")
+        },
+        optional_quotes: splitLines(byKey.get("optional_quotes") ?? "").length > 0 ? [
+            {
+                quote_title: "Optional quote",
+                job_type: "",
+                scope: splitLines(byKey.get("optional_quotes") ?? ""),
+                cadence: "",
+                notes: []
+            }
+        ] : baseQuote.optional_quotes,
         customer_scope: splitLines(byKey.get("customer_scope") ?? ""),
         internal_notes: splitLines(byKey.get("internal_notes") ?? ""),
         labour_allowance: byKey.get("labour_allowance")?.trim() ?? "",
@@ -2937,7 +3054,7 @@ __turbopack_context__.s([
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/supabase.ts [app-ssr] (ecmascript)");
 "use client";
 ;
-async function saveGeneratedQuoteDraft(rawTranscript, processedQuote, quoteSections) {
+async function saveGeneratedQuoteDraft(rawTranscript, processedQuote, quoteSections, draftId) {
     const { data: { user }, error: userError } = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["supabase"].auth.getUser();
     if (userError || !user) {
         return {
@@ -2945,7 +3062,7 @@ async function saveGeneratedQuoteDraft(rawTranscript, processedQuote, quoteSecti
             message: userError?.message ?? "You must be signed in to save a draft."
         };
     }
-    const { error } = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["supabase"].from("quote_drafts").insert({
+    const payload = {
         user_id: user.id,
         client_name: processedQuote.client_name || null,
         site_address: processedQuote.site_address || null,
@@ -2955,7 +3072,8 @@ async function saveGeneratedQuoteDraft(rawTranscript, processedQuote, quoteSecti
         quote_sections: quoteSections,
         line_items: processedQuote.line_items,
         status: "Needs Review"
-    });
+    };
+    const { error } = draftId ? await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["supabase"].from("quote_drafts").update(payload).eq("id", draftId).eq("user_id", user.id) : await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["supabase"].from("quote_drafts").insert(payload);
     if (error) {
         return {
             ok: false,
@@ -2964,7 +3082,7 @@ async function saveGeneratedQuoteDraft(rawTranscript, processedQuote, quoteSecti
     }
     return {
         ok: true,
-        message: "Draft saved to Supabase."
+        message: draftId ? "Draft updated in Supabase." : "Draft saved to Supabase."
     };
 }
 }),
@@ -2995,11 +3113,11 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$save$2d$quote$2d$draf
 ;
 ;
 ;
-function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processedQuote }) {
+function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, originalTranscript, processedQuote, onQuoteEdited, onSectionsEdited, draftId, initialSections }) {
     const [view, setView] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])("internal");
     const [saveState, setSaveState] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])("idle");
     const [saveMessage, setSaveMessage] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])("");
-    const [sections, setSections] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(()=>(0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["processedQuoteToEditableSections"])(processedQuote));
+    const [sections, setSections] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(()=>initialSections ?? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["processedQuoteToEditableSections"])(processedQuote));
     const [dirtyKeys, setDirtyKeys] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(new Set());
     const visible = sections.filter((section)=>{
         if (view === "customer") return section.customer_visible;
@@ -3010,7 +3128,7 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
         setSaveState("saving");
         setSaveMessage("");
         const editedQuote = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["editableSectionsToProcessedQuote"])(sections, processedQuote);
-        const result = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$save$2d$quote$2d$draft$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["saveGeneratedQuoteDraft"])(rawTranscript, editedQuote, sections);
+        const result = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$save$2d$quote$2d$draft$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["saveGeneratedQuoteDraft"])(originalTranscript, editedQuote, sections, draftId);
         setSaveState(result.ok ? "success" : "error");
         setSaveMessage(result.message);
         if (result.ok) {
@@ -3019,10 +3137,15 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
         }
     }
     function handleSaveSection(key, content) {
-        setSections((current)=>current.map((section)=>section.key === key ? {
+        setSections((current)=>{
+            const nextSections = current.map((section)=>section.key === key ? {
                     ...section,
                     content
-                } : section));
+                } : section);
+            onQuoteEdited((0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["editableSectionsToProcessedQuote"])(nextSections, processedQuote));
+            onSectionsEdited(nextSections);
+            return nextSections;
+        });
         setDirtyKeys((current)=>new Set(current).add(key));
         setSaveState("idle");
         setSaveMessage("");
@@ -3040,7 +3163,7 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                 children: "Review Generated Quote"
                             }, void 0, false, {
                                 fileName: "[project]/components/quote-review.tsx",
-                                lineNumber: 83,
+                                lineNumber: 96,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3051,13 +3174,13 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                 ]
                             }, void 0, true, {
                                 fileName: "[project]/components/quote-review.tsx",
-                                lineNumber: 84,
+                                lineNumber: 97,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 82,
+                        lineNumber: 95,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3069,18 +3192,18 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                             className: "h-5 w-5"
                         }, void 0, false, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 94,
+                            lineNumber: 107,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 88,
+                        lineNumber: 101,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 81,
+                lineNumber: 94,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3103,17 +3226,17 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                             children: t.label
                         }, t.id, false, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 107,
+                            lineNumber: 120,
                             columnNumber: 13
                         }, this))
                 }, void 0, false, {
                     fileName: "[project]/components/quote-review.tsx",
-                    lineNumber: 100,
+                    lineNumber: 113,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 99,
+                lineNumber: 112,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3129,7 +3252,7 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                     children: "Transcript"
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 126,
+                                    lineNumber: 139,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3137,13 +3260,13 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                     children: rawTranscript
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 127,
+                                    lineNumber: 140,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 125,
+                            lineNumber: 138,
                             columnNumber: 11
                         }, this),
                         visible.map((section)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(EditableCard, {
@@ -3152,7 +3275,7 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                 onSave: handleSaveSection
                             }, section.key, false, {
                                 fileName: "[project]/components/quote-review.tsx",
-                                lineNumber: 131,
+                                lineNumber: 144,
                                 columnNumber: 13
                             }, this)),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3164,25 +3287,25 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                     className: "h-4 w-4"
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 144,
+                                    lineNumber: 157,
                                     columnNumber: 13
                                 }, this),
                                 "Preview Customer Quote Draft"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 139,
+                            lineNumber: 152,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/quote-review.tsx",
-                    lineNumber: 124,
+                    lineNumber: 137,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 123,
+                lineNumber: 136,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3195,7 +3318,7 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                             children: saveMessage
                         }, void 0, false, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 154,
+                            lineNumber: 167,
                             columnNumber: 13
                         }, this),
                         hasUnsavedChanges && saveState !== "success" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3203,7 +3326,7 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                             children: "Unsaved changes"
                         }, void 0, false, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 164,
+                            lineNumber: 177,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3219,20 +3342,20 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                             className: "h-4 w-4 animate-spin"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-review.tsx",
-                                            lineNumber: 173,
+                                            lineNumber: 186,
                                             columnNumber: 41
                                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$save$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Save$3e$__["Save"], {
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-review.tsx",
-                                            lineNumber: 173,
+                                            lineNumber: 186,
                                             columnNumber: 88
                                         }, this),
                                         "Save Draft"
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 167,
+                                    lineNumber: 180,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3244,37 +3367,37 @@ function QuoteReview({ onClose, onPreviewDraft, onSaved, rawTranscript, processe
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-review.tsx",
-                                            lineNumber: 181,
+                                            lineNumber: 194,
                                             columnNumber: 15
                                         }, this),
                                         "Push to Job Management"
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 176,
+                                    lineNumber: 189,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 166,
+                            lineNumber: 179,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/quote-review.tsx",
-                    lineNumber: 152,
+                    lineNumber: 165,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 151,
+                lineNumber: 164,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/quote-review.tsx",
-        lineNumber: 79,
+        lineNumber: 92,
         columnNumber: 5
     }, this);
 }
@@ -3307,14 +3430,14 @@ function EditableCard({ section, dirty, onSave }) {
                                 className: "h-4 w-4 text-warning-foreground"
                             }, void 0, false, {
                                 fileName: "[project]/components/quote-review.tsx",
-                                lineNumber: 225,
+                                lineNumber: 238,
                                 columnNumber: 26
                             }, this),
                             section.title
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 224,
+                        lineNumber: 237,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3325,7 +3448,7 @@ function EditableCard({ section, dirty, onSave }) {
                                 children: "Unsaved"
                             }, void 0, false, {
                                 fileName: "[project]/components/quote-review.tsx",
-                                lineNumber: 230,
+                                lineNumber: 243,
                                 columnNumber: 13
                             }, this),
                             section.customer_visible !== section.internal_visible && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3333,19 +3456,19 @@ function EditableCard({ section, dirty, onSave }) {
                                 children: section.customer_visible ? "customer" : "internal"
                             }, void 0, false, {
                                 fileName: "[project]/components/quote-review.tsx",
-                                lineNumber: 235,
+                                lineNumber: 248,
                                 columnNumber: 13
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 228,
+                        lineNumber: 241,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 223,
+                lineNumber: 236,
                 columnNumber: 7
             }, this),
             mode === "edit" ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("textarea", {
@@ -3355,13 +3478,13 @@ function EditableCard({ section, dirty, onSave }) {
                 className: "w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm leading-relaxed text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-accent"
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 243,
+                lineNumber: 256,
                 columnNumber: 9
             }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(SectionBody, {
                 section: section
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 250,
+                lineNumber: 263,
                 columnNumber: 9
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3371,14 +3494,14 @@ function EditableCard({ section, dirty, onSave }) {
                         className: "h-3.5 w-3.5"
                     }, void 0, false, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 255,
+                        lineNumber: 268,
                         columnNumber: 29
                     }, this),
                     label: "Edit",
                     onClick: startEdit
                 }, void 0, false, {
                     fileName: "[project]/components/quote-review.tsx",
-                    lineNumber: 255,
+                    lineNumber: 268,
                     columnNumber: 11
                 }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["Fragment"], {
                     children: [
@@ -3391,14 +3514,14 @@ function EditableCard({ section, dirty, onSave }) {
                                     className: "h-3.5 w-3.5"
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 263,
+                                    lineNumber: 276,
                                     columnNumber: 15
                                 }, this),
                                 "Save changes"
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 258,
+                            lineNumber: 271,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -3408,20 +3531,20 @@ function EditableCard({ section, dirty, onSave }) {
                             children: "Cancel edit"
                         }, void 0, false, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 266,
+                            lineNumber: 279,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true)
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 253,
+                lineNumber: 266,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/quote-review.tsx",
-        lineNumber: 222,
+        lineNumber: 235,
         columnNumber: 5
     }, this);
 }
@@ -3436,7 +3559,7 @@ function CardAction({ icon, label, onClick }) {
         ]
     }, void 0, true, {
         fileName: "[project]/components/quote-review.tsx",
-        lineNumber: 290,
+        lineNumber: 303,
         columnNumber: 5
     }, this);
 }
@@ -3448,7 +3571,7 @@ function SectionBody({ section }) {
             children: section.content || "Not captured"
         }, void 0, false, {
             fileName: "[project]/components/quote-review.tsx",
-            lineNumber: 309,
+            lineNumber: 322,
             columnNumber: 7
         }, this);
     }
@@ -3459,7 +3582,7 @@ function SectionBody({ section }) {
                 children: "No confidence warnings."
             }, void 0, false, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 317,
+                lineNumber: 330,
                 columnNumber: 14
             }, this);
         }
@@ -3478,14 +3601,14 @@ function SectionBody({ section }) {
                                             className: "h-3 w-3"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-review.tsx",
-                                            lineNumber: 326,
+                                            lineNumber: 339,
                                             columnNumber: 17
                                         }, this),
                                         "!"
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 325,
+                                    lineNumber: 338,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3493,13 +3616,13 @@ function SectionBody({ section }) {
                                     children: warning
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-review.tsx",
-                                    lineNumber: 328,
+                                    lineNumber: 341,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 324,
+                            lineNumber: 337,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3507,18 +3630,18 @@ function SectionBody({ section }) {
                             children: "Review before sending."
                         }, void 0, false, {
                             fileName: "[project]/components/quote-review.tsx",
-                            lineNumber: 330,
+                            lineNumber: 343,
                             columnNumber: 13
                         }, this)
                     ]
                 }, i, true, {
                     fileName: "[project]/components/quote-review.tsx",
-                    lineNumber: 323,
+                    lineNumber: 336,
                     columnNumber: 11
                 }, this))
         }, void 0, false, {
             fileName: "[project]/components/quote-review.tsx",
-            lineNumber: 321,
+            lineNumber: 334,
             columnNumber: 7
         }, this);
     }
@@ -3528,7 +3651,7 @@ function SectionBody({ section }) {
             children: "Not captured"
         }, void 0, false, {
             fileName: "[project]/components/quote-review.tsx",
-            lineNumber: 338,
+            lineNumber: 351,
             columnNumber: 12
         }, this);
     }
@@ -3541,7 +3664,7 @@ function SectionBody({ section }) {
                         className: "mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
                     }, void 0, false, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 345,
+                        lineNumber: 358,
                         columnNumber: 11
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3549,18 +3672,18 @@ function SectionBody({ section }) {
                         children: item
                     }, void 0, false, {
                         fileName: "[project]/components/quote-review.tsx",
-                        lineNumber: 346,
+                        lineNumber: 359,
                         columnNumber: 11
                     }, this)
                 ]
             }, i, true, {
                 fileName: "[project]/components/quote-review.tsx",
-                lineNumber: 344,
+                lineNumber: 357,
                 columnNumber: 9
             }, this))
     }, void 0, false, {
         fileName: "[project]/components/quote-review.tsx",
-        lineNumber: 342,
+        lineNumber: 355,
         columnNumber: 5
     }, this);
 }
@@ -3591,13 +3714,13 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e
 ;
 ;
 ;
-function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
+function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote, draftId, quoteSections }) {
     const [saveState, setSaveState] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])("idle");
     const [saveMessage, setSaveMessage] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])("");
     async function handleSaveDraft() {
         setSaveState("saving");
         setSaveMessage("");
-        const result = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$save$2d$quote$2d$draft$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["saveGeneratedQuoteDraft"])(rawTranscript, processedQuote, (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["processedQuoteToEditableSections"])(processedQuote));
+        const result = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$save$2d$quote$2d$draft$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["saveGeneratedQuoteDraft"])(rawTranscript, processedQuote, quoteSections ?? (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["processedQuoteToEditableSections"])(processedQuote), draftId);
         setSaveState(result.ok ? "success" : "error");
         setSaveMessage(result.message);
         if (result.ok) {
@@ -3619,12 +3742,12 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                             className: "h-5 w-5"
                         }, void 0, false, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 54,
+                            lineNumber: 63,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/components/quote-draft.tsx",
-                        lineNumber: 48,
+                        lineNumber: 57,
                         columnNumber: 9
                     }, this),
                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3634,7 +3757,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                 children: "Quote Draft"
                             }, void 0, false, {
                                 fileName: "[project]/components/quote-draft.tsx",
-                                lineNumber: 57,
+                                lineNumber: 66,
                                 columnNumber: 11
                             }, this),
                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3642,19 +3765,19 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                 children: "Customer-facing preview"
                             }, void 0, false, {
                                 fileName: "[project]/components/quote-draft.tsx",
-                                lineNumber: 58,
+                                lineNumber: 67,
                                 columnNumber: 11
                             }, this)
                         ]
                     }, void 0, true, {
                         fileName: "[project]/components/quote-draft.tsx",
-                        lineNumber: 56,
+                        lineNumber: 65,
                         columnNumber: 9
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/quote-draft.tsx",
-                lineNumber: 47,
+                lineNumber: 56,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3672,7 +3795,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].business.name
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 68,
+                                            lineNumber: 77,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3680,7 +3803,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].business.phone
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 69,
+                                            lineNumber: 78,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3688,13 +3811,13 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].business.email
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 70,
+                                            lineNumber: 79,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 67,
+                                    lineNumber: 76,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3705,7 +3828,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: "Quote"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 73,
+                                            lineNumber: 82,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3713,7 +3836,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].quoteNo
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 74,
+                                            lineNumber: 83,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3721,19 +3844,19 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].date
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 75,
+                                            lineNumber: 84,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 72,
+                                    lineNumber: 81,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 66,
+                            lineNumber: 75,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3744,7 +3867,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                     children: "Prepared for"
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 81,
+                                    lineNumber: 90,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3752,7 +3875,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                     children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].client.name
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 82,
+                                    lineNumber: 91,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3760,13 +3883,13 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                     children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].client.address
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 83,
+                                    lineNumber: 92,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 80,
+                            lineNumber: 89,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3774,7 +3897,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].intro
                         }, void 0, false, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 86,
+                            lineNumber: 95,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3785,7 +3908,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                     children: "Quotation"
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 90,
+                                    lineNumber: 99,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3798,7 +3921,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                                     children: item.label
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/quote-draft.tsx",
-                                                    lineNumber: 94,
+                                                    lineNumber: 103,
                                                     columnNumber: 19
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -3806,24 +3929,24 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                                     children: item.amount
                                                 }, void 0, false, {
                                                     fileName: "[project]/components/quote-draft.tsx",
-                                                    lineNumber: 95,
+                                                    lineNumber: 104,
                                                     columnNumber: 19
                                                 }, this)
                                             ]
                                         }, i, true, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 93,
+                                            lineNumber: 102,
                                             columnNumber: 17
                                         }, this))
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 91,
+                                    lineNumber: 100,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 89,
+                            lineNumber: 98,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3834,7 +3957,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                     value: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].subtotal
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 103,
+                                    lineNumber: 112,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(Row, {
@@ -3842,7 +3965,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                     value: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].gst
                                 }, void 0, false, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 104,
+                                    lineNumber: 113,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3852,26 +3975,26 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: "Total (incl. GST)"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 106,
+                                            lineNumber: 115,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
                                             children: __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$quote$2d$data$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["quoteDraft"].total
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 107,
+                                            lineNumber: 116,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 105,
+                                    lineNumber: 114,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 102,
+                            lineNumber: 111,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3884,7 +4007,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: "Includes"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 114,
+                                            lineNumber: 123,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
@@ -3896,25 +4019,25 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                                             className: "mt-0.5 h-4 w-4 shrink-0 text-success"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/quote-draft.tsx",
-                                                            lineNumber: 118,
+                                                            lineNumber: 127,
                                                             columnNumber: 21
                                                         }, this),
                                                         inc
                                                     ]
                                                 }, inc, true, {
                                                     fileName: "[project]/components/quote-draft.tsx",
-                                                    lineNumber: 117,
+                                                    lineNumber: 126,
                                                     columnNumber: 19
                                                 }, this))
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 115,
+                                            lineNumber: 124,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 113,
+                                    lineNumber: 122,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -3924,7 +4047,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             children: "Excludes"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 125,
+                                            lineNumber: 134,
                                             columnNumber: 15
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("ul", {
@@ -3936,31 +4059,31 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                                             className: "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground"
                                                         }, void 0, false, {
                                                             fileName: "[project]/components/quote-draft.tsx",
-                                                            lineNumber: 129,
+                                                            lineNumber: 138,
                                                             columnNumber: 21
                                                         }, this),
                                                         exc
                                                     ]
                                                 }, exc, true, {
                                                     fileName: "[project]/components/quote-draft.tsx",
-                                                    lineNumber: 128,
+                                                    lineNumber: 137,
                                                     columnNumber: 19
                                                 }, this))
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 126,
+                                            lineNumber: 135,
                                             columnNumber: 15
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 124,
+                                    lineNumber: 133,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 112,
+                            lineNumber: 121,
                             columnNumber: 11
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -3976,18 +4099,18 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 137,
+                            lineNumber: 146,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/quote-draft.tsx",
-                    lineNumber: 64,
+                    lineNumber: 73,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/quote-draft.tsx",
-                lineNumber: 63,
+                lineNumber: 72,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4000,7 +4123,7 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                             children: saveMessage
                         }, void 0, false, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 147,
+                            lineNumber: 156,
                             columnNumber: 13
                         }, this),
                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4016,20 +4139,20 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             className: "h-4 w-4 animate-spin"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 163,
+                                            lineNumber: 172,
                                             columnNumber: 41
                                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$save$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__Save$3e$__["Save"], {
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 163,
+                                            lineNumber: 172,
                                             columnNumber: 88
                                         }, this),
                                         "Save Draft"
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 157,
+                                    lineNumber: 166,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4041,37 +4164,37 @@ function QuoteDraft({ onBack, onSaved, rawTranscript, processedQuote }) {
                                             className: "h-4 w-4"
                                         }, void 0, false, {
                                             fileName: "[project]/components/quote-draft.tsx",
-                                            lineNumber: 171,
+                                            lineNumber: 180,
                                             columnNumber: 15
                                         }, this),
                                         "Send to Customer"
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/components/quote-draft.tsx",
-                                    lineNumber: 166,
+                                    lineNumber: 175,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/components/quote-draft.tsx",
-                            lineNumber: 156,
+                            lineNumber: 165,
                             columnNumber: 11
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/components/quote-draft.tsx",
-                    lineNumber: 145,
+                    lineNumber: 154,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/components/quote-draft.tsx",
-                lineNumber: 144,
+                lineNumber: 153,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/quote-draft.tsx",
-        lineNumber: 45,
+        lineNumber: 54,
         columnNumber: 5
     }, this);
 }
@@ -4083,7 +4206,7 @@ function Row({ label, value }) {
                 children: label
             }, void 0, false, {
                 fileName: "[project]/components/quote-draft.tsx",
-                lineNumber: 184,
+                lineNumber: 193,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -4091,13 +4214,13 @@ function Row({ label, value }) {
                 children: value
             }, void 0, false, {
                 fileName: "[project]/components/quote-draft.tsx",
-                lineNumber: 185,
+                lineNumber: 194,
                 columnNumber: 7
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/quote-draft.tsx",
-        lineNumber: 183,
+        lineNumber: 192,
         columnNumber: 5
     }, this);
 }
@@ -4318,7 +4441,9 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$components$2f$auth$2d$status
 var __TURBOPACK__imported__module__$5b$project$5d2f$hooks$2f$use$2d$auth$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/hooks/use-auth.ts [app-ssr] (ecmascript)");
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$lucide$2d$react$2f$dist$2f$esm$2f$icons$2f$lock$2d$keyhole$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__$3c$export__default__as__LockKeyhole$3e$__ = __turbopack_context__.i("[project]/node_modules/lucide-react/dist/esm/icons/lock-keyhole.js [app-ssr] (ecmascript) <export default as LockKeyhole>");
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/processed-quote.ts [app-ssr] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/supabase.ts [app-ssr] (ecmascript)");
 "use client";
+;
 ;
 ;
 ;
@@ -4340,7 +4465,12 @@ function VoiceQuoteApp() {
     const [draftOpen, setDraftOpen] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
     const [draftsRefreshKey, setDraftsRefreshKey] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(0);
     const [rawTranscript, setRawTranscript] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$record$2d$screen$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["EMPTY_TRANSCRIPT"]);
+    const [correctedTranscript, setCorrectedTranscript] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$record$2d$screen$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["EMPTY_TRANSCRIPT"]);
     const [processedQuote, setProcessedQuote] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(__TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["EMPTY_PROCESSED_QUOTE"]);
+    const [quoteSections, setQuoteSections] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [editingDraftId, setEditingDraftId] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [openDraftLoading, setOpenDraftLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])(false);
+    const [openDraftError, setOpenDraftError] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useState"])("");
     const { user, loading, displayName, signInWithGoogle, signOut } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$hooks$2f$use$2d$auth$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useAuth"])();
     const signedIn = Boolean(user);
     (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["useEffect"])(()=>{
@@ -4353,9 +4483,42 @@ function VoiceQuoteApp() {
     function handleDraftSaved() {
         setDraftsRefreshKey((key)=>key + 1);
     }
-    function handleQuoteProcessed(nextRawTranscript, nextProcessedQuote) {
+    function handleQuoteProcessed(nextRawTranscript, nextCorrectedTranscript, nextProcessedQuote) {
         setRawTranscript(nextRawTranscript);
+        setCorrectedTranscript(nextCorrectedTranscript);
         setProcessedQuote(nextProcessedQuote);
+        setQuoteSections(null);
+        setEditingDraftId(null);
+        setOpenDraftError("");
+        setReviewOpen(true);
+    }
+    function handleQuoteEdited(nextProcessedQuote) {
+        setProcessedQuote(nextProcessedQuote);
+    }
+    function handleSectionsEdited(nextSections) {
+        setQuoteSections(nextSections);
+    }
+    async function handleOpenDraft(draftId) {
+        setOpenDraftLoading(true);
+        setOpenDraftError("");
+        const { data: { user }, error: userError } = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["supabase"].auth.getUser();
+        if (userError || !user) {
+            setOpenDraftLoading(false);
+            setOpenDraftError(userError?.message ?? "Sign in to open quote drafts.");
+            return;
+        }
+        const { data, error } = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$supabase$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["supabase"].from("quote_drafts").select("id, client_name, site_address, quote_title, job_type, raw_transcript, quote_sections, line_items").eq("id", draftId).eq("user_id", user.id).single();
+        setOpenDraftLoading(false);
+        if (error || !data) {
+            setOpenDraftError(error?.message ?? "Could not open quote draft.");
+            return;
+        }
+        const editableState = (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$processed$2d$quote$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["savedDraftToEditableState"])(data);
+        setRawTranscript(editableState.rawTranscript);
+        setCorrectedTranscript(editableState.rawTranscript);
+        setProcessedQuote(editableState.processedQuote);
+        setQuoteSections(editableState.sections);
+        setEditingDraftId(data.id);
         setReviewOpen(true);
     }
     return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -4369,7 +4532,7 @@ function VoiceQuoteApp() {
                 onSignOut: signOut
             }, void 0, false, {
                 fileName: "[project]/components/voice-quote-app.tsx",
-                lineNumber: 46,
+                lineNumber: 111,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("main", {
@@ -4379,48 +4542,48 @@ function VoiceQuoteApp() {
                         onProcess: handleQuoteProcessed
                     }, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 57,
+                        lineNumber: 122,
                         columnNumber: 13
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(SignInRequired, {
                         onSignIn: signInWithGoogle
                     }, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 59,
+                        lineNumber: 124,
                         columnNumber: 13
                     }, this)),
                     tab === "drafts" && (signedIn ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$drafts$2d$screen$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["DraftsScreen"], {
-                        onOpen: ()=>setReviewOpen(true),
+                        onOpen: handleOpenDraft,
                         refreshKey: draftsRefreshKey
                     }, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 64,
+                        lineNumber: 129,
                         columnNumber: 13
                     }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(SignInRequired, {
                         onSignIn: signInWithGoogle
                     }, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 66,
+                        lineNumber: 131,
                         columnNumber: 13
                     }, this)),
                     tab === "templates" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$templates$2d$screen$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["TemplatesScreen"], {}, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 69,
+                        lineNumber: 134,
                         columnNumber: 33
                     }, this),
                     tab === "uploads" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$uploads$2d$screen$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["UploadsScreen"], {}, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 70,
+                        lineNumber: 135,
                         columnNumber: 31
                     }, this),
                     tab === "settings" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$settings$2d$screen$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["SettingsScreen"], {}, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 71,
+                        lineNumber: 136,
                         columnNumber: 32
                     }, this)
                 ]
             }, void 0, true, {
                 fileName: "[project]/components/voice-quote-app.tsx",
-                lineNumber: 54,
+                lineNumber: 119,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$bottom$2d$nav$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["BottomNav"], {
@@ -4428,34 +4591,63 @@ function VoiceQuoteApp() {
                 onChange: setTab
             }, void 0, false, {
                 fileName: "[project]/components/voice-quote-app.tsx",
-                lineNumber: 74,
+                lineNumber: 139,
                 columnNumber: 7
+            }, this),
+            (openDraftLoading || openDraftError) && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "fixed inset-x-5 top-20 z-50 mx-auto max-w-md rounded-2xl border border-border bg-card p-4 text-sm shadow-lg",
+                children: openDraftLoading ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                    className: "text-muted-foreground",
+                    children: "Opening draft..."
+                }, void 0, false, {
+                    fileName: "[project]/components/voice-quote-app.tsx",
+                    lineNumber: 144,
+                    columnNumber: 13
+                }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                    className: "text-destructive",
+                    children: openDraftError
+                }, void 0, false, {
+                    fileName: "[project]/components/voice-quote-app.tsx",
+                    lineNumber: 146,
+                    columnNumber: 13
+                }, this)
+            }, void 0, false, {
+                fileName: "[project]/components/voice-quote-app.tsx",
+                lineNumber: 142,
+                columnNumber: 9
             }, this),
             signedIn && reviewOpen && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$quote$2d$review$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["QuoteReview"], {
                 onClose: ()=>setReviewOpen(false),
                 onPreviewDraft: ()=>setDraftOpen(true),
                 onSaved: handleDraftSaved,
-                rawTranscript: rawTranscript,
-                processedQuote: processedQuote
+                rawTranscript: correctedTranscript || rawTranscript,
+                originalTranscript: rawTranscript,
+                processedQuote: processedQuote,
+                onQuoteEdited: handleQuoteEdited,
+                onSectionsEdited: handleSectionsEdited,
+                draftId: editingDraftId,
+                initialSections: quoteSections
             }, void 0, false, {
                 fileName: "[project]/components/voice-quote-app.tsx",
-                lineNumber: 77,
+                lineNumber: 152,
                 columnNumber: 9
             }, this),
             signedIn && draftOpen && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$components$2f$quote$2d$draft$2e$tsx__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["QuoteDraft"], {
                 onBack: ()=>setDraftOpen(false),
                 onSaved: handleDraftSaved,
                 rawTranscript: rawTranscript,
-                processedQuote: processedQuote
+                processedQuote: processedQuote,
+                draftId: editingDraftId,
+                quoteSections: quoteSections
             }, void 0, false, {
                 fileName: "[project]/components/voice-quote-app.tsx",
-                lineNumber: 86,
+                lineNumber: 166,
                 columnNumber: 9
             }, this)
         ]
     }, void 0, true, {
         fileName: "[project]/components/voice-quote-app.tsx",
-        lineNumber: 45,
+        lineNumber: 110,
         columnNumber: 5
     }, this);
 }
@@ -4471,12 +4663,12 @@ function SignInRequired({ onSignIn }) {
                         className: "h-5 w-5"
                     }, void 0, false, {
                         fileName: "[project]/components/voice-quote-app.tsx",
-                        lineNumber: 102,
+                        lineNumber: 184,
                         columnNumber: 11
                     }, this)
                 }, void 0, false, {
                     fileName: "[project]/components/voice-quote-app.tsx",
-                    lineNumber: 101,
+                    lineNumber: 183,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
@@ -4484,7 +4676,7 @@ function SignInRequired({ onSignIn }) {
                     children: "Sign in to use quotes"
                 }, void 0, false, {
                     fileName: "[project]/components/voice-quote-app.tsx",
-                    lineNumber: 104,
+                    lineNumber: 186,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -4492,7 +4684,7 @@ function SignInRequired({ onSignIn }) {
                     children: "Your recordings and drafts are linked to your Supabase user account."
                 }, void 0, false, {
                     fileName: "[project]/components/voice-quote-app.tsx",
-                    lineNumber: 105,
+                    lineNumber: 187,
                     columnNumber: 9
                 }, this),
                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -4502,18 +4694,18 @@ function SignInRequired({ onSignIn }) {
                     children: "Continue with Google"
                 }, void 0, false, {
                     fileName: "[project]/components/voice-quote-app.tsx",
-                    lineNumber: 108,
+                    lineNumber: 190,
                     columnNumber: 9
                 }, this)
             ]
         }, void 0, true, {
             fileName: "[project]/components/voice-quote-app.tsx",
-            lineNumber: 100,
+            lineNumber: 182,
             columnNumber: 7
         }, this)
     }, void 0, false, {
         fileName: "[project]/components/voice-quote-app.tsx",
-        lineNumber: 99,
+        lineNumber: 181,
         columnNumber: 5
     }, this);
 }
