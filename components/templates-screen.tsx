@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { ChevronDown, Loader2, Plus, Save } from "lucide-react"
+import { ChevronDown, Loader2, Plus, Save, Trash2 } from "lucide-react"
 import { useAuth } from "@/hooks/use-auth"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
@@ -40,6 +40,7 @@ export function TemplatesScreen({ embedded = false }: { embedded?: boolean }) {
   const [openId, setOpenId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState<TemplateForm | null>(null)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -132,6 +133,34 @@ export function TemplatesScreen({ embedded = false }: { embedded?: boolean }) {
     }
 
     setMessage("Template saved.")
+    setEditingId(null)
+    setForm(null)
+    await loadTemplates()
+  }
+
+  async function deleteTemplate(template: QuoteTemplate) {
+    if (!user) return
+    if (!window.confirm("Delete this template?")) return
+
+    setDeletingId(template.id)
+    setMessage("")
+    setError("")
+
+    const { error } = await supabase
+      .from("quote_templates")
+      .delete()
+      .eq("id", template.id)
+      .eq("user_id", user.id)
+
+    setDeletingId(null)
+
+    if (error) {
+      setError(`Could not delete template: ${error.message}`)
+      return
+    }
+
+    setMessage("Template deleted.")
+    setOpenId(null)
     setEditingId(null)
     setForm(null)
     await loadTemplates()
@@ -245,7 +274,12 @@ export function TemplatesScreen({ embedded = false }: { embedded?: boolean }) {
                         saving={savingId === template.id}
                       />
                     ) : (
-                      <TemplateDetail template={template} onEdit={() => startEdit(template)} />
+                      <TemplateDetail
+                        template={template}
+                        onEdit={() => startEdit(template)}
+                        onDelete={() => void deleteTemplate(template)}
+                        deleting={deletingId === template.id}
+                      />
                     )}
                   </div>
                 )}
@@ -258,20 +292,41 @@ export function TemplatesScreen({ embedded = false }: { embedded?: boolean }) {
   )
 }
 
-function TemplateDetail({ template, onEdit }: { template: QuoteTemplate; onEdit: () => void }) {
+function TemplateDetail({
+  template,
+  onEdit,
+  onDelete,
+  deleting,
+}: {
+  template: QuoteTemplate
+  onEdit: () => void
+  onDelete: () => void
+  deleting: boolean
+}) {
   return (
     <div className="grid gap-4">
       <DetailSection title="Default scope" value={template.default_scope} />
       <DetailSection title="Default exclusions" value={template.default_exclusions} />
       <DetailSection title="Pricing rules" value={template.default_pricing_structure} />
       <DetailSection title="Template content" value={template.template_content} json />
-      <button
-        type="button"
-        onClick={onEdit}
-        className="w-full rounded-xl border border-border bg-background py-2.5 text-sm font-semibold text-foreground active:scale-[0.99]"
-      >
-        Edit template
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="rounded-xl border border-border bg-background py-2.5 text-sm font-semibold text-foreground active:scale-[0.99]"
+        >
+          Edit template
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 py-2.5 text-sm font-semibold text-destructive active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+          Delete
+        </button>
+      </div>
     </div>
   )
 }

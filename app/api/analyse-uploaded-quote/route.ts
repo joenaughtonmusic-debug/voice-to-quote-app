@@ -102,6 +102,68 @@ const analysisSchema = {
   ],
 }
 
+const templateSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    template_name: { type: "string" },
+    category: { type: "string" },
+    document_type: { type: "string" },
+    variables: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        client_name: { type: "string" },
+        site_address: { type: "string" },
+        quote_date: { type: "string" },
+        expiry_date: { type: "string" },
+        frequency: { type: "string" },
+        price_or_estimate_range: { type: "string" },
+        optional_variables: { type: "array", items: { type: "string" } },
+      },
+      required: [
+        "client_name",
+        "site_address",
+        "quote_date",
+        "expiry_date",
+        "frequency",
+        "price_or_estimate_range",
+        "optional_variables",
+      ],
+    },
+    standard_scope: { type: "array", items: { type: "string" } },
+    standard_inclusions: { type: "array", items: { type: "string" } },
+    standard_exclusions: { type: "array", items: { type: "string" } },
+    pricing_rules: { type: "array", items: { type: "string" } },
+    estimate_wording: { type: "array", items: { type: "string" } },
+    customer_wording: { type: "array", items: { type: "string" } },
+    internal_notes: { type: "array", items: { type: "string" } },
+    site_specific_notes: { type: "array", items: { type: "string" } },
+    materials_or_line_items: { type: "array", items: { type: "string" } },
+    trade_vocabulary: { type: "array", items: { type: "string" } },
+    terms_conditions: { type: "array", items: { type: "string" } },
+    ai_prompt_rules: { type: "array", items: { type: "string" } },
+  },
+  required: [
+    "template_name",
+    "category",
+    "document_type",
+    "variables",
+    "standard_scope",
+    "standard_inclusions",
+    "standard_exclusions",
+    "pricing_rules",
+    "estimate_wording",
+    "customer_wording",
+    "internal_notes",
+    "site_specific_notes",
+    "materials_or_line_items",
+    "trade_vocabulary",
+    "terms_conditions",
+    "ai_prompt_rules",
+  ],
+}
+
 type UploadedQuoteExample = {
   id: string
   user_id: string
@@ -117,6 +179,33 @@ type FailureStage =
   | "readable_text_validation"
   | "openai_analysis"
   | "database_update"
+
+type TemplateSchema = {
+  template_name: string
+  category: string
+  document_type: string
+  variables: {
+    client_name: string
+    site_address: string
+    quote_date: string
+    expiry_date: string
+    frequency: string
+    price_or_estimate_range: string
+    optional_variables: string[]
+  }
+  standard_scope: string[]
+  standard_inclusions: string[]
+  standard_exclusions: string[]
+  pricing_rules: string[]
+  estimate_wording: string[]
+  customer_wording: string[]
+  internal_notes: string[]
+  site_specific_notes: string[]
+  materials_or_line_items: string[]
+  trade_vocabulary: string[]
+  terms_conditions: string[]
+  ai_prompt_rules: string[]
+}
 
 function getBearerToken(request: Request) {
   const authorization = request.headers.get("authorization")
@@ -168,21 +257,55 @@ async function extractTextFromPdf(bytes: Buffer) {
   return normalizeExtractedText(parsed.text ?? "")
 }
 
-function isReadableExtractedText(text: string) {
+function isReadableExtractedText(text: string, documentType: KnowledgeDocumentType) {
   const compactText = text.replace(/\s+/g, " ").trim()
-  if (compactText.length < 50) return false
+  const isQuoteTemplate = documentType === "quote_template"
+  if (compactText.length < (isQuoteTemplate ? 30 : 50)) return false
 
   const asciiPrintableCount = (compactText.match(/[A-Za-z0-9\s.,;:!?'"()[\]/&$%#@+-]/g) ?? []).length
   const letterCount = (compactText.match(/[A-Za-z]/g) ?? []).length
   const wordCount = (compactText.match(/\b[A-Za-z][A-Za-z'-]{2,}\b/g) ?? []).length
   const suspiciousCharacters = (compactText.match(/[�\u0000-\u001f]/g) ?? []).length
+  const templateStructureHits = (
+    compactText.match(/\b(service|scope|pricing|price|notes?|greenwaste|estimate|included|exclusions?|conditions?)\b/gi) ?? []
+  ).length
 
   if (asciiPrintableCount / compactText.length < 0.6) return false
+  if (suspiciousCharacters > Math.max(3, Math.floor(compactText.length * 0.02))) return false
+
+  if (isQuoteTemplate) {
+    if (letterCount >= 15 && wordCount >= 4 && templateStructureHits >= 1) return true
+    if (letterCount >= 35 && wordCount >= 8) return true
+    return false
+  }
+
   if (letterCount < 25) return false
   if (wordCount < 6) return false
-  if (suspiciousCharacters > 3) return false
 
   return true
+}
+
+function logAnalysisDebug({
+  fileName,
+  fileType,
+  extractedText,
+  documentType,
+  failedStage,
+}: {
+  fileName: string
+  fileType: string
+  extractedText: string
+  documentType: KnowledgeDocumentType
+  failedStage: FailureStage
+}) {
+  console.log("[analyse-uploaded-quote] PDF analysis debug", {
+    file_name: fileName,
+    file_type: fileType,
+    extracted_text_length: extractedText.length,
+    extracted_text_preview: extractedText.slice(0, 1000),
+    document_type: documentType,
+    failed_stage: failedStage,
+  })
 }
 
 function cleanExtractedPdfText(text: string, documentType: KnowledgeDocumentType) {
@@ -260,6 +383,230 @@ function hasPopulatedAnalysisSummary(analysis: any) {
   )
 }
 
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim())
+}
+
+function looksSiteSpecific(value: string) {
+  return /\b(special focus|focus on|watch for|avoid|do not|don't|access|gate|dog|client asked|customer asked|at this site|oxalis)\b/i.test(
+    value,
+  )
+}
+
+function looksLikeServiceTask(value: string) {
+  return /\b(tidy|clean|clear|weed|spray|prune|trim|mow|edge|blow|remove|load|cart|dispose|spread|mulch|plant)\b/i.test(
+    value,
+  )
+}
+
+function looksLikeServiceDescription(value: string) {
+  return /\b(service|tidy|maintenance|garden|property|section|clean[- ]?up|scope|work areas|greenwaste)\b/i.test(
+    value,
+  )
+}
+
+function isGstOrTotalOnly(value: string) {
+  return /\b(gst|total|subtotal)\b/i.test(value) && !looksLikeServiceDescription(value)
+}
+
+function normalizePrices(value: string) {
+  return value
+    .replace(/\$\s?\[[^\]]*price[^\]]*\]/gi, "{price_or_estimate_range}")
+    .replace(/\[[^\]]*price[^\]]*\]/gi, "{price_or_estimate_range}")
+    .replace(/\$\s?x\b/gi, "{price_or_estimate_range}")
+    .replace(/\bprice\s*[:=]\s*x\b/gi, "price: {price_or_estimate_range}")
+    .replace(/\$\s?\d[\d,]*(?:\.\d{2})?(?:\s?-\s?\$?\d[\d,]*(?:\.\d{2})?)?/g, "{price_or_estimate_range}")
+}
+
+function isRecurringTemplate(analysis: TemplateSchema) {
+  const haystack = [
+    analysis.template_name,
+    analysis.category,
+    ...stringArray(analysis.standard_scope),
+    ...stringArray(analysis.standard_inclusions),
+    ...stringArray(analysis.pricing_rules),
+    ...stringArray(analysis.estimate_wording),
+    ...stringArray(analysis.customer_wording),
+    ...stringArray(analysis.ai_prompt_rules),
+  ]
+    .join(" ")
+    .toLowerCase()
+
+  if (/\b(one[- ]?off|one off|single visit|initial tidy|once[- ]?off)\b/.test(haystack)) return false
+  return /\b(recurring|regular|ongoing|maintenance|subscription|weekly|fortnightly|monthly|three[- ]?monthly|two[- ]?monthly|quarterly|per visit|frequency)\b/.test(
+    haystack,
+  )
+}
+
+function extractTradeVocabularyFromTemplate(analysis: TemplateSchema) {
+  const haystack = [
+    analysis.template_name,
+    ...stringArray(analysis.standard_scope),
+    ...stringArray(analysis.standard_inclusions),
+    ...stringArray(analysis.pricing_rules),
+    ...stringArray(analysis.estimate_wording),
+    ...stringArray(analysis.customer_wording),
+    ...stringArray(analysis.materials_or_line_items),
+  ]
+    .join(" ")
+    .toLowerCase()
+
+  const candidates = [
+    ["one-off tidy", /\b(one[- ]?off|one off).*\b(tidy|garden tidy|property tidy)\b|\b(tidy|garden tidy|property tidy).*\b(one[- ]?off|one off)\b/],
+    ["overgrowth", /\bovergrowth\b/],
+    ["trimming", /\b(trimming|trim|pruning|prune)\b/],
+    ["weeding", /\b(weeding|weed|weeds)\b/],
+    ["greenwaste", /\b(greenwaste|green waste)\b/],
+    ["site conditions", /\b(site conditions|conditions|variables involved|access|terrain)\b/],
+    ["garden areas", /\b(garden areas|garden beds|work areas|garden|gardens)\b/],
+    ["estimate wording", /\b(estimate|estimated|not a fixed quote|variables involved)\b/],
+    ["blow down", /\b(blow down|blower)\b/],
+    ["tidy work areas", /\b(tidy work areas|work areas)\b/],
+  ] as const
+
+  return candidates.filter(([, pattern]) => pattern.test(haystack)).map(([term]) => term)
+}
+
+function cleanupTemplateAnalysis(analysis: TemplateSchema): TemplateSchema {
+  const recurringTemplate = isRecurringTemplate(analysis)
+  const optionalVariables = stringArray(analysis.variables?.optional_variables).filter((variable) => {
+    if (variable === "{frequency}" || variable.toLowerCase() === "frequency") return recurringTemplate
+    return true
+  })
+
+  const cleaned: TemplateSchema = {
+    template_name: analysis.template_name?.trim() || "Quote Template",
+    category: analysis.category?.trim() || "custom",
+    document_type: "quote_template",
+    variables: {
+      client_name: analysis.variables?.client_name || "{client_name}",
+      site_address: analysis.variables?.site_address || "{site_address}",
+      quote_date: analysis.variables?.quote_date || "{quote_date}",
+      expiry_date: analysis.variables?.expiry_date || "{expiry_date}",
+      frequency: recurringTemplate ? analysis.variables?.frequency || "{frequency}" : "",
+      price_or_estimate_range: analysis.variables?.price_or_estimate_range || "{price_or_estimate_range}",
+      optional_variables: optionalVariables,
+    },
+    standard_scope: stringArray(analysis.standard_scope).map(normalizePrices),
+    standard_inclusions: stringArray(analysis.standard_inclusions).map(normalizePrices),
+    standard_exclusions: stringArray(analysis.standard_exclusions).map(normalizePrices),
+    pricing_rules: stringArray(analysis.pricing_rules).map(normalizePrices),
+    estimate_wording: stringArray(analysis.estimate_wording).map(normalizePrices),
+    customer_wording: stringArray(analysis.customer_wording).map(normalizePrices).filter((item) => !isGstOrTotalOnly(item)),
+    internal_notes: stringArray(analysis.internal_notes),
+    site_specific_notes: stringArray(analysis.site_specific_notes),
+    materials_or_line_items: stringArray(analysis.materials_or_line_items).map(normalizePrices),
+    trade_vocabulary: stringArray(analysis.trade_vocabulary),
+    terms_conditions: stringArray(analysis.terms_conditions),
+    ai_prompt_rules: stringArray(analysis.ai_prompt_rules),
+  }
+
+  if (cleaned.standard_scope.length === 0) {
+    const serviceWording = cleaned.customer_wording.filter(looksLikeServiceDescription)
+    cleaned.standard_scope = serviceWording.slice(0, 3)
+  }
+
+  if (cleaned.standard_inclusions.length === 0) {
+    cleaned.standard_inclusions = [...cleaned.standard_scope, ...cleaned.customer_wording]
+      .filter(looksLikeServiceTask)
+      .slice(0, 8)
+  }
+
+  const exclusionsToKeep: string[] = []
+  for (const exclusion of cleaned.standard_exclusions) {
+    if (looksSiteSpecific(exclusion)) {
+      cleaned.site_specific_notes.push(exclusion)
+    } else {
+      exclusionsToKeep.push(exclusion)
+    }
+  }
+  cleaned.standard_exclusions = exclusionsToKeep
+
+  const serviceTasksFromExclusions = cleaned.standard_exclusions.filter(looksLikeServiceTask)
+  if (serviceTasksFromExclusions.length > 0) {
+    cleaned.standard_inclusions = [...cleaned.standard_inclusions, ...serviceTasksFromExclusions]
+    cleaned.standard_exclusions = cleaned.standard_exclusions.filter((item) => !looksLikeServiceTask(item))
+  }
+
+  cleaned.trade_vocabulary = Array.from(
+    new Set([...cleaned.trade_vocabulary, ...extractTradeVocabularyFromTemplate(cleaned)]),
+  )
+
+  cleaned.ai_prompt_rules = [
+    ...cleaned.ai_prompt_rules,
+    "Use this template's standard scope as the starting customer-facing service description when the template is selected.",
+    "Keep uploaded site-specific notes out of default customer wording unless the new transcript repeats them.",
+    "Replace customer names, addresses, dates, frequencies, and one-off prices with current transcript details or variables.",
+  ]
+
+  return cleaned
+}
+
+function hasPopulatedTemplateAnalysis(analysis: any): analysis is TemplateSchema {
+  return (
+    analysis &&
+    typeof analysis.template_name === "string" &&
+    typeof analysis.category === "string" &&
+    typeof analysis.document_type === "string" &&
+    analysis.variables &&
+    typeof analysis.variables === "object" &&
+    Array.isArray(analysis.variables.optional_variables) &&
+    Array.isArray(analysis.standard_scope) &&
+    Array.isArray(analysis.standard_inclusions) &&
+    Array.isArray(analysis.standard_exclusions) &&
+    Array.isArray(analysis.pricing_rules) &&
+    Array.isArray(analysis.estimate_wording) &&
+    Array.isArray(analysis.customer_wording) &&
+    Array.isArray(analysis.internal_notes) &&
+    Array.isArray(analysis.site_specific_notes) &&
+    Array.isArray(analysis.materials_or_line_items) &&
+    Array.isArray(analysis.trade_vocabulary) &&
+    Array.isArray(analysis.terms_conditions) &&
+    Array.isArray(analysis.ai_prompt_rules)
+  )
+}
+
+function getTemplateSchemaIssues(analysis: any) {
+  const issues: string[] = []
+  const stringFields = ["template_name", "category", "document_type"]
+  const arrayFields = [
+    "standard_scope",
+    "standard_inclusions",
+    "standard_exclusions",
+    "pricing_rules",
+    "estimate_wording",
+    "customer_wording",
+    "internal_notes",
+    "site_specific_notes",
+    "materials_or_line_items",
+    "trade_vocabulary",
+    "terms_conditions",
+    "ai_prompt_rules",
+  ]
+
+  for (const field of stringFields) {
+    if (typeof analysis?.[field] !== "string") issues.push(`${field}: expected string`)
+  }
+
+  if (!analysis?.variables || typeof analysis.variables !== "object") {
+    issues.push("variables: expected object")
+  } else {
+    for (const field of ["client_name", "site_address", "quote_date", "expiry_date", "frequency", "price_or_estimate_range"]) {
+      if (typeof analysis.variables[field] !== "string") issues.push(`variables.${field}: expected string`)
+    }
+    if (!Array.isArray(analysis.variables.optional_variables)) {
+      issues.push("variables.optional_variables: expected array")
+    }
+  }
+
+  for (const field of arrayFields) {
+    if (!Array.isArray(analysis?.[field])) issues.push(`${field}: expected array`)
+  }
+
+  return issues
+}
+
 function getNormalizedDocumentType(documentType: UploadedQuoteExample["document_type"]): KnowledgeDocumentType {
   if (
     documentType === "quote_template" ||
@@ -280,6 +627,13 @@ function getDocumentTypeInstruction(documentType: KnowledgeDocumentType) {
   switch (documentType) {
     case "quote_template":
       return `This is a Quote Template upload. Analyse it as a reusable quote template. Extract template_name, category, standard customer wording, inclusions, exclusions, pricing rules, internal notes, trade vocabulary, and future AI prompt rules. Use category as one of: maintenance, landscaping, decking, hedge, planting, custom. Populate template-related fields strongly. Also populate empty arrays for unrelated materials/plants fields if not present.
+
+Quote Template PDFs can be short and simple. Do not require quote number, client name, totals, GST, or detailed line items. If the source only has headings such as Service, Pricing, Notes, Greenwaste terms, or Estimate wording, treat those as valid reusable template structure. Analyse:
+- Service as the reusable scope/service type.
+- Pricing as pricing rules or variables.
+- Notes as customer wording, internal notes, exclusions, or conditions depending on wording.
+- Greenwaste terms as waste/pricing rules and trade vocabulary.
+- Estimate wording as reusable pricing caveat language.
 
 When converting this source document into reusable template content, replace specific customer/job details with variables:
 - customer name -> {client_name}
@@ -374,6 +728,7 @@ function buildFailureSummary(
   debugTextPreview?: string,
   extractedTextLength = 0,
   cleanedTextPreview = "",
+  details?: Record<string, unknown>,
 ) {
   return {
     failed_stage: stage,
@@ -381,6 +736,7 @@ function buildFailureSummary(
     debug_text_preview: debugTextPreview?.slice(0, 500) ?? "",
     extracted_text_length: extractedTextLength,
     cleaned_text_preview: cleanedTextPreview.slice(0, 500),
+    ...(details ? { details } : {}),
   }
 }
 
@@ -394,6 +750,7 @@ async function failAnalysis({
   debugTextPreview,
   extractedTextLength,
   cleanedTextPreview,
+  details,
 }: {
   supabase: ReturnType<typeof createAuthedSupabaseClient>
   id: string
@@ -404,6 +761,7 @@ async function failAnalysis({
   debugTextPreview?: string
   extractedTextLength?: number
   cleanedTextPreview?: string
+  details?: Record<string, unknown>
 }) {
   const failureSummary = buildFailureSummary(
     stage,
@@ -411,7 +769,10 @@ async function failAnalysis({
     debugTextPreview,
     extractedTextLength,
     cleanedTextPreview,
+    details,
   )
+
+  console.error("[analyse-uploaded-quote] analysis failure", failureSummary)
 
   await supabase
     .from("uploaded_quote_examples")
@@ -430,6 +791,7 @@ async function failAnalysis({
       debug_text_preview: failureSummary.debug_text_preview,
       extracted_text_length: failureSummary.extracted_text_length,
       cleaned_text_preview: failureSummary.cleaned_text_preview,
+      details: failureSummary.details,
     },
     { status },
   )
@@ -486,6 +848,7 @@ export async function POST(request: Request) {
   let extractedText = ""
   let cleanedText = ""
   const documentType = getNormalizedDocumentType(example.document_type)
+  let fileType = getFileExtension(example.file_name) || "unknown"
 
   try {
     const { error: analysingError } = await markAnalysing(supabase, example.id, user.id)
@@ -512,6 +875,7 @@ export async function POST(request: Request) {
     }
 
     const extension = getFileExtension(example.file_name)
+    fileType = extension || "unknown"
     if (extension === "doc" || extension === "docx") {
       return failAnalysis({
         supabase,
@@ -549,6 +913,7 @@ export async function POST(request: Request) {
         status: 500,
       })
     }
+    fileType = fileBlob.type || extension || "unknown"
 
     stage = "pdf_text_extraction"
     try {
@@ -569,7 +934,15 @@ export async function POST(request: Request) {
     cleanedText = cleanExtractedPdfText(extractedText, documentType)
 
     stage = "readable_text_validation"
-    if (!isReadableExtractedText(extractedText) && !isReadableExtractedText(cleanedText)) {
+    logAnalysisDebug({
+      fileName: example.file_name,
+      fileType,
+      extractedText,
+      documentType,
+      failedStage: stage,
+    })
+
+    if (!isReadableExtractedText(extractedText, documentType) && !isReadableExtractedText(cleanedText, documentType)) {
       return failAnalysis({
         supabase,
         id: example.id,
@@ -581,6 +954,224 @@ export async function POST(request: Request) {
         extractedTextLength: extractedText.length,
         cleanedTextPreview: cleanedText,
       })
+    }
+
+    if (documentType === "quote_template") {
+      stage = "openai_analysis"
+      const response = await fetch(OPENAI_RESPONSES_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: ANALYSIS_MODEL,
+          input: [
+            {
+              role: "system",
+              content: `You extract strict reusable Quote Template data for a NZ gardening and property maintenance quote-writing app.
+
+Return only JSON matching the strict TemplateSchema. Do not return generic uploaded quote analysis fields.
+
+Classification rules:
+- standard_scope: The broad service description. This is high priority and must be populated from service description text.
+- standard_inclusions: Tasks normally included in this template.
+- standard_exclusions: Work not included. Do not put service tasks here.
+- pricing_rules: How pricing should be treated, including estimate range, variable pricing, greenwaste, GST, optional work.
+- estimate_wording: Any wording that explains estimate vs fixed quote.
+- customer_wording: Reusable customer-facing wording.
+- internal_notes: Notes useful for the business but not normally customer-facing.
+- site_specific_notes: Details specific to the original job/customer that should not become default template content.
+- materials_or_line_items: Reusable materials, service items, labour sections, waste items, or optional extras.
+- trade_vocabulary: Relevant trade terms, plants, materials, tools, services.
+- terms_conditions: Payment terms, deposits, progress payments, access, validity, ownership, client responsibilities.
+- ai_prompt_rules: Rules to apply when this template is used later.
+
+Strict rules:
+- Do not hardcode customer names, addresses, quote numbers, dates, or one-off prices into reusable template fields.
+- Convert customer/job details into variables: {client_name}, {site_address}, {quote_date}, {expiry_date}, {frequency}, {price_or_estimate_range}.
+- Put additional detected placeholders in variables.optional_variables.
+- Put job-specific instructions such as "special focus on Oxalis" into site_specific_notes, not exclusions.
+- Do not treat service tasks as exclusions.
+- Do not ignore short templates.
+- Do not require line items, quote numbers, GST, totals, client names, or addresses for a valid template.
+- If the source has Service, Pricing, Notes, Greenwaste terms, or Estimate wording, treat it as a valid reusable template.
+- The service description is high priority and must become standard_scope and customer_wording when reusable.
+- If a clause is only about GST/total and not a service description, do not make it the main customer_wording.
+- Use plain NZ gardening/property maintenance wording.
+- Do not invent missing content.`,
+            },
+            {
+              role: "user",
+              content: `Extract a strict reusable Quote Template from this cleaned PDF text:\n\n${cleanedText.slice(0, 24000)}\n\nRaw extracted text preview:\n${extractedText.slice(0, 1500)}`,
+            },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: "strict_quote_template_analysis",
+              strict: true,
+              schema: templateSchema,
+            },
+          },
+        }),
+      })
+
+      const result = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        const message =
+          typeof result?.error?.message === "string" ? result.error.message : "OpenAI quote template extraction failed."
+        const details = {
+          failure_type: "openai_http_error",
+          http_status: response.status,
+          openai_response_body: result,
+          model_name: ANALYSIS_MODEL,
+          extracted_text_length: extractedText.length,
+          cleaned_text_preview: cleanedText.slice(0, 1000),
+        }
+
+        console.error("[analyse-uploaded-quote] OpenAI quote template extraction failed", details)
+
+        return failAnalysis({
+          supabase,
+          id: example.id,
+          userId: user.id,
+          stage,
+          errorMessage: message,
+          status: response.status,
+          debugTextPreview: extractedText,
+          extractedTextLength: extractedText.length,
+          cleanedTextPreview: cleanedText,
+          details,
+        })
+      }
+
+      const outputText = getOutputText(result)
+      if (!outputText) {
+        const details = {
+          failure_type: "missing_model_output",
+          http_status: response.status,
+          openai_response_body: result,
+          model_name: ANALYSIS_MODEL,
+          extracted_text_length: extractedText.length,
+          cleaned_text_preview: cleanedText.slice(0, 1000),
+        }
+
+        return failAnalysis({
+          supabase,
+          id: example.id,
+          userId: user.id,
+          stage,
+          errorMessage: "OpenAI did not return strict quote template JSON.",
+          status: 502,
+          debugTextPreview: extractedText,
+          extractedTextLength: extractedText.length,
+          cleanedTextPreview: cleanedText,
+          details,
+        })
+      }
+
+      let templateAnalysis: any
+      try {
+        templateAnalysis = JSON.parse(outputText)
+      } catch (error) {
+        const details = {
+          failure_type: "json_parse_failed",
+          http_status: response.status,
+          model_name: ANALYSIS_MODEL,
+          model_output_preview: outputText.slice(0, 1000),
+          extracted_text_length: extractedText.length,
+          cleaned_text_preview: cleanedText.slice(0, 1000),
+        }
+
+        console.error("[analyse-uploaded-quote] strict quote template JSON parse failed", details)
+
+        return failAnalysis({
+          supabase,
+          id: example.id,
+          userId: user.id,
+          stage,
+          errorMessage: `json_parse_failed: ${error instanceof Error ? error.message : "Could not parse strict quote template JSON."}`,
+          status: 502,
+          debugTextPreview: extractedText,
+          extractedTextLength: extractedText.length,
+          cleanedTextPreview: cleanedText,
+          details,
+        })
+      }
+
+      if (!hasPopulatedTemplateAnalysis(templateAnalysis)) {
+        const schemaIssues = getTemplateSchemaIssues(templateAnalysis)
+        const details = {
+          failure_type: "schema_validation_failed",
+          missing_or_invalid_fields: schemaIssues,
+          model_name: ANALYSIS_MODEL,
+          extracted_text_length: extractedText.length,
+          cleaned_text_preview: cleanedText.slice(0, 1000),
+          model_output_preview: outputText.slice(0, 1000),
+        }
+
+        console.error("[analyse-uploaded-quote] strict quote template schema validation failed", details)
+
+        return failAnalysis({
+          supabase,
+          id: example.id,
+          userId: user.id,
+          stage,
+          errorMessage: `schema_validation_failed: ${schemaIssues.join("; ") || "OpenAI returned an incomplete strict quote template."}`,
+          status: 502,
+          debugTextPreview: extractedText,
+          extractedTextLength: extractedText.length,
+          cleanedTextPreview: cleanedText,
+          details,
+        })
+      }
+
+      const cleanedTemplateAnalysis = {
+        ...cleanupTemplateAnalysis(templateAnalysis),
+        extracted_text_length: extractedText.length,
+        cleaned_text_preview: cleanedText.slice(0, 500),
+      }
+
+      stage = "database_update"
+      const { error: updateError } = await supabase
+        .from("uploaded_quote_examples")
+        .update({
+          document_type: documentType,
+          extracted_text: extractedText,
+          analysis_summary: cleanedTemplateAnalysis,
+          tone_analysis: "Strict quote template preview ready for review.",
+          extracted_exclusions: cleanedTemplateAnalysis.standard_exclusions,
+          suggested_rules: {
+            document_type: documentType,
+            strict_template_schema: true,
+            extracted_text_length: extractedText.length,
+            cleaned_text_preview: cleanedText.slice(0, 500),
+            pricing_rules: cleanedTemplateAnalysis.pricing_rules,
+            estimate_wording: cleanedTemplateAnalysis.estimate_wording,
+            ai_prompt_rules: cleanedTemplateAnalysis.ai_prompt_rules,
+          },
+          ai_analysis_status: "completed",
+        })
+        .eq("id", example.id)
+        .eq("user_id", user.id)
+
+      if (updateError) {
+        return failAnalysis({
+          supabase,
+          id: example.id,
+          userId: user.id,
+          stage,
+          errorMessage: `Could not save strict quote template preview: ${updateError.message}`,
+          status: 500,
+          debugTextPreview: extractedText,
+          extractedTextLength: extractedText.length,
+          cleanedTextPreview: cleanedText,
+        })
+      }
+
+      return NextResponse.json({ analysis: cleanedTemplateAnalysis, template_created: false })
     }
 
     stage = "openai_analysis"
@@ -808,34 +1399,16 @@ For common_materials_plants_tools:
       })
     }
 
-    let templateCreated = false
-    if (documentType === "quote_template") {
-      const templateError = await createTemplateFromAnalysis({
-        supabase,
-        userId: user.id,
-        sourceId: example.id,
-        analysis: { ...analysis, document_type: documentType },
-      })
-
-      if (templateError) {
-        return failAnalysis({
-          supabase,
-          id: example.id,
-          userId: user.id,
-          stage: "database_update",
-          errorMessage: `Could not create quote template: ${templateError.message}`,
-          status: 500,
-          debugTextPreview: extractedText,
-          extractedTextLength: extractedText.length,
-          cleanedTextPreview: cleanedText,
-        })
-      }
-
-      templateCreated = true
-    }
-
-    return NextResponse.json({ analysis: { ...analysis, document_type: documentType }, template_created: templateCreated })
+    return NextResponse.json({ analysis: { ...analysis, document_type: documentType }, template_created: false })
   } catch (error) {
+    logAnalysisDebug({
+      fileName: example.file_name,
+      fileType,
+      extractedText,
+      documentType,
+      failedStage: stage,
+    })
+
     return failAnalysis({
       supabase,
       id: example.id,

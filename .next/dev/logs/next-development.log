@@ -1,1 +1,24 @@
-{"timestamp":"00:00:00.770","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:00.883","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:17.338","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"08:58:04.678","source":"Server","level":"ERROR","message":"(node:85249) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.\n(Use `node --trace-deprecation ...` to show where the warning was created)"}
+{"timestamp":"09:07:50.733","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:09:01.525","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:17:10.576","source":"Server","level":"LOG","message":"✓ Compiled in 197ms"}
+{"timestamp":"09:17:34.647","source":"Server","level":"LOG","message":"✓ Compiled in 32ms"}
+{"timestamp":"09:17:54.296","source":"Server","level":"LOG","message":"✓ Compiled in 60ms"}
+{"timestamp":"09:18:06.511","source":"Server","level":"LOG","message":"✓ Compiled in 55ms"}
+{"timestamp":"09:22:01.367","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:22:41.715","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:29:08.981","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:33:21.014","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:35:36.682","source":"Server","level":"LOG","message":"[analyse-uploaded-quote] PDF analysis debug {}"}
+{"timestamp":"09:48:50.812","source":"Server","level":"LOG","message":"✓ Compiled in 508ms"}
+{"timestamp":"09:49:01.738","source":"Server","level":"LOG","message":"✓ Compiled in 179ms"}
+{"timestamp":"09:49:47.021","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"09:50:02.398","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"09:50:02.432","source":"Browser","level":"WARN","message":"@supabase/gotrue-js: Session as retrieved from URL expires in -252953s, should have been closer to 3600s"}
+{"timestamp":"09:50:02.433","source":"Browser","level":"WARN","message":"@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale 1780228419 1780232019 1780484972"}
+{"timestamp":"09:50:02.461","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m@supabase/gotrue-js: Session as retrieved from URL expires in -252953s, should have been closer to 3600s\\u001b[39m\""}
+{"timestamp":"09:50:02.462","source":"Browser","level":"WARN","message":"\u001b[33m@supabase/gotrue-js: Session as retrieved from URL expires in -252953s, should have been closer to 3600s\u001b[39m"}
+{"timestamp":"09:50:02.465","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale\\u001b[39m\" 1780228419 1780232019 1780484972"}
+{"timestamp":"09:50:02.465","source":"Browser","level":"WARN","message":"\u001b[33m@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale\u001b[39m 1780228419 1780232019 1780484972"}

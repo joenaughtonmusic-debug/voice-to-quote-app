@@ -246,7 +246,7 @@ export function UploadsScreen({
       return
     }
 
-    setMessage(result?.template_created ? "Knowledge item analysed and template created." : "Knowledge item analysed successfully.")
+    setMessage("Knowledge item analysed successfully.")
     if (result?.template_created) onTemplateCreated?.()
     await loadExamples()
   }
@@ -271,6 +271,7 @@ export function UploadsScreen({
     }
 
     const summary = file.analysis_summary ?? {}
+    const documentType = getNormalizedDocumentType(file.document_type)
     const templateName = getTemplateName(summary)
     const category = inferTemplateCategory(summary, templateName)
 
@@ -289,19 +290,41 @@ export function UploadsScreen({
       return
     }
 
-    const { error } = await supabase.from("quote_templates").insert({
-      user_id: currentUser.id,
-      template_name: templateName,
-      category,
-      default_scope: getStringArray(summary.reusable_customer_wording) ?? [],
-      default_exclusions: getStringArray(summary.exclusions_and_conditions) ?? getStringArray(file.extracted_exclusions) ?? [],
-      default_pricing_structure: [
-        ...(getStringArray(summary.pricing_rules_detected) ?? []),
-        ...(getStringArray(summary.common_line_items) ?? []),
-      ],
-      template_content: summary,
-      source_uploaded_quote_example_id: file.id,
-    })
+    const templatePayload =
+      documentType === "quote_template"
+        ? {
+            user_id: currentUser.id,
+            template_name: templateName,
+            category,
+            default_scope: [
+              ...(getStringArray(summary.standard_scope) ?? []),
+              ...(getStringArray(summary.standard_inclusions) ?? []),
+              ...(getStringArray(summary.customer_wording) ?? []),
+            ],
+            default_exclusions: getStringArray(summary.standard_exclusions) ?? [],
+            default_pricing_structure: [
+              ...(getStringArray(summary.pricing_rules) ?? []),
+              ...(getStringArray(summary.estimate_wording) ?? []),
+              ...(getStringArray(summary.materials_or_line_items) ?? []),
+            ],
+            template_content: summary,
+            source_uploaded_quote_example_id: file.id,
+          }
+        : {
+            user_id: currentUser.id,
+            template_name: templateName,
+            category,
+            default_scope: getStringArray(summary.reusable_customer_wording) ?? [],
+            default_exclusions: getStringArray(summary.exclusions_and_conditions) ?? getStringArray(file.extracted_exclusions) ?? [],
+            default_pricing_structure: [
+              ...(getStringArray(summary.pricing_rules_detected) ?? []),
+              ...(getStringArray(summary.common_line_items) ?? []),
+            ],
+            template_content: summary,
+            source_uploaded_quote_example_id: file.id,
+          }
+
+    const { error } = await supabase.from("quote_templates").insert(templatePayload)
 
     setCreatingTemplateId(null)
 
@@ -310,7 +333,7 @@ export function UploadsScreen({
       return
     }
 
-    setMessage("Template created.")
+    setMessage("Template saved.")
     onTemplateCreated?.()
   }
 
@@ -449,16 +472,16 @@ export function UploadsScreen({
                     Analyse
                   </button>
                 )}
-                {getNormalizedStatus(file.ai_analysis_status) === "completed" && canCreateTemplate(file) && (
+                {getNormalizedStatus(file.ai_analysis_status) === "completed" && (
                   <button
                     type="button"
                     onClick={() => setViewingAnalysisId((currentId) => (currentId === file.id ? null : file.id))}
                     className="flex shrink-0 items-center gap-1 rounded-lg bg-accent px-2.5 py-2 text-xs font-semibold text-primary"
                   >
-                    View Analysis
+                    {getNormalizedDocumentType(file.document_type) === "quote_template" ? "Preview" : "View Analysis"}
                   </button>
                 )}
-                {getNormalizedStatus(file.ai_analysis_status) === "completed" && (
+                {getNormalizedStatus(file.ai_analysis_status) === "completed" && canCreateTemplate(file) && (
                   <button
                     type="button"
                     onClick={() => void handleCreateTemplate(file)}
@@ -466,7 +489,7 @@ export function UploadsScreen({
                     className="flex shrink-0 items-center gap-1 rounded-lg bg-primary px-2.5 py-2 text-xs font-semibold text-primary-foreground active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {creatingTemplateId === file.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    Create Template
+                    {getNormalizedDocumentType(file.document_type) === "quote_template" ? "Save Template" : "Create Template"}
                   </button>
                 )}
                 {getNormalizedStatus(file.ai_analysis_status) === "failed" && (
@@ -609,6 +632,11 @@ function StatusBadge({ status }: { status: UploadedQuoteExample["ai_analysis_sta
 function AnalysisSummary({ file }: { file: UploadedQuoteExample }) {
   const summary = file.analysis_summary ?? {}
   const documentType = getNormalizedDocumentType(file.document_type ?? getString(summary.document_type))
+
+  if (documentType === "quote_template") {
+    return <TemplatePreview summary={summary} />
+  }
+
   const reusableWording =
     getStringArray(summary.reusable_customer_wording) || getStringArray(summary.suggested_reusable_template_wording)
   const pricingRules =
@@ -645,6 +673,37 @@ function AnalysisSummary({ file }: { file: UploadedQuoteExample }) {
         <AnalysisBulletSection title="Trade vocabulary" items={vocabulary} />
         <AnalysisBulletSection title="Suggested quote templates" items={templateSuggestions} />
         <AnalysisBulletSection title="Rules to apply to future AI quote drafts" items={promptRules} />
+      </div>
+    </div>
+  )
+}
+
+function TemplatePreview({ summary }: { summary: Record<string, unknown> }) {
+  const variables = summary.variables && typeof summary.variables === "object" ? summary.variables as Record<string, unknown> : {}
+  const optionalVariables = getStringArray(variables.optional_variables) ?? []
+  const detectedVariables = [
+    getString(variables.client_name),
+    getString(variables.site_address),
+    getString(variables.quote_date),
+    getString(variables.expiry_date),
+    getString(variables.frequency),
+    getString(variables.price_or_estimate_range),
+    ...optionalVariables,
+  ].filter((item): item is string => Boolean(item))
+
+  return (
+    <div className="border-t border-border bg-secondary/30 px-3 py-3 text-xs">
+      <div className="grid gap-4">
+        <AnalysisRow label="Name" value={getString(summary.template_name) ?? "Untitled template"} />
+        <AnalysisRow label="Category" value={getString(summary.category) ?? "custom"} />
+        <AnalysisBulletSection title="Standard scope" items={getStringArray(summary.standard_scope)} />
+        <AnalysisBulletSection title="Standard inclusions" items={getStringArray(summary.standard_inclusions)} />
+        <AnalysisBulletSection title="Standard exclusions" items={getStringArray(summary.standard_exclusions)} />
+        <AnalysisBulletSection title="Pricing rules" items={getStringArray(summary.pricing_rules)} />
+        <AnalysisBulletSection title="Estimate wording" items={getStringArray(summary.estimate_wording)} />
+        <AnalysisBulletSection title="Site-specific notes" items={getStringArray(summary.site_specific_notes)} />
+        <AnalysisBulletSection title="Variables detected" items={detectedVariables.length ? detectedVariables : null} />
+        <AnalysisBulletSection title="Trade vocabulary" items={getStringArray(summary.trade_vocabulary)} />
       </div>
     </div>
   )
@@ -730,6 +789,9 @@ function getObjectList(value: unknown) {
 }
 
 function getTemplateName(summary: Record<string, unknown>) {
+  const strictName = getString(summary.template_name)
+  if (strictName) return strictName
+
   const suggestedNames = getStringArray(summary.quote_template_suggestions)
   if (suggestedNames?.[0]) return suggestedNames[0]
 
@@ -740,8 +802,13 @@ function getTemplateName(summary: Record<string, unknown>) {
 }
 
 function inferTemplateCategory(summary: Record<string, unknown>, templateName: string) {
+  const strictCategory = getString(summary.category)
+  if (strictCategory) return strictCategory
+
   const haystack = [
     templateName,
+    ...(getStringArray(summary.trade_vocabulary) ?? []),
+    ...(getStringArray(summary.materials_or_line_items) ?? []),
     ...(getStringArray(summary.trade_vocabulary_terms) ?? []),
     ...(getStringArray(summary.common_line_items) ?? []),
     ...(getStringArray(summary.quote_template_suggestions) ?? []),
