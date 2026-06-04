@@ -1,11 +1,35 @@
-{"timestamp":"00:00:00.794","source":"Server","level":"LOG","message":""}
-{"timestamp":"00:01:00.974","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
-{"timestamp":"00:01:01.009","source":"Browser","level":"WARN","message":"@supabase/gotrue-js: Session as retrieved from URL expires in -253441s, should have been closer to 3600s"}
-{"timestamp":"00:01:01.009","source":"Browser","level":"WARN","message":"@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale 1780228419 1780232019 1780485460"}
-{"timestamp":"00:01:01.018","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m@supabase/gotrue-js: Session as retrieved from URL expires in -253441s, should have been closer to 3600s\\u001b[39m\""}
-{"timestamp":"00:01:01.018","source":"Browser","level":"WARN","message":"\u001b[33m@supabase/gotrue-js: Session as retrieved from URL expires in -253441s, should have been closer to 3600s\u001b[39m"}
-{"timestamp":"00:01:01.019","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale\\u001b[39m\" 1780228419 1780232019 1780485460"}
-{"timestamp":"00:01:01.020","source":"Browser","level":"WARN","message":"\u001b[33m@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale\u001b[39m 1780228419 1780232019 1780485460"}
-{"timestamp":"19:34:57.137","source":"Server","level":"LOG","message":"✓ Compiled in 170ms"}
-{"timestamp":"19:35:27.925","source":"Server","level":"LOG","message":"✓ Compiled in 178ms"}
-{"timestamp":"19:35:52.673","source":"Server","level":"LOG","message":"✓ Compiled in 32ms"}
+{"timestamp":"00:00:00.916","source":"Server","level":"LOG","message":""}
+{"timestamp":"00:00:01.992","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:00:02.476","source":"Browser","level":"WARN","message":"@supabase/gotrue-js: Session as retrieved from URL expires in -332074s, should have been closer to 3600s"}
+{"timestamp":"00:00:02.476","source":"Browser","level":"WARN","message":"@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale 1780228419 1780232019 1780564093"}
+{"timestamp":"00:00:16.039","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m@supabase/gotrue-js: Session as retrieved from URL expires in -332074s, should have been closer to 3600s\\u001b[39m\""}
+{"timestamp":"00:00:16.039","source":"Browser","level":"WARN","message":"\u001b[33m@supabase/gotrue-js: Session as retrieved from URL expires in -332074s, should have been closer to 3600s\u001b[39m"}
+{"timestamp":"00:00:16.042","source":"Server","level":"WARN","message":"[browser] \"\\u001b[33m@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale\\u001b[39m\" 1780228419 1780232019 1780564093"}
+{"timestamp":"00:00:16.042","source":"Browser","level":"WARN","message":"\u001b[33m@supabase/gotrue-js: Session as retrieved from URL was issued over 120s ago, URL could be stale\u001b[39m 1780228419 1780232019 1780564093"}
+{"timestamp":"00:43:22.596","source":"Server","level":"LOG","message":"✓ Compiled in 159ms"}
+{"timestamp":"00:43:35.322","source":"Server","level":"LOG","message":"✓ Compiled in 469ms"}
+{"timestamp":"00:44:47.828","source":"Server","level":"LOG","message":"✓ Compiled in 66ms"}
+{"timestamp":"00:52:13.528","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:52:30.444","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:58:52.206","source":"Server","level":"LOG","message":"✓ Compiled in 83ms"}
+{"timestamp":"00:59:30.466","source":"Server","level":"LOG","message":"✓ Compiled in 122ms"}
+{"timestamp":"00:59:53.268","source":"Server","level":"LOG","message":"✓ Compiled in 93ms"}
+{"timestamp":"01:00:04.909","source":"Server","level":"LOG","message":"✓ Compiled in 51ms"}
+{"timestamp":"01:00:39.550","source":"Server","level":"LOG","message":"✓ Compiled in 71ms"}
+{"timestamp":"01:00:46.570","source":"Server","level":"LOG","message":"✓ Compiled in 40ms"}
+{"timestamp":"01:06:41.126","source":"Server","level":"LOG","message":"✓ Compiled in 150ms"}
+{"timestamp":"01:10:43.504","source":"Server","level":"LOG","message":"✓ Compiled in 135ms"}
+{"timestamp":"01:22:30.488","source":"Server","level":"LOG","message":"✓ Compiled in 161ms"}
+{"timestamp":"01:22:47.454","source":"Server","level":"LOG","message":"✓ Compiled in 52ms"}
+{"timestamp":"01:24:13.259","source":"Server","level":"LOG","message":"✓ Compiled in 95ms"}
+{"timestamp":"01:24:25.537","source":"Server","level":"LOG","message":"✓ Compiled in 49ms"}
+{"timestamp":"01:24:43.579","source":"Server","level":"LOG","message":"✓ Compiled in 45ms"}
+{"timestamp":"01:24:52.238","source":"Server","level":"LOG","message":"✓ Compiled in 34ms"}
+{"timestamp":"01:25:04.980","source":"Server","level":"LOG","message":"✓ Compiled in 57ms"}
+{"timestamp":"01:25:24.052","source":"Server","level":"LOG","message":"✓ Compiled in 118ms"}
+{"timestamp":"01:25:52.901","source":"Server","level":"LOG","message":"✓ Compiled in 42ms"}
+{"timestamp":"01:31:52.905","source":"Server","level":"LOG","message":"✓ Compiled in 158ms"}
+{"timestamp":"01:31:56.222","source":"Server","level":"LOG","message":"✓ Compiled in 49ms"}
+{"timestamp":"01:32:07.953","source":"Server","level":"LOG","message":"✓ Compiled in 92ms"}
+{"timestamp":"01:32:14.152","source":"Server","level":"LOG","message":"✓ Compiled in 45ms"}
+{"timestamp":"01:32:33.459","source":"Server","level":"LOG","message":"✓ Compiled in 173ms"}

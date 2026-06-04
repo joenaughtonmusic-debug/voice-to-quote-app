@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { BookOpen, Layers3, Leaf, Loader2, Package, ScrollText, Tags } from "lucide-react"
 import { TemplatesScreen } from "@/components/templates-screen"
 import { UploadsScreen } from "@/components/uploads-screen"
+import { JmsItemLibrary } from "@/components/jms-item-library"
 import { useAuth } from "@/hooks/use-auth"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
@@ -26,9 +27,9 @@ const sections: {
   },
   {
     id: "materials",
-    label: "Materials",
+    label: "JMS Item Library",
     icon: Package,
-    description: "Reusable materials, supplies, and waste categories",
+    description: "Imported materials, products, services, and pricing from job management systems",
   },
   {
     id: "plants",
@@ -91,10 +92,15 @@ export function KnowledgeBaseScreen() {
       .select("document_type")
       .eq("user_id", user.id)
 
+    const { count: itemCount, error: itemError } = await supabase
+      .from("knowledge_items")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+
     setLoadingCounts(false)
 
-    if (templateError || uploadError) {
-      setError(`Could not load knowledge base counts: ${templateError?.message ?? uploadError?.message}`)
+    if (templateError || uploadError || itemError) {
+      setError(`Could not load knowledge base counts: ${templateError?.message ?? uploadError?.message ?? itemError?.message}`)
       return
     }
 
@@ -102,7 +108,7 @@ export function KnowledgeBaseScreen() {
     setCounts({
       ...emptyCounts,
       templates: templateCount ?? 0,
-      materials: documentTypes.filter((type) => type === "materials_price_list" || type === "supplier_catalogue").length,
+      materials: itemCount ?? 0,
       plants: documentTypes.filter((type) => type === "plant_list").length,
       "price-lists": documentTypes.filter((type) => type === "materials_price_list").length,
       terms: documentTypes.filter((type) => type === "terms_conditions").length,
@@ -207,6 +213,8 @@ export function KnowledgeBaseScreen() {
             <UploadsScreen embedded onTemplateCreated={() => void loadCounts()} />
           </section>
         </div>
+      ) : activeSection === "materials" ? (
+        <JmsItemLibrary onCountChange={() => void loadCounts()} />
       ) : (
         <PlaceholderSection section={sections.find((section) => section.id === activeSection)!} count={counts[activeSection]} />
       )}
