@@ -17,8 +17,6 @@ function formatTime(s: number) {
   return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`
 }
 
-const waveBars = Array.from({ length: 32 })
-
 const aiStages = [
   "Transcribing...",
   "Correcting trade terms",
@@ -136,11 +134,14 @@ export function RecordScreen({
   const [stage, setStage] = useState(0)
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
   const [errorMessage, setErrorMessage] = useState("")
+  const [addedNotes, setAddedNotes] = useState("")
+  const [visibilityWarning, setVisibilityWarning] = useState("")
   const transcriptRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<BlobPart[]>([])
   const discardRef = useRef(false)
+  const leftAppWhileRecordingRef = useRef(false)
 
   useEffect(() => {
     if (state !== "recording") return
@@ -159,6 +160,23 @@ export function RecordScreen({
       stopStream()
     }
   }, [])
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === "hidden" && (state === "recording" || state === "paused")) {
+        leftAppWhileRecordingRef.current = true
+        return
+      }
+
+      if (document.visibilityState === "visible" && leftAppWhileRecordingRef.current) {
+        leftAppWhileRecordingRef.current = false
+        setVisibilityWarning("Recording may pause when leaving the app. Add any missing details in Notes.")
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [state])
 
   const isLive = state === "recording" || state === "paused"
   const canProcess = state === "stopped" && Boolean(audioBlob)
@@ -179,6 +197,9 @@ export function RecordScreen({
     setStage(0)
     setAudioBlob(null)
     setErrorMessage("")
+    setAddedNotes("")
+    setVisibilityWarning("")
+    leftAppWhileRecordingRef.current = false
   }
 
   async function startRecording() {
@@ -197,6 +218,7 @@ export function RecordScreen({
       setTranscript("")
       setStage(0)
       setSeconds(0)
+      setVisibilityWarning("")
       chunksRef.current = []
       discardRef.current = false
 
@@ -376,13 +398,15 @@ export function RecordScreen({
 
       const templateContext = await loadQuoteTemplateContext()
       setStage(3)
+      const notes = addedNotes.trim()
+      const combinedInput = `Voice transcript:\n${correctedTranscript}\n\nAdded notes:\n${notes || "None provided."}`
 
       const quoteResponse = await fetch("/api/process-quote", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ transcript: correctedTranscript, template_context: templateContext }),
+        body: JSON.stringify({ transcript: combinedInput, template_context: templateContext }),
       })
 
       const processedQuote = await quoteResponse.json().catch(() => null)
@@ -393,6 +417,10 @@ export function RecordScreen({
             ? processedQuote.error
             : "Quote extraction failed. Please try again."
         throw new Error(message)
+      }
+
+      if (notes && Array.isArray(processedQuote?.internal_notes)) {
+        processedQuote.internal_notes = [...processedQuote.internal_notes, `Added notes:\n${notes}`]
       }
 
       for (let nextStage = 4; nextStage < aiStages.length; nextStage += 1) {
@@ -452,6 +480,50 @@ export function RecordScreen({
           {statusLabel}
         </span>
       </header>
+
+      {isLive && (
+        <div className="sticky top-2 z-30 mt-3 flex items-center gap-3 rounded-xl border border-border bg-card/95 px-3 py-2 shadow-lg backdrop-blur">
+          <span
+            className={cn(
+              "h-2 w-2 shrink-0 rounded-full",
+              state === "recording" ? "animate-pulse bg-destructive" : "bg-muted-foreground",
+            )}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-foreground">
+              {state === "recording" ? "Recording" : "Recording paused"}
+            </p>
+            <p className="font-mono text-sm tabular-nums text-muted-foreground">{formatTime(seconds)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={state === "recording" ? pauseRecording : resumeRecording}
+            aria-label={state === "recording" ? "Pause recording" : "Resume recording"}
+            title={state === "recording" ? "Pause recording" : "Resume recording"}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-secondary-foreground active:scale-95"
+          >
+            {state === "recording" ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={stopRecording}
+            aria-label="Stop recording"
+            title="Stop recording"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground active:scale-95"
+          >
+            <Square className="h-4 w-4" fill="currentColor" />
+          </button>
+          <button
+            type="button"
+            onClick={discardRecording}
+            aria-label="Discard recording"
+            title="Discard recording"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary text-destructive active:scale-95"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Hero copy */}
       <div className="mt-7 text-center">
@@ -518,52 +590,6 @@ export function RecordScreen({
           )}
         </div>
 
-        {/* Live waveform + timer + controls */}
-        {isLive && (
-          <div className="mt-7 w-full rounded-2xl border border-border bg-card/80 p-4 backdrop-blur-sm">
-            <div className="flex h-16 items-center justify-center gap-1">
-              {waveBars.map((_, i) => (
-                <span
-                  key={i}
-                  className={cn("w-1 rounded-full", state === "recording" ? "bg-primary animate-wave" : "bg-primary/25")}
-                  style={{ height: `${16 + ((i * 11) % 44)}px`, animationDelay: `${(i % 12) * 0.07}s` }}
-                />
-              ))}
-            </div>
-            <div className="mt-3 flex items-center justify-between">
-              <span className="flex items-center gap-2 font-mono text-2xl font-semibold tabular-nums tracking-tight text-foreground">
-                {formatTime(seconds)}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={state === "recording" ? pauseRecording : resumeRecording}
-                  aria-label={state === "recording" ? "Pause" : "Resume"}
-                  className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-secondary-foreground active:scale-95"
-                >
-                  {state === "recording" ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={stopRecording}
-                  aria-label="Stop recording"
-                  className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground active:scale-95"
-                >
-                  <Square className="h-5 w-5" fill="currentColor" />
-                </button>
-                <button
-                  type="button"
-                  onClick={discardRecording}
-                  aria-label="Discard recording"
-                  className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-destructive active:scale-95"
-                >
-                  <Trash2 className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Idle hint / captured summary */}
         {state === "idle" && (
           <p className="mt-6 font-mono text-xs uppercase tracking-widest text-muted-foreground">tap mic to record</p>
@@ -579,6 +605,31 @@ export function RecordScreen({
         <p className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 p-3 text-center text-sm text-destructive">
           {errorMessage}
         </p>
+      )}
+
+      {visibilityWarning && (
+        <p className="mt-4 rounded-xl border border-warning/50 bg-warning/20 p-3 text-sm text-warning-foreground">
+          {visibilityWarning}
+        </p>
+      )}
+
+      {state !== "processing" && (
+        <section className="mt-6">
+          <label htmlFor="recording-notes" className="text-sm font-semibold text-foreground">
+            Notes
+          </label>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Need to check measurements? Keep recording and add notes below without leaving the app.
+          </p>
+          <textarea
+            id="recording-notes"
+            value={addedNotes}
+            onChange={(event) => setAddedNotes(event.target.value)}
+            placeholder="Type or paste measurements, materials, access notes, or anything the recording may miss."
+            rows={7}
+            className="mt-3 max-h-64 min-h-40 w-full resize-y overflow-y-auto rounded-xl border border-border bg-card px-3 py-3 text-sm leading-relaxed text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-accent"
+          />
+        </section>
       )}
 
       {/* AI processing stages */}

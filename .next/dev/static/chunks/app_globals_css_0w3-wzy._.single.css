@@ -457,6 +457,10 @@
     position: relative;
   }
 
+  .sticky {
+    position: sticky;
+  }
+
   .inset-0 {
     inset: calc(var(--spacing) * 0);
   }
@@ -595,6 +599,10 @@
 
   .z-20 {
     z-index: 20;
+  }
+
+  .z-30 {
+    z-index: 30;
   }
 
   .z-40 {
@@ -1020,6 +1028,10 @@
     max-height: calc(var(--spacing) * 56);
   }
 
+  .max-h-64 {
+    max-height: calc(var(--spacing) * 64);
+  }
+
   .max-h-\[300px\] {
     max-height: 300px;
   }
@@ -1038,6 +1050,10 @@
 
   .min-h-16 {
     min-height: calc(var(--spacing) * 16);
+  }
+
+  .min-h-40 {
+    min-height: calc(var(--spacing) * 40);
   }
 
   .min-h-full {
@@ -1820,6 +1836,16 @@
     border-color: #0000;
   }
 
+  .border-warning\/50 {
+    border-color: var(--warning);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .border-warning\/50 {
+      border-color: color-mix(in oklab, var(--warning) 50%, transparent);
+    }
+  }
+
   .border-t-transparent {
     border-top-color: #0000;
   }
@@ -1905,6 +1931,16 @@
   @supports (color: color-mix(in lab, red, red)) {
     .bg-card\/80 {
       background-color: color-mix(in oklab, var(--card) 80%, transparent);
+    }
+  }
+
+  .bg-card\/95 {
+    background-color: var(--card);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .bg-card\/95 {
+      background-color: color-mix(in oklab, var(--card) 95%, transparent);
     }
   }
 
@@ -2062,6 +2098,16 @@
 
   .bg-warning {
     background-color: var(--warning);
+  }
+
+  .bg-warning\/20 {
+    background-color: var(--warning);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .bg-warning\/20 {
+      background-color: color-mix(in oklab, var(--warning) 20%, transparent);
+    }
   }
 
   .bg-warning\/25 {
@@ -2753,6 +2799,12 @@
 
   .filter {
     filter: var(--tw-blur, ) var(--tw-brightness, ) var(--tw-contrast, ) var(--tw-grayscale, ) var(--tw-hue-rotate, ) var(--tw-invert, ) var(--tw-saturate, ) var(--tw-sepia, ) var(--tw-drop-shadow, );
+  }
+
+  .backdrop-blur {
+    --tw-backdrop-blur: blur(8px);
+    -webkit-backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
+    backdrop-filter: var(--tw-backdrop-blur, ) var(--tw-backdrop-brightness, ) var(--tw-backdrop-contrast, ) var(--tw-backdrop-grayscale, ) var(--tw-backdrop-hue-rotate, ) var(--tw-backdrop-invert, ) var(--tw-backdrop-opacity, ) var(--tw-backdrop-saturate, ) var(--tw-backdrop-sepia, );
   }
 
   .backdrop-blur-sm {

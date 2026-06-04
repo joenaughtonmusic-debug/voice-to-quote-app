@@ -3,6 +3,28 @@ import { NextResponse } from "next/server"
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const QUOTE_MODEL = process.env.OPENAI_QUOTE_MODEL ?? "gpt-4o-mini"
 
+type QuoteSpecialist =
+  | "maintenance"
+  | "one_off_tidy"
+  | "landscaping"
+  | "decking"
+  | "planting"
+  | "hedge_trimming"
+  | "general"
+
+const classificationSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    specialist: {
+      type: "string",
+      enum: ["maintenance", "one_off_tidy", "landscaping", "decking", "planting", "hedge_trimming", "general"],
+    },
+    reason: { type: "string" },
+  },
+  required: ["specialist", "reason"],
+}
+
 const quoteSchema = {
   type: "object",
   additionalProperties: false,
@@ -142,6 +164,118 @@ function getTemplateContext(value: unknown) {
     .slice(0, 12)
 }
 
+function isQuoteSpecialist(value: unknown): value is QuoteSpecialist {
+  return (
+    value === "maintenance" ||
+    value === "one_off_tidy" ||
+    value === "landscaping" ||
+    value === "decking" ||
+    value === "planting" ||
+    value === "hedge_trimming" ||
+    value === "general"
+  )
+}
+
+function getSpecialistInstructions(specialist: QuoteSpecialist) {
+  switch (specialist) {
+    case "landscaping":
+      return `Landscaping specialist extractor:
+- Preserve every measurement and dimension exactly as spoken, including units.
+- Preserve labour stages, stage durations, material lists, and construction sequence.
+- Preserve timber sizes, concrete types, fasteners, aggregates, membranes, drainage products, and product names exactly as spoken.
+- Do not summarise labour-heavy or material-heavy work. Create separate detailed scope entries and line_items for distinct stages/material groups.
+- Keep sequence language such as excavate, prepare, compact, set out, install, concrete, fix, backfill, and finish in the spoken order.
+- Put missing quantities, dimensions, specifications, and pricing into missing_information rather than inventing them.`
+    case "decking":
+      return `Decking specialist extractor:
+- Preserve every deck measurement, dimension, level, span, timber size, board type, framing member, pile/post detail, concrete type, fastener, fixing, and finish exactly as spoken.
+- Preserve demolition, excavation, foundations, framing, decking, stairs, balustrade, finishing, and cleanup as separate stages in construction order.
+- Preserve labour stages and stage durations. Do not compress material-heavy or labour-heavy details.
+- Put unclear structural details, quantities, consent requirements, and pricing into missing_information or confidence_warnings.`
+    case "planting":
+      return `Planting specialist extractor:
+- Preserve plant names, cultivars, quantities, pot sizes, grades, spacing, locations, soil preparation, compost, fertiliser, mulch, staking, irrigation, and aftercare exactly as spoken.
+- Separate plants, soil products, amendments, mulch, labour, delivery, and greenwaste into useful materials/line items.
+- Preserve planting sequence and site-specific plant cautions. Do not invent quantities, spacing, or plant substitutions.`
+    case "hedge_trimming":
+      return `Hedge trimming specialist extractor:
+- Preserve hedge species, locations, lengths, heights, target heights, widths, access constraints, trimming sides/tops, reduction instructions, and greenwaste details exactly as spoken.
+- Distinguish routine trimming from major reduction or restoration work.
+- Preserve frequency, visit duration, equipment/access needs, and disposal allowances.
+- Keep plant-name uncertainty in confidence_warnings rather than silently changing it.`
+    case "maintenance":
+      return `Maintenance specialist extractor:
+- Focus on service frequency/cadence, visit duration, crew size, recurring pricing, greenwaste allowance, sprays, fertiliser, and seasonal tasks.
+- Preserve what happens every visit versus periodically or only when required.
+- Keep recurring work in primary_quote and separate one-off setup/tidy work as an optional quote when appropriate.
+- Do not invent frequency, visit duration, chemical/product names, or recurring prices.`
+    case "one_off_tidy":
+      return `One-off tidy specialist extractor:
+- Focus on overgrowth, tidy/clearance scope, estimate wording, greenwaste allowance, access constraints, site conditions, uncertainty, and risk factors.
+- Preserve cautions about plants or areas that must not be removed or disturbed.
+- Use estimate/range wording when the transcript describes variable or uncertain effort.
+- Keep optional extras and ongoing maintenance separate from the immediate one-off tidy.
+- Do not turn uncertain site conditions into fixed quantities or fixed-price claims.`
+    case "general":
+      return `General specialist extractor:
+- Preserve all specific scope, materials, labour, durations, measurements, cautions, pricing, and sequence stated in the transcript.
+- Do not invent or over-summarise details.`
+  }
+}
+
+async function classifyTranscript(transcript: string) {
+  const response = await fetch(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: QUOTE_MODEL,
+      input: [
+        {
+          role: "system",
+          content: `Classify this NZ gardening/property maintenance quote transcript into exactly one specialist:
+- maintenance: recurring garden/property maintenance, regular visits, recurring service.
+- one_off_tidy: one-off tidy, overgrowth clearance, garden cleanup, variable tidy effort.
+- landscaping: landscape construction, earthworks, paving, retaining, drainage, concrete, multi-stage outdoor construction.
+- decking: decks, timber deck framing, piles, boards, stairs, balustrades.
+- planting: planting plans/jobs focused on plants, pot sizes, spacing, soil preparation.
+- hedge_trimming: hedge trimming/reduction/restoration-focused work.
+- general: none of the above clearly dominates.
+
+Choose the dominant primary quote intent. Return only the classification schema.`,
+        },
+        { role: "user", content: transcript },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "quote_specialist_classification",
+          strict: true,
+          schema: classificationSchema,
+        },
+      },
+    }),
+  })
+
+  const result = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = typeof result?.error?.message === "string" ? result.error.message : "Quote classification failed."
+    throw new Error(message)
+  }
+
+  const outputText = getOutputText(result)
+  if (!outputText) throw new Error("OpenAI did not return quote classification JSON.")
+
+  const classification = JSON.parse(outputText)
+  if (!isQuoteSpecialist(classification?.specialist)) {
+    throw new Error("OpenAI returned an invalid quote specialist classification.")
+  }
+
+  return classification as { specialist: QuoteSpecialist; reason: string }
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -156,6 +290,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Transcript text is required." }, { status: 400 })
     }
 
+    const classification = await classifyTranscript(transcript)
+    const specialistInstructions = getSpecialistInstructions(classification.specialist)
+
     const response = await fetch(OPENAI_RESPONSES_URL, {
       method: "POST",
       headers: {
@@ -169,6 +306,13 @@ export async function POST(request: Request) {
             role: "system",
             content:
               `You extract quote drafts for NZ gardening and property maintenance businesses. Use plain NZ trade wording. Do not invent details. If information is missing, put it in missing_information. If a line item or value is uncertain, put the concern in confidence_warnings and confidence_note. Return only structured JSON matching the schema.
+
+Specialist routing:
+- This transcript was classified as "${classification.specialist}" because: ${classification.reason}
+- Follow the selected specialist extractor instructions below while still returning the universal ProcessedQuote schema.
+- The specialist classification affects extraction priorities only. Preserve other clearly stated quote opportunities in optional_quotes.
+
+${specialistInstructions}
 
 Template-driven quoting:
 - You may receive quote_templates belonging to the authenticated user. Use them as reusable business knowledge, not as facts about the current customer/site.
@@ -202,7 +346,7 @@ Keep customer_scope focused on the primary quote, but mention important site cau
           },
           {
             role: "user",
-            content: `Extract a quote draft from this transcript:\n\n${transcript}\n\nAuthenticated user's concise quote template context:\n${JSON.stringify(templateContext, null, 2)}`,
+            content: `Extract a quote draft using the ${classification.specialist} specialist extractor.\n\nTranscript:\n${transcript}\n\nAuthenticated user's concise quote template context:\n${JSON.stringify(templateContext, null, 2)}`,
           },
         ],
         text: {
