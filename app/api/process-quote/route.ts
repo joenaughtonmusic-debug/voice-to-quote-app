@@ -79,14 +79,31 @@ const quoteSchema = {
         type: "object",
         additionalProperties: false,
         properties: {
-          label: { type: "string" },
-          detail: { type: "string" },
+          item_code: { type: "string" },
+          item_name: { type: "string" },
+          item_type: { type: "string" },
+          description: { type: "string" },
           quantity: { type: "string" },
-          unit_rate: { type: "string" },
-          amount: { type: "string" },
-          confidence_note: { type: "string" },
+          unit: { type: "string" },
+          rate: { type: "string" },
+          total: { type: "string" },
+          match_confidence: { type: "string" },
+          match_reason: { type: "string" },
+          needs_review: { type: "boolean" },
         },
-        required: ["label", "detail", "quantity", "unit_rate", "amount", "confidence_note"],
+        required: [
+          "item_code",
+          "item_name",
+          "item_type",
+          "description",
+          "quantity",
+          "unit",
+          "rate",
+          "total",
+          "match_confidence",
+          "match_reason",
+          "needs_review",
+        ],
       },
     },
   },
@@ -162,6 +179,34 @@ function getTemplateContext(value: unknown) {
     })
     .filter(Boolean)
     .slice(0, 12)
+}
+
+function getKnowledgeItemContext(value: unknown) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .map((item) => {
+      const knowledgeItem = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+      const itemCode = typeof knowledgeItem.item_code === "string" ? knowledgeItem.item_code.trim() : ""
+      const itemName = typeof knowledgeItem.item_name === "string" ? knowledgeItem.item_name.trim() : ""
+      const sellPrice =
+        knowledgeItem.sell_price === null || knowledgeItem.sell_price === undefined
+          ? null
+          : Number(knowledgeItem.sell_price)
+
+      if (!itemName) return null
+
+      return {
+        item_code: itemCode,
+        item_name: itemName,
+        item_type: typeof knowledgeItem.item_type === "string" ? knowledgeItem.item_type.trim() : "other",
+        aliases: getStringArray(knowledgeItem.aliases, 12),
+        unit: typeof knowledgeItem.unit === "string" ? knowledgeItem.unit.trim() : "",
+        sell_price: sellPrice !== null && Number.isFinite(sellPrice) ? sellPrice : null,
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 80)
 }
 
 function isQuoteSpecialist(value: unknown): value is QuoteSpecialist {
@@ -285,6 +330,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const transcript = typeof body?.transcript === "string" ? body.transcript.trim() : ""
     const templateContext = getTemplateContext(body?.template_context)
+    const knowledgeItemContext = getKnowledgeItemContext(body?.knowledge_item_context)
 
     if (!transcript) {
       return NextResponse.json({ error: "Transcript text is required." }, { status: 400 })
@@ -305,7 +351,7 @@ export async function POST(request: Request) {
           {
             role: "system",
             content:
-              `You extract quote drafts for NZ gardening and property maintenance businesses. Use plain NZ trade wording. Do not invent details. If information is missing, put it in missing_information. If a line item or value is uncertain, put the concern in confidence_warnings and confidence_note. Return only structured JSON matching the schema.
+              `You extract quote drafts for NZ gardening and property maintenance businesses. Use plain NZ trade wording. Do not invent details. If information is missing, put it in missing_information. If a line item or value is uncertain, put the concern in confidence_warnings and set needs_review true with a clear match_reason. Return only structured JSON matching the schema.
 
 Specialist routing:
 - This transcript was classified as "${classification.specialist}" because: ${classification.reason}
@@ -325,6 +371,19 @@ Template-driven quoting:
 - Replace template variables like {client_name}, {site_address}, {quote_date}, {expiry_date}, {frequency}, and {price_or_estimate_range} with transcript details where available.
 - If a template variable is needed but missing from the transcript, add the variable/detail to missing_information.
 - Return selected_template_id, selected_template_name, template_match_confidence ("high", "medium", "low", or "none"), and learned_rules_applied as practical bullet points explaining exactly which template rules/wording were used.
+
+Knowledge Base JMS line-item matching:
+- You may receive concise knowledge_items belonging to the authenticated user.
+- Match spoken services/materials/equipment/waste to knowledge_items using item_code, item_name, item_type, aliases, and unit.
+- Use knowledge_items sell_price as rate only when the match is confident. Never use or infer a buy/cost price.
+- A knowledge_item with a null sell_price can still be matched, but its rate and total must be empty and needs_review must be true.
+- Never invent an item_code. For unmatched items, item_code must be an empty string.
+- For a confident match, copy item_code, item_name, item_type, and unit exactly from the matched knowledge_item.
+- Calculate total from spoken quantity multiplied by matched sell_price when both are clear.
+- If quantity is missing, uncertain, or cannot be converted safely, keep quantity/total appropriately blank and set needs_review true.
+- If no confident match exists, create an unmatched line item using the spoken description, set match_confidence "none" or "low", explain why in match_reason, and set needs_review true.
+- Examples: "4 hours labour" can match LabourHrs at quantity 4 and its sell_price; "1.5 bags greenwaste" can match A - Greenwaste; "wood chipper" can match Chipper; "stump grinder" can match Stump Grinder.
+- Return every pricing-related spoken item in line_items using the universal structured JMS line-item schema.
 
 Gardening transcription corrections and cautions:
 - Speech-to-text often mishears plant names. Treat "flecks" as likely "flax" when the context is garden plants. Preserve the plant caution in the quote text, and add a confidence warning noting the transcript said "flecks" but likely means flax.
@@ -346,7 +405,7 @@ Keep customer_scope focused on the primary quote, but mention important site cau
           },
           {
             role: "user",
-            content: `Extract a quote draft using the ${classification.specialist} specialist extractor.\n\nTranscript:\n${transcript}\n\nAuthenticated user's concise quote template context:\n${JSON.stringify(templateContext, null, 2)}`,
+            content: `Extract a quote draft using the ${classification.specialist} specialist extractor.\n\nTranscript:\n${transcript}\n\nAuthenticated user's concise quote template context:\n${JSON.stringify(templateContext, null, 2)}\n\nAuthenticated user's concise JMS knowledge item context:\n${JSON.stringify(knowledgeItemContext, null, 2)}`,
           },
         ],
         text: {

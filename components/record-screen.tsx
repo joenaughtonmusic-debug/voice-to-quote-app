@@ -66,6 +66,15 @@ type QuoteTemplateContext = {
   ai_prompt_rules: string[]
 }
 
+type KnowledgeItemContext = {
+  item_code: string
+  item_name: string
+  item_type: string
+  aliases: string[]
+  unit: string
+  sell_price: number | null
+}
+
 function toStringArray(value: unknown, limit = 8) {
   if (Array.isArray(value)) {
     return value
@@ -121,6 +130,51 @@ async function loadQuoteTemplateContext() {
     reusable_wording: getTemplateContentArray(template.template_content, "reusable_customer_wording"),
     ai_prompt_rules: getTemplateContentArray(template.template_content, "ai_prompt_rules"),
   }))
+}
+
+async function loadKnowledgeItemContext(transcript: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser()
+
+  if (userError || !user) {
+    throw new Error(userError?.message ?? "Sign in before matching Knowledge Base items.")
+  }
+
+  const { data, error } = await supabase
+    .from("knowledge_items")
+    .select("item_code, item_name, item_type, aliases, unit, sell_price")
+    .eq("user_id", user.id)
+    .limit(300)
+
+  if (error) {
+    throw new Error(`Could not load Knowledge Base items: ${error.message}`)
+  }
+
+  const transcriptText = transcript.toLowerCase()
+  return (data ?? [])
+    .map((item): KnowledgeItemContext => {
+      const sellPrice = item.sell_price === null || item.sell_price === undefined ? null : Number(item.sell_price)
+
+      return {
+        item_code: String(item.item_code ?? ""),
+        item_name: String(item.item_name ?? ""),
+        item_type: String(item.item_type ?? "other"),
+        aliases: toStringArray(item.aliases, 12),
+        unit: String(item.unit ?? ""),
+        sell_price: sellPrice !== null && Number.isFinite(sellPrice) ? sellPrice : null,
+      }
+    })
+    .map((item) => {
+      const terms = [item.item_code, item.item_name, ...item.aliases].map((term) => term.toLowerCase()).filter(Boolean)
+      const matchScore = terms.reduce((score, term) => score + (transcriptText.includes(term) ? Math.max(2, term.split(/\s+/).length) : 0), 0)
+      const commonTypeScore = ["labour", "waste", "equipment", "vehicle", "chemical"].includes(item.item_type) ? 1 : 0
+      return { item, score: matchScore + commonTypeScore }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 80)
+    .map(({ item }) => item)
 }
 
 export function RecordScreen({
@@ -396,7 +450,10 @@ export function RecordScreen({
       setTranscript(correctedTranscript)
       setStage(2)
 
-      const templateContext = await loadQuoteTemplateContext()
+      const [templateContext, knowledgeItemContext] = await Promise.all([
+        loadQuoteTemplateContext(),
+        loadKnowledgeItemContext(correctedTranscript),
+      ])
       setStage(3)
       const notes = addedNotes.trim()
       const combinedInput = `Voice transcript:\n${correctedTranscript}\n\nAdded notes:\n${notes || "None provided."}`
@@ -406,7 +463,11 @@ export function RecordScreen({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ transcript: combinedInput, template_context: templateContext }),
+        body: JSON.stringify({
+          transcript: combinedInput,
+          template_context: templateContext,
+          knowledge_item_context: knowledgeItemContext,
+        }),
       })
 
       const processedQuote = await quoteResponse.json().catch(() => null)

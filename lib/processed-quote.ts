@@ -1,10 +1,15 @@
 export type QuoteLineItem = {
-  label: string
-  detail: string
+  item_code: string
+  item_name: string
+  item_type: string
+  description: string
   quantity: string
-  unit_rate: string
-  amount: string
-  confidence_note: string
+  unit: string
+  rate: string
+  total: string
+  match_confidence: string
+  match_reason: string
+  needs_review: boolean
 }
 
 export type QuoteOption = {
@@ -99,6 +104,22 @@ function quoteOptionLines(option: QuoteOption) {
     ...option.scope.map((item) => `Scope: ${item}`),
     ...option.notes.map((item) => `Note: ${item}`),
   ].filter(Boolean)
+}
+
+function matchedLineItemLines(items: QuoteLineItem[]) {
+  return items.map((item) =>
+    [
+      item.item_code ? `${item.item_code} · ${item.item_name}` : item.item_name || item.description || "Unmatched item",
+      item.quantity ? `Qty ${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "",
+      item.rate ? `Rate ${item.rate}` : "",
+      item.total ? `Total ${item.total}` : "",
+      item.match_confidence ? `Match ${item.match_confidence}` : "",
+      item.match_reason ? `Reason: ${item.match_reason}` : "",
+      item.needs_review ? "Needs review" : "",
+    ]
+      .filter(Boolean)
+      .join(" | "),
+  )
 }
 
 function splitLines(value: string) {
@@ -205,6 +226,14 @@ export function processedQuoteToEditableSections(quote: ProcessedQuote): Editabl
       kind: "list",
     },
     {
+      key: "matched_jms_line_items",
+      title: "Matched JMS Line Items",
+      content: lines(matchedLineItemLines(quote.line_items)),
+      customer_visible: false,
+      internal_visible: true,
+      kind: "list",
+    },
+    {
       key: "exclusions",
       title: "Exclusions",
       content: lines(quote.exclusions),
@@ -255,7 +284,14 @@ function isEditableQuoteSection(value: unknown): value is EditableQuoteSection {
 
 function quoteSectionsFromSaved(value: unknown, fallbackQuote: ProcessedQuote) {
   if (Array.isArray(value) && value.every(isEditableQuoteSection)) {
-    return value
+    if (value.some((section) => section.key === "matched_jms_line_items") || fallbackQuote.line_items.length === 0) {
+      return value
+    }
+
+    const matchedSection = processedQuoteToEditableSections(fallbackQuote).find(
+      (section) => section.key === "matched_jms_line_items",
+    )
+    return matchedSection ? [...value, matchedSection] : value
   }
 
   return processedQuoteToEditableSections(fallbackQuote)
@@ -265,15 +301,20 @@ function lineItemsFromSaved(value: unknown): QuoteLineItem[] {
   if (!Array.isArray(value)) return []
 
   return value.map((item) => {
-    const lineItem = item && typeof item === "object" ? (item as Partial<QuoteLineItem>) : {}
+    const lineItem = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
 
     return {
-      label: String(lineItem.label ?? ""),
-      detail: String(lineItem.detail ?? ""),
+      item_code: String(lineItem.item_code ?? ""),
+      item_name: String(lineItem.item_name ?? lineItem.label ?? ""),
+      item_type: String(lineItem.item_type ?? ""),
+      description: String(lineItem.description ?? lineItem.detail ?? ""),
       quantity: String(lineItem.quantity ?? ""),
-      unit_rate: String(lineItem.unit_rate ?? ""),
-      amount: String(lineItem.amount ?? ""),
-      confidence_note: String(lineItem.confidence_note ?? ""),
+      unit: String(lineItem.unit ?? ""),
+      rate: String(lineItem.rate ?? lineItem.unit_rate ?? ""),
+      total: String(lineItem.total ?? lineItem.amount ?? ""),
+      match_confidence: String(lineItem.match_confidence ?? ""),
+      match_reason: String(lineItem.match_reason ?? lineItem.confidence_note ?? ""),
+      needs_review: Boolean(lineItem.needs_review),
     }
   })
 }
