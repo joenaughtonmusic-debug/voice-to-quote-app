@@ -5,7 +5,10 @@ import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
+import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
+import { buildCustomerDraftPreviewModel } from "@/lib/customer-preview-render"
 import { buildCustomerQuotePreview, type CustomerQuotePreview } from "@/lib/customer-quote-preview"
+import type { PricingFact } from "@/lib/core/pricing-extraction"
 import {
   processedQuoteToEditableSections,
   type EditableQuoteSection,
@@ -15,7 +18,12 @@ import {
   renderTemplatePreviewSections,
   type SandboxRenderedTemplateSection,
 } from "@/lib/template-preview-sandbox"
-import type { QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
+import {
+  displayTemplateName,
+  type QuoteTemplateLibraryItem,
+  type QuoteTemplateSectionDraft,
+} from "@/lib/template-import-learning"
+import type { TemplateSelectionSource } from "@/lib/template-selection"
 
 type PreviewMode = "standard" | "template"
 
@@ -30,6 +38,9 @@ export function QuoteDraft({
   quoteSections,
   previewMode = "standard",
   templateSections = [],
+  selectedTemplate = null,
+  selectedTemplateSource = "none",
+  pricingFacts,
 }: {
   onBack: () => void
   onSaved: () => void
@@ -39,23 +50,36 @@ export function QuoteDraft({
   quoteSections?: EditableQuoteSection[] | null
   previewMode?: PreviewMode
   templateSections?: QuoteTemplateSectionDraft[]
+  selectedTemplate?: QuoteTemplateLibraryItem | null
+  selectedTemplateSource?: TemplateSelectionSource
+  pricingFacts?: PricingFact[]
 }) {
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveMessage, setSaveMessage] = useState("")
   const [activePreviewMode, setActivePreviewMode] = useState<PreviewMode>(
     previewMode === "template" && templateSections.length > 0 ? "template" : "standard",
   )
-  const customerPreview = buildCustomerQuotePreview(processedQuote, { includeDeckingScope: true })
+  const customerPreviewInput = buildCustomerPreviewQuoteInput({
+    processedQuote,
+    rawTranscript,
+    selectedTemplate,
+    pricingFacts,
+  })
+  const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true })
   const hasTemplatePreview = templateSections.length > 0
   const renderedTemplateSections = hasTemplatePreview
-    ? renderTemplatePreviewSections(templateSections, processedQuote, customerPreview)
+    ? renderTemplatePreviewSections(templateSections, customerPreviewInput as ProcessedQuote, customerPreview, selectedTemplate)
     : []
-  const quoteTitle = processedQuote.quote_title || processedQuote.primary_quote.quote_title || processedQuote.job_type || "Quote"
-  const fallbackScopeItems = [...processedQuote.customer_scope, ...processedQuote.primary_quote.scope, ...processedQuote.primary_quote.notes]
-    .map((item) => item.trim())
-    .filter(Boolean)
-  const scopeItems = customerPreview.scopeItems.length > 0 ? customerPreview.scopeItems : fallbackScopeItems
-  const exclusions = processedQuote.exclusions.map((item) => item.trim()).filter(Boolean)
+  const previewModel = buildCustomerDraftPreviewModel({
+    processedQuote,
+    customerPreview,
+    mode: activePreviewMode,
+    templateSections: renderedTemplateSections,
+    rawTranscript,
+    selectedTemplate: customerPreviewInput.selected_template,
+  })
+  const useAssemblyPreview = Boolean(previewModel.assembly)
+  const rendererPath = useAssemblyPreview ? "assembly" : "legacy"
 
   async function handleSaveDraft() {
     setSaveState("saving")
@@ -120,11 +144,22 @@ export function QuoteDraft({
 
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quote</p>
-            <h3 className="mt-1 text-base font-semibold text-foreground">{quoteTitle}</h3>
+            <h3 className="mt-1 text-base font-semibold text-foreground">{previewModel.quoteTitle}</h3>
             {processedQuote.job_type && <p className="mt-0.5 text-sm text-muted-foreground">{processedQuote.job_type}</p>}
           </div>
 
-          {hasTemplatePreview && (
+          <div className="mt-4 rounded-xl border border-dashed border-border bg-secondary/30 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dev diagnostics</p>
+            <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+              <p>Renderer path: {rendererPath}</p>
+              <p>Selected template: {selectedTemplate ? displayTemplateName(selectedTemplate) : "None"}</p>
+              <p>Selected template source: {selectedTemplateSource}</p>
+              <p>Pricing facts count: {customerPreview.pricingFacts.length}</p>
+              <p>Assembly sections count: {previewModel.assembly?.sections.length ?? 0}</p>
+            </div>
+          </div>
+
+          {hasTemplatePreview && !useAssemblyPreview && (
             <div className="mt-5">
               <div className="flex rounded-xl bg-secondary p-1">
                 {(
@@ -149,13 +184,14 @@ export function QuoteDraft({
             </div>
           )}
 
-          {activePreviewMode === "template" && hasTemplatePreview ? (
+          {!useAssemblyPreview && activePreviewMode === "template" && hasTemplatePreview ? (
             <TemplateCustomerPreview sections={renderedTemplateSections} />
           ) : (
             <StandardCustomerPreview
-              scopeItems={scopeItems}
-              exclusions={exclusions}
+              scopeItems={previewModel.scopeItems}
+              exclusions={previewModel.exclusions}
               customerPreview={customerPreview}
+              assemblySections={previewModel.assembly?.sections ?? []}
             />
           )}
 
@@ -207,11 +243,53 @@ function StandardCustomerPreview({
   scopeItems,
   exclusions,
   customerPreview,
+  assemblySections,
 }: {
   scopeItems: string[]
   exclusions: string[]
   customerPreview: CustomerQuotePreview
+  assemblySections: Array<{ title: string; items: string[] }>
 }) {
+  if (assemblySections.length > 0) {
+    return (
+      <>
+        <div className="mt-5 flex flex-col gap-4">
+          {assemblySections.map((section) => (
+            <section key={section.title}>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</p>
+              <ul className="flex flex-col gap-1.5">
+                {section.items.map((item, index) => (
+                  <li key={`${section.title}-${item}-${index}`} className="flex items-start gap-2 text-sm text-foreground">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4">
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Excludes</p>
+            {exclusions.length > 0 ? (
+              <ul className="flex flex-col gap-1.5">
+                {exclusions.map((exc) => (
+                  <li key={exc} className="flex items-start gap-2 text-sm text-muted-foreground">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
+                    {exc}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">No exclusions captured.</p>
+            )}
+          </div>
+        </div>
+      </>
+    )
+  }
+
   return (
     <>
       {scopeItems.length > 0 && (
@@ -287,14 +365,41 @@ function TemplateCustomerPreview({ sections }: { sections: SandboxRenderedTempla
 }
 
 function CustomerQuotePricingPreview({ preview }: { preview: CustomerQuotePreview }) {
-  const hasPricingSections = Boolean(preview.labourLine) || preview.plantOptions.length > 0 || preview.materialLines.length > 0
+  const hasPricingSections =
+    preview.pricingFacts.length > 0 ||
+    Boolean(preview.labourLine) ||
+    preview.plantOptions.length > 0 ||
+    preview.materialLines.length > 0
   if (!hasPricingSections) return null
 
   return (
     <div className="mt-5 flex flex-col gap-4">
+      {preview.pricingFacts.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Price</p>
+          <div className="divide-y divide-border rounded-xl border border-border">
+            {preview.pricingFacts.map((fact) => (
+              <div key={fact.id} className="px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-medium text-foreground">
+                    {fact.cadenceText ? `Price ${fact.cadenceText}` : "Price"}
+                  </p>
+                  <p className="shrink-0 text-sm font-semibold text-foreground">{fact.amountText}</p>
+                </div>
+                {fact.inclusions.length > 0 && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Includes {fact.inclusions.join(", ")}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {preview.labourLine && (
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Planting labour</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Labour</p>
           <div className="rounded-xl border border-border px-3 py-2.5">
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium text-foreground">{preview.labourLine.label}</p>

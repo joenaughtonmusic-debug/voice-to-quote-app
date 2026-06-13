@@ -10,6 +10,14 @@ test("extracts client name from short Quote for Name sentence", () => {
   assert.equal(clientName, "Sarah")
 })
 
+test("extracts client name from service for Name at address phrasing", () => {
+  const clientName = extractClientNameFromTranscript(
+    "Monthly maintenance for Stella at 6 Tarawera Terrace, St Heliers.",
+  )
+
+  assert.equal(clientName, "Stella")
+})
+
 test("does not treat planting area labels as client names", () => {
   const clientName = extractClientNameFromTranscript("Quote for lower planting area: 11.5m Ficus Tuffi hedge.")
 

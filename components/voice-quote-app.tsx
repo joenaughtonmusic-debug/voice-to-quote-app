@@ -19,7 +19,9 @@ import {
   type ProcessedQuote,
 } from "@/lib/processed-quote"
 import { supabase } from "@/lib/supabase"
-import type { QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
+import type { PricingFact } from "@/lib/core/pricing-extraction"
+import type { QuoteTemplateLibraryItem, QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
+import type { TemplateSelectionSource } from "@/lib/template-selection"
 
 export function VoiceQuoteApp() {
   const [tab, setTab] = useState<Tab>("record")
@@ -32,6 +34,10 @@ export function VoiceQuoteApp() {
   const [quoteSections, setQuoteSections] = useState<EditableQuoteSection[] | null>(null)
   const [draftPreviewMode, setDraftPreviewMode] = useState<CustomerPreviewMode>("standard")
   const [draftTemplateSections, setDraftTemplateSections] = useState<QuoteTemplateSectionDraft[]>([])
+  const [draftSelectedTemplate, setDraftSelectedTemplate] = useState<QuoteTemplateLibraryItem | null>(null)
+  const [draftSelectedTemplateSource, setDraftSelectedTemplateSource] = useState<TemplateSelectionSource>("none")
+  const [draftProcessedQuote, setDraftProcessedQuote] = useState<ProcessedQuote | null>(null)
+  const [draftPricingFacts, setDraftPricingFacts] = useState<PricingFact[]>([])
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
   const [recordResetKey, setRecordResetKey] = useState(0)
   const [fixtureTranscriptForPaste, setFixtureTranscriptForPaste] = useState("")
@@ -61,6 +67,10 @@ export function VoiceQuoteApp() {
     setQuoteSections(null)
     setDraftPreviewMode("standard")
     setDraftTemplateSections([])
+    setDraftSelectedTemplate(null)
+    setDraftSelectedTemplateSource("none")
+    setDraftProcessedQuote(null)
+    setDraftPricingFacts([])
     setEditingDraftId(null)
     setFixtureTranscriptForPaste("")
     setOpenDraftError("")
@@ -85,6 +95,8 @@ export function VoiceQuoteApp() {
     setCorrectedTranscript(nextCorrectedTranscript)
     setProcessedQuote(nextProcessedQuote)
     setQuoteSections(null)
+    setDraftProcessedQuote(null)
+    setDraftPricingFacts([])
     setEditingDraftId(null)
     setCurrentQuoteSaved(false)
     setOpenDraftError("")
@@ -201,6 +213,10 @@ export function VoiceQuoteApp() {
           onPreviewDraft={(options) => {
             setDraftPreviewMode(options.mode)
             setDraftTemplateSections(options.templateSections)
+            setDraftSelectedTemplate(options.selectedTemplate)
+            setDraftSelectedTemplateSource(options.selectedTemplateSource)
+            setDraftProcessedQuote(options.processedQuote)
+            setDraftPricingFacts(options.pricingFacts)
             setDraftOpen(true)
           }}
           onSaved={handleDraftSaved}
@@ -217,12 +233,15 @@ export function VoiceQuoteApp() {
         <QuoteDraft
           onBack={() => setDraftOpen(false)}
           onSaved={handleDraftSaved}
-          rawTranscript={rawTranscript}
-          processedQuote={processedQuote}
+          rawTranscript={correctedTranscript || rawTranscript}
+          processedQuote={draftProcessedQuote ?? processedQuote}
           draftId={editingDraftId}
           quoteSections={quoteSections}
           previewMode={draftPreviewMode}
           templateSections={draftTemplateSections}
+          selectedTemplate={draftSelectedTemplate}
+          selectedTemplateSource={draftSelectedTemplateSource}
+          pricingFacts={draftPricingFacts}
         />
       )}
     </div>

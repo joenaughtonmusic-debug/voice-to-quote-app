@@ -2,7 +2,9 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { buildCustomerQuotePreview, type CustomerPreviewLineItem, type CustomerPreviewQuote } from "./customer-quote-preview"
 import type { PlantCalculatorResult } from "./calculators/planting"
+import { EMPTY_PROCESSED_QUOTE } from "./processed-quote"
 import type { QuoteOption } from "./quote-options"
+import { renderTemplatePreviewSections } from "./template-preview-sandbox"
 
 function lineItem(overrides: Partial<CustomerPreviewLineItem>): CustomerPreviewLineItem {
   return {
@@ -125,6 +127,124 @@ test("builds Sarah customer preview with combined plant options and clean labour
       ["Hardfill / soil removal", "To confirm", ""],
     ],
   )
+})
+
+test("maintenance customer preview does not label labour as planting labour", () => {
+  const quote = {
+    job_type: "maintenance",
+    line_items: [
+      lineItem({
+        item_name: "Garden Labour",
+        item_type: "labour",
+        description: "Maintenance labour for weeding, pruning and herbicide spraying.",
+        quantity: "4 hours",
+        unit: "hours",
+        total: "360.00",
+      }),
+    ],
+    primary_quote: {
+      scope: ["Weeding", "Pruning", "Removal of self-seeded plants", "Plant health checks"],
+      notes: [],
+    },
+  } as CustomerPreviewQuote & { job_type: string }
+
+  const preview = buildCustomerQuotePreview(quote)
+
+  assert.equal(preview.labourLine?.label, "Garden maintenance labour")
+  assert.equal(preview.labourLine?.amount, "$360.00")
+})
+
+test("customer preview resolves common non-planting labour labels", () => {
+  const cases = [
+    ["decking", "Build a deck.", "Decking labour"],
+    ["retaining", "Build retaining wall.", "Retaining labour"],
+    ["unknown", "General visit.", "Labour"],
+  ] as const
+
+  for (const [jobType, scope, expectedLabel] of cases) {
+    const preview = buildCustomerQuotePreview({
+      job_type: jobType,
+      line_items: [
+        lineItem({
+          item_name: "Labour",
+          item_type: "labour",
+          description: scope,
+          total: "100.00",
+        }),
+      ],
+      primary_quote: {
+        scope: [scope],
+        notes: [],
+      },
+    } as CustomerPreviewQuote & { job_type: string })
+
+    assert.equal(preview.labourLine?.label, expectedLabel)
+  }
+})
+
+test("specific imported labour label wins over inferred preview context", () => {
+  const preview = buildCustomerQuotePreview({
+    job_type: "maintenance",
+    line_items: [
+      lineItem({
+        item_name: "Senior Arborist Climbing Labour",
+        item_type: "labour",
+        description: "Garden maintenance visit.",
+        total: "240.00",
+      }),
+    ],
+    primary_quote: {
+      scope: ["Garden maintenance visit."],
+      notes: [],
+    },
+  } as CustomerPreviewQuote & { job_type: string })
+
+  assert.equal(preview.labourLine?.label, "Senior Arborist Climbing Labour")
+})
+
+test("maintenance template preview combines transcript focus with reusable maintenance wording", () => {
+  const quote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    job_type: "maintenance",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "maintenance",
+      scope: ["Weeding", "Pruning", "Removal of self-seeded plants"],
+    },
+  }
+  const preview = buildCustomerQuotePreview(quote)
+
+  const sections = renderTemplatePreviewSections(
+    [
+      {
+        id: "job-scope",
+        template_id: "maintenance-template",
+        display_order: 1,
+        section_name: "Job Scope",
+        section_category: "job_scope",
+        raw_text: "Ongoing garden maintenance visit with tidy up and greenwaste removal.",
+        template_text: "Ongoing garden maintenance visit with tidy up and greenwaste removal.",
+        placeholders: [],
+        customer_facing: true,
+        exportable: false,
+      },
+    ],
+    quote,
+    preview,
+    {
+      id: "maintenance-template",
+      template_name: "Ongoing Garden Maintenance Template",
+      category: "maintenance",
+      default_scope: ["General garden maintenance and plant health checks."],
+    },
+  )
+
+  assert.equal(sections[0]?.renderedText.includes("Weeding"), true)
+  assert.equal(sections[0]?.renderedText.includes("Pruning"), true)
+  assert.equal(sections[0]?.renderedText.includes("Removal of self-seeded plants"), true)
+  assert.equal(sections[0]?.renderedText.includes("Ongoing garden maintenance visit"), true)
+  assert.equal(sections[0]?.renderedText.includes("General garden maintenance and plant health checks."), true)
+  assert.ok(sections[0]?.renderedText.indexOf("Weeding") < sections[0]?.renderedText.indexOf("Ongoing garden maintenance visit"))
 })
 
 test("renders single decking QuoteFacts into customer preview when enabled", () => {

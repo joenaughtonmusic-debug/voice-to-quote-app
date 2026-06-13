@@ -617,6 +617,43 @@ test("non-planting quotes use generic Xero renderer", () => {
   )
 })
 
+test("maintenance display labour labels do not change Xero account or tax mapping", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      ...sarahQuote,
+      job_type: "maintenance",
+      quote_title: "Garden Maintenance Quote",
+      plant_calculator_results: [],
+      quote_options: [],
+      primary_quote: {
+        quote_title: "Garden Maintenance",
+        scope: ["Weeding", "Pruning", "Plant health checks"],
+        notes: [],
+      },
+      line_items: [
+        {
+          item_code: "MAINT-LAB",
+          source_system: "Xero",
+          item_name: "Garden Labour",
+          item_type: "labour",
+          quantity: "4 hours",
+          unit: "hours",
+          final_rate_used: "90",
+          total: "360",
+          account_code: "876",
+          tax_type: "OUTPUT2",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.deepEqual(
+    payload.quote.xeroLineItemsArray.map((item) => [item.Description, item.Quantity, item.UnitAmount, item.ItemCode ?? "", item.AccountCode ?? "", item.TaxType]),
+    [["Labour", 1, 360, "MAINT-LAB", "876", "OUTPUT2"]],
+  )
+})
+
 test("single decking quote exports decking labour and materials from QuoteFacts", () => {
   const payload = buildXeroQuotePayload(
     {

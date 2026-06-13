@@ -15,6 +15,7 @@ import {
   type TemplateSectionCategory,
 } from "@/lib/template-import-learning"
 import { renderTemplateSandboxSections } from "@/lib/template-preview-sandbox"
+import { buildReviewedTemplateUpdatePayload, buildReviewTemplateCreatePayload } from "@/lib/template-review-metadata"
 import { cn } from "@/lib/utils"
 
 const TEMPLATE_CATEGORIES = ["maintenance", "landscaping", "decking", "hedge", "planting", "custom"] as const
@@ -275,33 +276,21 @@ export function TemplatesScreen({ embedded = false }: { embedded?: boolean }) {
       return
     }
 
-    const templateName = importName.trim() || importFilename || "Imported Quote Template"
+    const templatePayload = buildReviewTemplateCreatePayload({
+      userId: user.id,
+      importName,
+      importFilename,
+      sourceText,
+      sectionCount: candidates.length,
+      existingTemplates: templates,
+    })
     setCreatingImport(true)
     setMessage("")
     setError("")
 
     const { data, error } = await supabase
       .from("quote_templates")
-      .insert({
-        user_id: user.id,
-        name: templateName,
-        template_name: templateName,
-        category: "custom",
-        trade: null,
-        job_type: null,
-        source_type: importFilename ? "plain_text_file" : "pasted_text",
-        source_filename: importFilename || null,
-        source_text: sourceText,
-        status: "draft",
-        default_scope: [],
-        default_exclusions: [],
-        default_pricing_structure: [],
-        template_content: {
-          source: "template_import_learning",
-          phase: 3,
-          section_count: candidates.length,
-        },
-      })
+      .insert(templatePayload)
       .select("id")
       .single()
 
@@ -359,17 +348,16 @@ export function TemplatesScreen({ embedded = false }: { embedded?: boolean }) {
       return
     }
 
+    const reviewedTemplate = templates.find((template) => template.id === reviewTemplateId) ?? null
+    const updatePayload = buildReviewedTemplateUpdatePayload({
+      template: reviewedTemplate,
+      sectionCount: reviewSections.length,
+      reviewedAt: new Date().toISOString(),
+    })
+
     const { error: updateError } = await supabase
       .from("quote_templates")
-      .update({
-        status: "reviewed",
-        template_content: {
-          source: "template_import_learning",
-          phase: 3,
-          section_count: reviewSections.length,
-          reviewed_at: new Date().toISOString(),
-        },
-      })
+      .update(updatePayload)
       .eq("id", reviewTemplateId)
       .eq("user_id", user.id)
 

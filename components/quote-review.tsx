@@ -12,6 +12,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerQuotePreview } from "@/lib/customer-quote-preview"
 import {
   editableSectionsToProcessedQuote,
@@ -29,13 +30,21 @@ import {
   type QuoteTemplateLibraryItem,
   type QuoteTemplateSectionDraft,
 } from "@/lib/template-import-learning"
+import { resolveTemplateSelection, type TemplateSelectionSource } from "@/lib/template-selection"
 import { renderTemplatePreviewSections } from "@/lib/template-preview-sandbox"
 import { quoteFactsFromProcessedQuote } from "@/lib/core/quote-facts"
 import { buildQuoteReviewNotices, type ReviewNotice } from "@/lib/core/review-notices"
+import { buildPricingReviewNotices, extractPricing, type PricingFact } from "@/lib/core/pricing-extraction"
 import {
+  customerVisibleTemplateRecommendation,
   recommendTemplateForQuote,
   type TemplateRecommendation,
 } from "@/lib/template-recommendation"
+import {
+  isMissingOptionalTemplateColumnError,
+  TEMPLATE_RECOMMENDATION_FALLBACK_SELECT,
+  TEMPLATE_RECOMMENDATION_SELECT,
+} from "@/lib/template-recommendation-loading"
 import { deckingReviewFromQuoteFacts, type DeckingReviewModel } from "@/lib/trades/decking/review"
 import { retainingReviewFromQuoteFacts, type RetainingReviewModel } from "@/lib/trades/retaining/review"
 
@@ -57,7 +66,14 @@ export function QuoteReview({
   initialSections,
 }: {
   onClose: () => void
-  onPreviewDraft: (options: { mode: CustomerPreviewMode; templateSections: QuoteTemplateSectionDraft[] }) => void
+  onPreviewDraft: (options: {
+    mode: CustomerPreviewMode
+    templateSections: QuoteTemplateSectionDraft[]
+    selectedTemplate: QuoteTemplateLibraryItem | null
+    selectedTemplateSource: TemplateSelectionSource
+    processedQuote: ProcessedQuote
+    pricingFacts: PricingFact[]
+  }) => void
   onSaved: () => void
   rawTranscript: string
   originalTranscript: string
@@ -77,6 +93,7 @@ export function QuoteReview({
   const [reviewedTemplates, setReviewedTemplates] = useState<QuoteTemplateLibraryItem[]>([])
   const [templateSectionsByTemplateId, setTemplateSectionsByTemplateId] = useState<Record<string, QuoteTemplateSectionDraft[]>>({})
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
+  const [selectedTemplateSource, setSelectedTemplateSource] = useState<TemplateSelectionSource>("none")
   const [selectedTemplateSections, setSelectedTemplateSections] = useState<QuoteTemplateSectionDraft[]>([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [templateSectionsLoading, setTemplateSectionsLoading] = useState(false)
@@ -87,29 +104,45 @@ export function QuoteReview({
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
 
   const editedQuoteForReview = editableSectionsToProcessedQuote(sections, processedQuote)
-  const customerPreview = buildCustomerQuotePreview(editedQuoteForReview, { includeDeckingScope: true })
+  const selectedTemplate = reviewedTemplates.find((template) => template.id === selectedTemplateId) ?? null
+  const quoteTextParts = [
+    editedQuoteForReview.quote_title,
+    editedQuoteForReview.job_type,
+    editedQuoteForReview.primary_quote?.quote_title,
+    editedQuoteForReview.primary_quote?.job_type,
+    ...(editedQuoteForReview.primary_quote?.scope ?? []),
+    ...(editedQuoteForReview.primary_quote?.notes ?? []),
+    ...(editedQuoteForReview.customer_scope ?? []),
+    ...(editedQuoteForReview.materials ?? []),
+    editedQuoteForReview.greenwaste,
+    ...(editedQuoteForReview.exclusions ?? []),
+    ...(editedQuoteForReview.internal_notes ?? []),
+    ...(editedQuoteForReview.missing_information ?? []),
+    ...(editedQuoteForReview.confidence_warnings ?? []),
+  ]
+  const pricingFacts = extractPricing([rawTranscript, originalTranscript, ...quoteTextParts].filter(Boolean).join("\n")).pricing
+  const customerPreviewInput = buildCustomerPreviewQuoteInput({
+    processedQuote: editedQuoteForReview,
+    rawTranscript,
+    originalTranscript,
+    selectedTemplate,
+    pricingFacts,
+  })
+  const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true })
   const quoteFacts = quoteFactsFromProcessedQuote(editedQuoteForReview)
   const deckingReview = deckingReviewFromQuoteFacts(quoteFacts)
   const retainingReview = retainingReviewFromQuoteFacts(quoteFacts)
-  const reviewNotices = buildQuoteReviewNotices({
+  const reviewNotices = [
+    ...buildQuoteReviewNotices({
     rawTranscript,
     originalTranscript,
-    quoteTextParts: [
-      editedQuoteForReview.quote_title,
-      editedQuoteForReview.job_type,
-      editedQuoteForReview.primary_quote?.quote_title,
-      editedQuoteForReview.primary_quote?.job_type,
-      ...(editedQuoteForReview.primary_quote?.scope ?? []),
-      ...(editedQuoteForReview.primary_quote?.notes ?? []),
-      ...(editedQuoteForReview.customer_scope ?? []),
-      ...(editedQuoteForReview.materials ?? []),
-      editedQuoteForReview.greenwaste,
-      ...(editedQuoteForReview.exclusions ?? []),
-      ...(editedQuoteForReview.internal_notes ?? []),
-      ...(editedQuoteForReview.missing_information ?? []),
-      ...(editedQuoteForReview.confidence_warnings ?? []),
-    ],
-  })
+    quoteTextParts,
+    }),
+    ...buildPricingReviewNotices({
+      pricing: pricingFacts,
+      lineItems: editedQuoteForReview.line_items,
+    }),
+  ]
   const templateRecommendation = recommendTemplateForQuote({
     facts: quoteFacts,
     templates: reviewedTemplates,
@@ -133,9 +166,18 @@ export function QuoteReview({
     )
   const customerQuoteOptionGroups = groupCustomerQuoteOptions(editedQuoteForReview.quote_options)
   const hasUnsavedChanges = dirtyKeys.size > 0
+  const displayedTemplateRecommendation = customerVisibleTemplateRecommendation({
+    recommendation: templateRecommendation,
+    selectedTemplateId: selectedTemplate?.id,
+  })
   const renderedTemplatePreviewSections =
     selectedTemplateSections.length > 0
-      ? renderTemplatePreviewSections(selectedTemplateSections, editedQuoteForReview, customerPreview)
+      ? renderTemplatePreviewSections(
+          selectedTemplateSections,
+          customerPreviewInput as ProcessedQuote,
+          customerPreview,
+          selectedTemplate,
+        )
       : []
 
   useEffect(() => {
@@ -148,13 +190,24 @@ export function QuoteReview({
         return
       }
 
+      const userId = user.id
       setTemplatesLoading(true)
-      const { data, error } = await supabase
-        .from("quote_templates")
-        .select("id, user_id, name, template_name, trade, job_type, source_type, source_filename, source_text, status, created_at, updated_at")
-        .eq("user_id", user.id)
-        .in("status", ["reviewed", "active"])
-        .order("updated_at", { ascending: false })
+      async function selectReviewedTemplates(selectFields: string) {
+        return supabase
+          .from("quote_templates")
+          .select(selectFields)
+          .eq("user_id", userId)
+          .in("status", ["reviewed", "active"])
+          .order("updated_at", { ascending: false })
+      }
+
+      let { data, error } = await selectReviewedTemplates(TEMPLATE_RECOMMENDATION_SELECT)
+
+      if (error && isMissingOptionalTemplateColumnError(error)) {
+        const fallbackResult = await selectReviewedTemplates(TEMPLATE_RECOMMENDATION_FALLBACK_SELECT)
+        data = fallbackResult.data
+        error = fallbackResult.error
+      }
 
       if (!active) return
       setTemplatesLoading(false)
@@ -164,7 +217,7 @@ export function QuoteReview({
         return
       }
 
-      const templates = (data ?? []) as QuoteTemplateLibraryItem[]
+      const templates = ((data ?? []) as unknown) as QuoteTemplateLibraryItem[]
       setReviewedTemplates(templates)
 
       const templateIds = templates.map((template) => template.id).filter(Boolean)
@@ -241,6 +294,37 @@ export function QuoteReview({
       active = false
     }
   }, [selectedTemplateId])
+
+  useEffect(() => {
+    if (reviewedTemplates.length === 0 || selectedTemplateSource === "manual") return
+
+    const resolution = resolveTemplateSelection({
+      templates: reviewedTemplates,
+      selectedTemplateId: editedQuoteForReview.selected_template_id,
+      selectedTemplateName: editedQuoteForReview.selected_template_name,
+      recommendation: templateRecommendation,
+      facts: quoteFacts,
+      jobType: editedQuoteForReview.primary_quote?.job_type || editedQuoteForReview.job_type,
+      trade: editedQuoteForReview.job_type,
+      currentTemplateId: selectedTemplateId,
+      currentSource: selectedTemplateSource,
+    })
+
+    if (resolution.templateId !== selectedTemplateId || resolution.source !== selectedTemplateSource) {
+      setSelectedTemplateId(resolution.templateId)
+      setSelectedTemplateSource(resolution.source)
+    }
+  }, [
+    selectedTemplateId,
+    selectedTemplateSource,
+    reviewedTemplates,
+    editedQuoteForReview.selected_template_id,
+    editedQuoteForReview.selected_template_name,
+    templateRecommendation,
+    quoteFacts,
+    editedQuoteForReview.primary_quote?.job_type,
+    editedQuoteForReview.job_type,
+  ])
 
   async function loadExportMappingsForPayload(): Promise<ExportCategoryMapping[]> {
     if (!user) return []
@@ -379,14 +463,25 @@ export function QuoteReview({
           </section>
 
           {view === "internal" && reviewNotices.length > 0 && <ReviewNoticesCard notices={reviewNotices} />}
+          {view === "internal" && pricingFacts.length > 0 && <PricingFactsCard pricing={pricingFacts} />}
+          {view === "internal" && (
+            <TemplateDiagnosticsCard
+              templates={reviewedTemplates}
+              selectedTemplate={selectedTemplate}
+              selectedTemplateSource={selectedTemplateSource}
+              recommendation={templateRecommendation}
+            />
+          )}
           {view === "internal" && deckingReview && <DeckingReviewCard review={deckingReview} />}
           {view === "internal" && retainingReview && <RetainingReviewCard review={retainingReview} />}
 
           {view === "customer" && (
             <TemplatePreviewControls
               templates={reviewedTemplates}
-              recommendation={templateRecommendation}
+              recommendation={displayedTemplateRecommendation}
               selectedTemplateId={selectedTemplateId}
+              selectedTemplate={selectedTemplate}
+              selectedTemplateSource={selectedTemplateSource}
               templateSectionsAvailable={selectedTemplateSections.length > 0}
               previewMode={customerPreviewMode}
               loadingTemplates={templatesLoading}
@@ -394,6 +489,7 @@ export function QuoteReview({
               message={templatePreviewMessage}
               onTemplateChange={(templateId) => {
                 setSelectedTemplateId(templateId)
+                setSelectedTemplateSource("manual")
                 setCustomerPreviewMode("standard")
               }}
               onPreviewModeChange={setCustomerPreviewMode}
@@ -432,6 +528,10 @@ export function QuoteReview({
               onPreviewDraft({
                 mode,
                 templateSections: mode === "template" ? selectedTemplateSections : [],
+                selectedTemplate,
+                selectedTemplateSource,
+                processedQuote: editedQuoteForReview,
+                pricingFacts,
               })
             }}
             className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border border-primary/30 bg-accent py-3.5 text-sm font-semibold text-primary active:scale-[0.99]"
@@ -698,6 +798,126 @@ function RetainingReviewCard({ review }: { review: RetainingReviewModel }) {
   )
 }
 
+function PricingFactsCard({ pricing }: { pricing: PricingFact[] }) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Pricing Facts</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Internal extraction only. Review before using for pricing or export.</p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="grid gap-2">
+        {pricing.map((fact) => (
+          <div key={fact.id} className="rounded-xl border border-border bg-background p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-foreground">{pricingFactTitle(fact)}</p>
+                <p className="mt-1 text-xs capitalize text-muted-foreground">
+                  {fact.type.replaceAll("_", " ")} · {fact.confidence}
+                </p>
+              </div>
+              {fact.cadence && (
+                <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">
+                  {fact.cadence.replaceAll("_", " ")}
+                </span>
+              )}
+            </div>
+            {fact.inclusions.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Inclusions</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-foreground">
+                  {fact.inclusions.map((inclusion) => (
+                    <li key={inclusion}>{inclusion}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">Source: {fact.source_text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function TemplateDiagnosticsCard({
+  templates,
+  selectedTemplate,
+  selectedTemplateSource,
+  recommendation,
+}: {
+  templates: QuoteTemplateLibraryItem[]
+  selectedTemplate: QuoteTemplateLibraryItem | null
+  selectedTemplateSource: TemplateSelectionSource
+  recommendation: TemplateRecommendation | null
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Template Diagnostics</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Internal template loading and selection state.</p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="grid gap-2 text-xs text-muted-foreground">
+        <p>
+          Loaded templates: <span className="font-semibold text-foreground">{templates.length}</span>
+        </p>
+        <p>
+          Selected:{" "}
+          <span className="font-semibold text-foreground">
+            {selectedTemplate ? displayTemplateName(selectedTemplate) : "None"}
+          </span>{" "}
+          ({selectedTemplateSource})
+        </p>
+        <p>
+          Recommendation:{" "}
+          <span className="font-semibold text-foreground">
+            {recommendation ? `${recommendation.templateName} (${recommendation.confidence} · ${recommendation.score})` : "None"}
+          </span>
+        </p>
+        {templates.length > 0 && (
+          <div className="rounded-xl border border-border bg-background p-3">
+            <p className="mb-2 font-semibold uppercase tracking-wide text-muted-foreground">Eligible templates</p>
+            <ul className="grid gap-1">
+              {templates.map((template) => (
+                <li key={template.id}>
+                  {displayTemplateName(template)} ·{" "}
+                  {[template.category, template.job_type, template.trade, template.status].filter(Boolean).join(" · ") ||
+                    "metadata not set"}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function pricingFactTitle(fact: PricingFact) {
+  if (fact.type === "price_range" && typeof fact.amount_min === "number" && typeof fact.amount_max === "number") {
+    return `${money(fact.amount_min)} - ${money(fact.amount_max)}`
+  }
+
+  if (typeof fact.amount === "number") return money(fact.amount)
+  return fact.label || "Pricing fact"
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
 function CustomerQuoteOptionsCard({ groups }: { groups: CustomerQuoteOptionGroup[] }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -732,6 +952,8 @@ function TemplatePreviewControls({
   templates,
   recommendation,
   selectedTemplateId,
+  selectedTemplate,
+  selectedTemplateSource,
   templateSectionsAvailable,
   previewMode,
   loadingTemplates,
@@ -744,6 +966,8 @@ function TemplatePreviewControls({
   templates: QuoteTemplateLibraryItem[]
   recommendation: TemplateRecommendation | null
   selectedTemplateId: string
+  selectedTemplate: QuoteTemplateLibraryItem | null
+  selectedTemplateSource: TemplateSelectionSource
   templateSectionsAvailable: boolean
   previewMode: CustomerPreviewMode
   loadingTemplates: boolean
@@ -780,6 +1004,18 @@ function TemplatePreviewControls({
           ))}
         </select>
       </label>
+
+      {selectedTemplate && (
+        <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Selected Template</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{displayTemplateName(selectedTemplate)}</p>
+          <p className="mt-1 text-xs capitalize text-muted-foreground">
+            {[selectedTemplate.category, selectedTemplate.trade, selectedTemplate.job_type].filter(Boolean).join(" · ") ||
+              "Metadata not set"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Selection source: {selectedTemplateSource}</p>
+        </div>
+      )}
 
       {recommendation && (
         <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3">

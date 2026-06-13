@@ -36,6 +36,14 @@ export type QuoteTemplateLibraryItem = {
   template_name?: string | null
   trade?: string | null
   job_type?: string | null
+  category?: string | null
+  document_type?: string | null
+  common_line_items?: unknown
+  default_scope?: unknown
+  default_exclusions?: unknown
+  default_pricing_structure?: unknown
+  template_content?: unknown
+  metadata?: unknown
   source_type?: string | null
   source_filename?: string | null
   source_text?: string | null

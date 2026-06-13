@@ -1,4 +1,5 @@
-import type { QuoteTemplateSectionDraft, TemplateImportPlaceholder } from "./template-import-learning"
+import type { QuoteTemplateLibraryItem, QuoteTemplateSectionDraft, TemplateImportPlaceholder } from "./template-import-learning"
+import type { CustomerPreviewPricingFact } from "./customer-quote-preview"
 import {
   quoteFactsForCategory,
   quoteFactsFromProcessedQuote,
@@ -99,16 +100,39 @@ function quotePlaceholderValues(
   }
 }
 
+function templateDefaultScope(template?: QuoteTemplateLibraryItem | null) {
+  const content = template?.template_content
+  const contentScope =
+    content && typeof content === "object"
+      ? stringParts([
+          (content as Record<string, unknown>).reusable_customer_wording,
+          (content as Record<string, unknown>).default_scope,
+          (content as Record<string, unknown>).customer_scope,
+        ])
+      : []
+
+  return [...contentScope, ...stringParts(template?.default_scope)]
+}
+
+function stringParts(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(stringParts)
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }
+  if (!value || typeof value !== "object") return []
+  return Object.values(value as Record<string, unknown>).flatMap(stringParts)
+}
+
 function metadataFieldFact(facts: QuoteFact[], field: string) {
   return facts.find((fact) => fact.metadata?.field === field && fact.description.trim())
 }
 
 function preferredFactsForCategory(facts: QuoteFact[], category: QuoteFactCategory) {
   const categoryFacts = quoteFactsForCategory(facts, category)
-  if (category !== "job_scope") return categoryFacts
-
-  const extractedScopeFacts = categoryFacts.filter((fact) => fact.sourceField !== "customer_scope")
-  return extractedScopeFacts.length > 0 ? extractedScopeFacts : categoryFacts
+  return categoryFacts
 }
 
 function joinedFactDescriptions(facts: QuoteFact[]) {
@@ -130,7 +154,7 @@ function labourScopeFromPreview(preview: CustomerQuotePreview | undefined) {
   if (!preview?.labourLine) return undefined
 
   const amount = preview.labourLine.amount?.trim()
-  return ["Planting labour allowance.", amount].filter(Boolean).join("\n")
+  return [`${preview.labourLine.label} allowance.`, amount].filter(Boolean).join("\n")
 }
 
 function plantOptionsFromPreview(preview: CustomerQuotePreview | undefined) {
@@ -173,6 +197,39 @@ function uniqueLines(values: string[]) {
     seen.add(key)
     return true
   })
+}
+
+function combineJobScopeText({
+  quoteScope,
+  sectionText,
+  defaultScope,
+}: {
+  quoteScope?: string
+  sectionText: string
+  defaultScope: string[]
+}) {
+  return uniqueLines([
+    ...(quoteScope ?? "").split(/\r?\n/),
+    ...sectionText.split(/\r?\n/),
+    ...defaultScope,
+  ])
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+}
+
+function pricingSectionText(pricingFacts: CustomerPreviewPricingFact[]) {
+  return pricingFacts
+    .map((fact) =>
+      [
+        fact.cadenceText ? `Price ${fact.cadenceText}: ${fact.amountText}` : `Price: ${fact.amountText}`,
+        fact.inclusions.length > 0 ? `Includes ${fact.inclusions.join(", ")}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .filter(Boolean)
+    .join("\n")
 }
 
 function renderSectionText(
@@ -219,28 +276,63 @@ export function renderTemplatePreviewSections(
   sections: QuoteTemplateSectionDraft[],
   quote: ProcessedQuote,
   preview: CustomerQuotePreview,
+  selectedTemplate?: QuoteTemplateLibraryItem | null,
 ): SandboxRenderedTemplateSection[] {
   const values = quotePlaceholderValues(quote, preview)
+  const defaultScope = templateDefaultScope(selectedTemplate)
+  const hasPricingSection = sections.some((section) =>
+    /\b(pricing|price|investment|total)\b/i.test(`${section.section_name ?? ""} ${section.section_category ?? ""} ${section.raw_text ?? ""} ${section.template_text ?? ""}`),
+  )
+  const customerPriceText = pricingSectionText(preview.pricingFacts)
 
-  return [...sections]
+  const renderedSections = [...sections]
     .filter((section) => section.customer_facing !== false)
     .sort((a, b) => a.display_order - b.display_order)
     .map((section) => {
       const rawSourceText = sectionTemplateText(section)
       const fallback = placeholderFallbackForCategory(String(section.section_category ?? ""))
+      const isPlainJobScope =
+        section.section_category === "job_scope" && rawSourceText.trim() && !sectionHasSafePlaceholder(rawSourceText)
       const sourceText =
-        sectionHasSafePlaceholder(rawSourceText) || !fallback || section.section_category === "terms" || section.section_category === "template_title"
+        isPlainJobScope
+          ? combineJobScopeText({
+              quoteScope: values["{{job_scope}}"],
+              sectionText: rawSourceText,
+              defaultScope,
+            })
+          : sectionHasSafePlaceholder(rawSourceText) || !fallback || section.section_category === "terms" || section.section_category === "template_title"
           ? rawSourceText
           : fallback
       const rendered = renderSectionText(sourceText, values)
+      const renderedText =
+        section.section_category === "job_scope"
+          ? combineJobScopeText({
+              quoteScope: rendered.renderedText,
+              sectionText: "",
+              defaultScope,
+            })
+          : rendered.renderedText
 
       return {
         id: section.id,
         displayOrder: section.display_order,
         sectionName: section.section_name?.trim() || "Untitled section",
         category: String(section.section_category ?? "custom"),
-        renderedText: rendered.renderedText,
+        renderedText,
         missingPlaceholders: rendered.missingPlaceholders,
       }
     })
+
+  if (!hasPricingSection && customerPriceText) {
+    renderedSections.push({
+      id: "pricing-facts",
+      displayOrder: Number.MAX_SAFE_INTEGER,
+      sectionName: "Price",
+      category: "pricing",
+      renderedText: customerPriceText,
+      missingPlaceholders: [],
+    })
+  }
+
+  return renderedSections
 }

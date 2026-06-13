@@ -11,7 +11,7 @@ function hasAccessNote(text: string) {
 }
 
 function hasWasteRemovalSignal(text: string) {
-  return /\b(waste|rubbish|debris|offcuts|disposal|dispose|removal|cart\s+away|take\s+away)\b|\bremove\s+(?:existing|old)\s+(?:deck|decking|boards?)\b|\bremove\s+old\s+decking\b/i.test(
+  return /\b(waste|rubbish|debris|offcuts|disposal|dispose|removal|cart\s+away|take\s+away)\b|\bremove\s+(?:existing|old)\s+(?:deck|decking|boards?)\b|\bremove\s+old\s+decking\b|\bclient\s+(?:to\s+remove|removing|disposing)\b/i.test(
     text,
   )
 }

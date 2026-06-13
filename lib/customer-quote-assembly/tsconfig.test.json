@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/customer-quote-assembly-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./index.ts",
+    "./assembler.ts",
+    "./maintenance.ts",
+    "./types.ts",
+    "../address-extraction.ts",
+    "../client-name-extraction.ts",
+    "../processed-quote.ts",
+    "../core/pricing-extraction/index.ts",
+    "../core/pricing-extraction/extractor.ts",
+    "../core/pricing-extraction/review.ts",
+    "../core/pricing-extraction/types.ts"
+  ]
+}

@@ -1,5 +1,7 @@
 import type { PlantCalculatorResult } from "./calculators/planting"
+import type { PricingFact } from "./core/pricing-extraction"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
+import { resolveServiceLineLabel } from "./core/service-line-labels"
 import { renderDeckingCustomerScopeFromQuoteFacts } from "./trades/decking/customer-renderer"
 import { renderRetainingCustomerScopeFromQuoteFacts } from "./trades/retaining/customer-renderer"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote, type QuoteLineItem } from "./processed-quote"
@@ -44,6 +46,7 @@ export type CustomerPreviewQuote = {
   quote_options?: QuoteOption[]
   plant_calculator_results?: PlantCalculatorResult[]
   selected_template?: SelectedQuoteTemplate | null
+  pricing_facts?: PricingFact[]
 }
 
 export type CustomerPreviewPlantOption = {
@@ -65,9 +68,17 @@ export type CustomerPreviewMaterialLine = {
 export type CustomerQuotePreview = {
   scopeItems: string[]
   rendered: TemplateRenderOutput
+  pricingFacts: CustomerPreviewPricingFact[]
   labourLine?: CustomerPreviewMaterialLine
   plantOptions: CustomerPreviewPlantOption[]
   materialLines: CustomerPreviewMaterialLine[]
+}
+
+export type CustomerPreviewPricingFact = {
+  id: string
+  amountText: string
+  cadenceText?: string
+  inclusions: string[]
 }
 
 export type CustomerQuotePreviewOptions = {
@@ -161,6 +172,73 @@ function lineItemText(item: CustomerPreviewLineItem) {
   return [item.item_code, item.item_name, item.item_type, item.description, item.match_reason].join(" ")
 }
 
+function quoteText(quote: CustomerPreviewQuote) {
+  const extras = quote as CustomerPreviewQuote & CustomerPreviewQuoteExtras
+  return [
+    extras.job_type,
+    extras.quote_title,
+    extras.primary_quote?.job_type,
+    extras.primary_quote?.quote_title,
+    ...(quote.customer_scope ?? []),
+    ...(quote.primary_quote?.scope ?? []),
+    ...(quote.primary_quote?.notes ?? []),
+    ...(quote.internal_notes ?? []),
+    ...(quote.materials ?? []),
+    quote.greenwaste,
+  ].join(" ")
+}
+
+function fallbackCustomerScope(quote: CustomerPreviewQuote) {
+  return [
+    ...(quote.customer_scope ?? []),
+    ...(quote.primary_quote?.scope ?? []),
+    ...(quote.primary_quote?.notes ?? []),
+    ...selectedTemplateScope(quote.selected_template),
+  ]
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+}
+
+function selectedTemplateScope(template?: SelectedQuoteTemplate | null): string[] {
+  const content = template?.template_content
+  const contentScope =
+    content && typeof content === "object"
+      ? stringParts([
+          (content as Record<string, unknown>).reusable_customer_wording,
+          (content as Record<string, unknown>).default_scope,
+          (content as Record<string, unknown>).customer_scope,
+        ])
+      : []
+
+  return [...contentScope, ...stringParts(template?.default_scope)]
+}
+
+function stringParts(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(stringParts)
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  }
+  if (!value || typeof value !== "object") return []
+  return Object.values(value as Record<string, unknown>).flatMap(stringParts)
+}
+
+function hasPlantingIntent(quote: CustomerPreviewQuote) {
+  const text = quoteText(quote)
+  const hasPlantOptions = (quote.quote_options ?? []).some((option) => option.category === "planting" && option.lineItems.length > 0)
+  const hasPlantCalculator = (quote.plant_calculator_results ?? []).some((result) => result.plant_name || result.plant_count)
+
+  return Boolean(
+    hasPlantOptions ||
+      hasPlantCalculator ||
+      /\b(supply and install|plant supply|supply plants|install plants|hedge planting|planting area|plant options?|new hedge)\b/i.test(
+        text,
+      ),
+  )
+}
+
 function findLabourLine(quote: CustomerPreviewQuote): CustomerPreviewMaterialLine | undefined {
   const labourItems = quote.line_items.filter((item) => /\blabou?r\b/i.test(lineItemText(item)))
   const priced = labourItems
@@ -172,8 +250,15 @@ function findLabourLine(quote: CustomerPreviewQuote): CustomerPreviewMaterialLin
   if (!labour) return undefined
 
   return {
-    id: "planting-labour",
-    label: "Planting labour",
+    id: "labour",
+    label: resolveServiceLineLabel({
+      kind: "labour",
+      item: labour.item,
+      jobType: (quote as CustomerPreviewQuote & CustomerPreviewQuoteExtras).job_type,
+      selectedTemplate: quote.selected_template,
+      quoteTextParts: [quoteText(quote)],
+      hasPlantingIntent: hasPlantingIntent(quote),
+    }),
     amount: money(labour.total),
   }
 }
@@ -210,6 +295,34 @@ function findMaterialLines(quote: CustomerPreviewQuote) {
   }
 
   return lines
+}
+
+function moneyWithoutForcedCents(value: number) {
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+function pricingCadenceText(cadence: PricingFact["cadence"]) {
+  if (cadence === "per_visit") return "per visit"
+  if (cadence === "per_month") return "per month"
+  if (cadence === "per_week") return "per week"
+  if (cadence === "monthly") return "monthly"
+  return undefined
+}
+
+function customerPricingFacts(quote: CustomerPreviewQuote): CustomerPreviewPricingFact[] {
+  return (quote.pricing_facts ?? [])
+    .filter((fact) => fact.type === "fixed_price" && typeof fact.amount === "number")
+    .map((fact) => ({
+      id: fact.id,
+      amountText: moneyWithoutForcedCents(fact.amount as number),
+      cadenceText: pricingCadenceText(fact.cadence),
+      inclusions: fact.inclusions,
+    }))
 }
 
 function normalisedLineItem(item: CustomerPreviewLineItem): QuoteLineItem {
@@ -293,12 +406,14 @@ export function buildCustomerQuotePreview(
     : []
   const deckingScopeItems = options.includeDeckingScope ? renderDeckingCustomerScopeFromQuoteFacts(quoteFacts) : []
   const retainingScopeItems = options.includeRetainingScope ? renderRetainingCustomerScopeFromQuoteFacts(quoteFacts) : []
+  const renderedScopeItems = rendered.customerScope.length > 0 ? rendered.customerScope : fallbackCustomerScope(quote)
   const scopeItems =
-    retainingScopeItems.length > 0 ? retainingScopeItems : deckingScopeItems.length > 0 ? deckingScopeItems : rendered.customerScope
+    retainingScopeItems.length > 0 ? retainingScopeItems : deckingScopeItems.length > 0 ? deckingScopeItems : renderedScopeItems
 
   return {
     scopeItems,
     rendered,
+    pricingFacts: customerPricingFacts(quote),
     labourLine: findLabourLine(quote),
     plantOptions,
     materialLines,

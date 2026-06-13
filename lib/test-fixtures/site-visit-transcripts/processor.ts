@@ -66,16 +66,36 @@ function productFacts(text: string) {
   return facts
 }
 
+function hasWasteRemovalNotRequired(text: string) {
+  return /\bno\s+(?:waste\s+)?removal\s+(?:needed|required)\b|\bno\s+disposal\s+(?:needed|required)\b|\bclient\s+(?:to\s+remove|removing|disposing)\b/i.test(
+    text,
+  )
+}
+
+function hasWasteRemovalDetected(text: string) {
+  return /\bremove\s+(?:existing|old)\s+(?:deck|decking|boards?|wall|soil)\b|\bwaste\s+removal\b|\bdispose|disposal|cart\s+away|take\s+away\b|\bhardfill\b|\bold\s+soil\b/i.test(
+    text,
+  )
+}
+
+function hasRemovalDetected(text: string) {
+  return /\bremove\s+(?:existing|old)\s+(?:deck|decking|boards?|wall|soil)\b|\bremoval\s+calculator\b|\bwaste\s+removal\b/i.test(text)
+}
+
 function siteConditionFacts(text: string) {
   const facts: string[] = []
+  const wasteRemovalNotRequired = hasWasteRemovalNotRequired(text)
 
   if (/\b(access\s+is\s+poor|poor\s+access|steep\s+steps|access\s+.*\bpoor\b)\b/i.test(text)) facts.push("access:poor")
   if (/\baccess\s+is\s+(?:straightforward|normal|good|easy)\b/i.test(text)) facts.push("access:straightforward")
   if (/\bdrainage|novaflow|scoria\b/i.test(text)) facts.push("drainage:detected")
-  if (/\bremove|removal|cart\s+away|take\s+away|waste|green\s?waste|hardfill|old\s+soil\b/i.test(text)) {
+  if (wasteRemovalNotRequired) {
+    facts.push("waste:not_required")
+    facts.push("removal:not_required")
+  } else if (hasWasteRemovalDetected(text)) {
     facts.push("waste:detected")
   }
-  if (/\bremove\s+existing\s+deck\b|\bremoval\s+calculator\b/i.test(text)) facts.push("removal:detected")
+  if (!wasteRemovalNotRequired && hasRemovalDetected(text)) facts.push("removal:detected")
   if (/\bposts?\s+(?:are\s+)?still\s+in\s+good\s+condition\b|\bposts?\s+(?:(?:are\s+)?retained|stay|(?:are\s+)?staying)\b/i.test(text)) {
     facts.push("existing_posts:retained")
   }
@@ -143,7 +163,9 @@ function addressFacts(transcript: string) {
 function exclusionNotes(transcript: string) {
   return unique([
     ...sentenceMatches(transcript, /\bno\s+(?:irrigation|staining)\b/i),
-    ...sentenceMatches(transcript, /\bno\s+removal\s+needed\b/i),
+    ...sentenceMatches(transcript, /\bno\s+(?:waste\s+)?removal\s+(?:needed|required)\b/i),
+    ...sentenceMatches(transcript, /\bno\s+disposal\s+(?:needed|required)\b/i),
+    ...sentenceMatches(transcript, /\bclient\s+(?:to\s+remove|removing|disposing)\b/i),
     ...sentenceMatches(transcript, /\bclient\s+supplying\s+plants?\b/i),
   ])
 }

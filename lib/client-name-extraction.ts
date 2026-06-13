@@ -19,6 +19,7 @@ function cleanClientName(value: string | undefined) {
 export function extractClientNameFromTranscript(transcript: string) {
   const patterns = [
     new RegExp(String.raw`\bquote\s+for\s+${nameGroup}\s*(?:[.!?:,\n]|$)`, "i"),
+    new RegExp(String.raw`\bfor\s+${nameGroup}\s+at\s+\d`, "i"),
     new RegExp(String.raw`\b(?:client|customer)\s+${nameGroup}\s*(?:[.!?:,\n]|$)`, "i"),
   ]
 

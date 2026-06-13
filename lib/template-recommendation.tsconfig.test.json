@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/template-recommendation-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "template-recommendation.ts",
+    "template-recommendation-loading.ts",
+    "template-selection.ts",
+    "template-review-metadata.ts",
+    "template-recommendation.test.ts",
+    "template-import-learning.ts",
+    "core/quote-facts.ts"
+  ]
+}
