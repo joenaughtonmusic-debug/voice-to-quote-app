@@ -5,6 +5,7 @@ import { AlertTriangle, Check, ChevronDown, Plug, Bell, FileSignature, Building2
 import { cn } from "@/lib/utils"
 import { jmsOptions } from "@/lib/quote-data"
 import { QuoteTestRunner } from "@/components/quote-test-runner"
+import { SiteVisitFixtureRunner } from "@/components/site-visit-fixture-runner"
 import type { ProcessedQuote } from "@/lib/processed-quote"
 import { primaryTradeOptions, isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
 import { supabase } from "@/lib/supabase"
@@ -24,8 +25,10 @@ import {
 
 export function SettingsScreen({
   onOpenQuoteReview,
+  onUseFixtureTranscript,
 }: {
   onOpenQuoteReview?: (raw: string, corrected: string, quote: ProcessedQuote) => void
+  onUseFixtureTranscript?: (transcript: string) => void
 }) {
   const { user } = useAuth()
   const [jms, setJms] = useState(jmsOptions[0])
@@ -380,7 +383,12 @@ export function SettingsScreen({
           </div>
         </Segment>
 
-        <QuoteTestRunner onOpenQuoteReview={onOpenQuoteReview} />
+        <Segment icon={<AlertTriangle className="h-4 w-4" />} title="Internal test tools">
+          <div className="space-y-4">
+            <SiteVisitFixtureRunner onUseTranscript={onUseFixtureTranscript} />
+            <QuoteTestRunner onOpenQuoteReview={onOpenQuoteReview} />
+          </div>
+        </Segment>
       </div>
     </div>
   )

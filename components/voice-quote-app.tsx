@@ -34,6 +34,7 @@ export function VoiceQuoteApp() {
   const [draftTemplateSections, setDraftTemplateSections] = useState<QuoteTemplateSectionDraft[]>([])
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
   const [recordResetKey, setRecordResetKey] = useState(0)
+  const [fixtureTranscriptForPaste, setFixtureTranscriptForPaste] = useState("")
   const [currentQuoteSaved, setCurrentQuoteSaved] = useState(false)
   const [openDraftLoading, setOpenDraftLoading] = useState(false)
   const [openDraftError, setOpenDraftError] = useState("")
@@ -61,6 +62,7 @@ export function VoiceQuoteApp() {
     setDraftPreviewMode("standard")
     setDraftTemplateSections([])
     setEditingDraftId(null)
+    setFixtureTranscriptForPaste("")
     setOpenDraftError("")
     setCurrentQuoteSaved(false)
 
@@ -95,6 +97,13 @@ export function VoiceQuoteApp() {
 
   function handleSectionsEdited(nextSections: EditableQuoteSection[]) {
     setQuoteSections(nextSections)
+  }
+
+  function handleUseFixtureTranscript(transcript: string) {
+    resetQuoteFlow(false)
+    setFixtureTranscriptForPaste(transcript)
+    setRecordResetKey((key) => key + 1)
+    setTab("record")
   }
 
   async function handleOpenDraft(draftId: string) {
@@ -149,7 +158,11 @@ export function VoiceQuoteApp() {
       <main className="mx-auto min-h-screen max-w-md pb-24">
         {tab === "record" && (
           signedIn ? (
-            <RecordScreen key={recordResetKey} onProcess={handleQuoteProcessed} />
+            <RecordScreen
+              key={recordResetKey}
+              initialPastedNotes={fixtureTranscriptForPaste}
+              onProcess={handleQuoteProcessed}
+            />
           ) : (
             <SignInRequired onSignIn={signInWithGoogle} />
           )
@@ -162,7 +175,12 @@ export function VoiceQuoteApp() {
           )
         )}
         {tab === "knowledge" && <KnowledgeBaseScreen />}
-        {tab === "settings" && <SettingsScreen onOpenQuoteReview={handleQuoteProcessed} />}
+        {tab === "settings" && (
+          <SettingsScreen
+            onOpenQuoteReview={handleQuoteProcessed}
+            onUseFixtureTranscript={handleUseFixtureTranscript}
+          />
+        )}
       </main>
 
       <BottomNav active={tab} onChange={setTab} />

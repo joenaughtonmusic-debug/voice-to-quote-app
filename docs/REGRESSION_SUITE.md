@@ -19,6 +19,7 @@ Trade module baselines should follow the [Trade Module Contract](./TRADE_MODULE_
 - Decking end-to-end baseline passing.
 - Retaining module MVP baseline passing.
 - Retaining end-to-end baseline passing.
+- Site Visit Transcript Fixture Suite passing.
 
 Current stable baseline quote tests:
 
@@ -30,12 +31,39 @@ Current stable baseline quote tests:
 - Decking End-to-End Baseline
 - Retaining Module MVP Baseline
 - Retaining End-to-End Baseline
+- Site Visit Transcript Fixture Suite
 
 ## Status Legend
 
 - Implemented: behaviour exists and should be protected.
 - In progress: behaviour exists partially or is being refined.
 - Planned: documented expectation for future work.
+
+## Recommended Full Local Validation
+
+Run this sequence before treating a regression-sensitive change as complete:
+
+```bash
+npm run test:core
+npm run test:trades
+npm run test:site-fixtures
+npx tsc --noEmit
+npm run build
+```
+
+## Site Visit Transcript Fixture Suite
+
+Status: PASS
+
+Command:
+
+```bash
+npm run test:site-fixtures
+```
+
+Covers realistic estimator-style transcripts without external AI calls. The suite validates deterministic quote-processing layers against reusable site visit notes, including decking, retaining, planting, gardening maintenance, ambiguous scopes, approximate measurements, exclusions, product specifications, and customer/address extraction.
+
+Detailed fixture guidance lives in [Site Visit Fixture Suite](./SITE_VISIT_FIXTURE_SUITE.md).
 
 ## Plant Library MVP Baseline
 

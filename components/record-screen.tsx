@@ -727,8 +727,10 @@ async function loadKnowledgeItemContext(transcript: string) {
 }
 
 export function RecordScreen({
+  initialPastedNotes = "",
   onProcess,
 }: {
+  initialPastedNotes?: string
   onProcess: (rawTranscript: string, correctedTranscript: string, processedQuote: ProcessedQuote) => void
 }) {
   const [state, setState] = useState<RecState>("idle")
@@ -760,6 +762,17 @@ export function RecordScreen({
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
     }
   }, [transcript])
+
+  useEffect(() => {
+    const notes = initialPastedNotes.trim()
+    if (!notes) return
+
+    setInputMode("paste")
+    setPastedNotes(notes)
+    setState("idle")
+    setErrorMessage("")
+    setCorrectionWarning("")
+  }, [initialPastedNotes])
 
   useEffect(() => {
     return () => {
