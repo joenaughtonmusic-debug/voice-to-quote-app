@@ -54,6 +54,12 @@
       "namedRegex": "^/api/correct\\-transcript(?:/)?$"
     },
     {
+      "page": "/api/export-xero-quote",
+      "regex": "^/api/export\\-xero\\-quote(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/export\\-xero\\-quote(?:/)?$"
+    },
+    {
       "page": "/api/process-quote",
       "regex": "^/api/process\\-quote(?:/)?$",
       "routeKeys": {},

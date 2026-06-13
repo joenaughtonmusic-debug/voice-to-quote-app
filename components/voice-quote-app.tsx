@@ -6,7 +6,7 @@ import { RecordScreen } from "@/components/record-screen"
 import { DraftsScreen } from "@/components/drafts-screen"
 import { KnowledgeBaseScreen } from "@/components/knowledge-base-screen"
 import { SettingsScreen } from "@/components/settings-screen"
-import { QuoteReview } from "@/components/quote-review"
+import { QuoteReview, type CustomerPreviewMode } from "@/components/quote-review"
 import { QuoteDraft } from "@/components/quote-draft"
 import { AuthStatus } from "@/components/auth-status"
 import { useAuth } from "@/hooks/use-auth"
@@ -19,6 +19,7 @@ import {
   type ProcessedQuote,
 } from "@/lib/processed-quote"
 import { supabase } from "@/lib/supabase"
+import type { QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
 
 export function VoiceQuoteApp() {
   const [tab, setTab] = useState<Tab>("record")
@@ -29,7 +30,11 @@ export function VoiceQuoteApp() {
   const [correctedTranscript, setCorrectedTranscript] = useState(EMPTY_TRANSCRIPT)
   const [processedQuote, setProcessedQuote] = useState<ProcessedQuote>(EMPTY_PROCESSED_QUOTE)
   const [quoteSections, setQuoteSections] = useState<EditableQuoteSection[] | null>(null)
+  const [draftPreviewMode, setDraftPreviewMode] = useState<CustomerPreviewMode>("standard")
+  const [draftTemplateSections, setDraftTemplateSections] = useState<QuoteTemplateSectionDraft[]>([])
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null)
+  const [recordResetKey, setRecordResetKey] = useState(0)
+  const [currentQuoteSaved, setCurrentQuoteSaved] = useState(false)
   const [openDraftLoading, setOpenDraftLoading] = useState(false)
   const [openDraftError, setOpenDraftError] = useState("")
   const { user, loading, displayName, signInWithGoogle, signOut } = useAuth()
@@ -43,6 +48,30 @@ export function VoiceQuoteApp() {
 
   function handleDraftSaved() {
     setDraftsRefreshKey((key) => key + 1)
+    setCurrentQuoteSaved(true)
+  }
+
+  function resetQuoteFlow(resetRecord = false) {
+    setReviewOpen(false)
+    setDraftOpen(false)
+    setRawTranscript(EMPTY_TRANSCRIPT)
+    setCorrectedTranscript(EMPTY_TRANSCRIPT)
+    setProcessedQuote(EMPTY_PROCESSED_QUOTE)
+    setQuoteSections(null)
+    setDraftPreviewMode("standard")
+    setDraftTemplateSections([])
+    setEditingDraftId(null)
+    setOpenDraftError("")
+    setCurrentQuoteSaved(false)
+
+    if (resetRecord) {
+      setRecordResetKey((key) => key + 1)
+    }
+  }
+
+  function handleReviewClose() {
+    const shouldResetRecord = currentQuoteSaved || editingDraftId === null
+    resetQuoteFlow(shouldResetRecord)
   }
 
   function handleQuoteProcessed(
@@ -55,6 +84,7 @@ export function VoiceQuoteApp() {
     setProcessedQuote(nextProcessedQuote)
     setQuoteSections(null)
     setEditingDraftId(null)
+    setCurrentQuoteSaved(false)
     setOpenDraftError("")
     setReviewOpen(true)
   }
@@ -102,6 +132,7 @@ export function VoiceQuoteApp() {
     setProcessedQuote(editableState.processedQuote)
     setQuoteSections(editableState.sections)
     setEditingDraftId(data.id)
+    setCurrentQuoteSaved(false)
     setReviewOpen(true)
   }
 
@@ -118,7 +149,7 @@ export function VoiceQuoteApp() {
       <main className="mx-auto min-h-screen max-w-md pb-24">
         {tab === "record" && (
           signedIn ? (
-            <RecordScreen onProcess={handleQuoteProcessed} />
+            <RecordScreen key={recordResetKey} onProcess={handleQuoteProcessed} />
           ) : (
             <SignInRequired onSignIn={signInWithGoogle} />
           )
@@ -131,7 +162,7 @@ export function VoiceQuoteApp() {
           )
         )}
         {tab === "knowledge" && <KnowledgeBaseScreen />}
-        {tab === "settings" && <SettingsScreen />}
+        {tab === "settings" && <SettingsScreen onOpenQuoteReview={handleQuoteProcessed} />}
       </main>
 
       <BottomNav active={tab} onChange={setTab} />
@@ -148,8 +179,12 @@ export function VoiceQuoteApp() {
 
       {signedIn && reviewOpen && (
         <QuoteReview
-          onClose={() => setReviewOpen(false)}
-          onPreviewDraft={() => setDraftOpen(true)}
+          onClose={handleReviewClose}
+          onPreviewDraft={(options) => {
+            setDraftPreviewMode(options.mode)
+            setDraftTemplateSections(options.templateSections)
+            setDraftOpen(true)
+          }}
           onSaved={handleDraftSaved}
           rawTranscript={correctedTranscript || rawTranscript}
           originalTranscript={rawTranscript}
@@ -168,6 +203,8 @@ export function VoiceQuoteApp() {
           processedQuote={processedQuote}
           draftId={editingDraftId}
           quoteSections={quoteSections}
+          previewMode={draftPreviewMode}
+          templateSections={draftTemplateSections}
         />
       )}
     </div>

@@ -1,3 +1,6 @@
 {
+  "/api/correct-transcript/route": "app/api/correct-transcript/route.js",
+  "/api/export-xero-quote/route": "app/api/export-xero-quote/route.js",
+  "/api/process-quote/route": "app/api/process-quote/route.js",
   "/page": "app/page.js"
 }

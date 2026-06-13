@@ -1,0 +1,36 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "rootDir": "../../..",
+    "outDir": "../../../.tmp/review-notice-tests",
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./index.ts",
+    "./types.ts",
+    "./registry.ts",
+    "./measurement-notices.ts",
+    "./quote-review.ts",
+    "../measurement-extraction/index.ts",
+    "../measurement-extraction/types.ts",
+    "../measurement-extraction/confidence.ts",
+    "../measurement-extraction/review.ts",
+    "../measurement-extraction/extractor.ts",
+    "../../trades/decking/review-notices.ts",
+    "../../trades/decking/detector.ts",
+    "../../trades/decking/calculator.ts",
+    "../../trades/decking/types.ts",
+    "../../trades/retaining/review-notices.ts",
+    "../../trades/retaining/detector.ts",
+    "../../trades/retaining/calculator.ts",
+    "../../trades/retaining/types.ts"
+  ]
+}

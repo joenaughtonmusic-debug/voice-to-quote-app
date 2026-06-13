@@ -1,18 +1,32 @@
+import type { PlantCalculatorResult } from "@/lib/calculators/planting"
+import type { QuoteOption } from "@/lib/quote-options"
+
 export type QuoteLineItem = {
+  source_item_id?: string
+  source_system?: string
   item_code: string
   item_name: string
   item_type: string
   description: string
-  quantity: string
+  quantity: string | null
   unit: string
-  rate: string
-  total: string
+  rate: string | null
+  knowledge_base_rate: string | null
+  override_rate: string | null
+  final_rate_used: string | null
+  total: string | null
+  account_code?: string
+  sales_account_code?: string
+  tax_code?: string
+  tax_type?: string
+  gst_rate?: number | null
   match_confidence: string
   match_reason: string
   needs_review: boolean
+  warning: string
 }
 
-export type QuoteOption = {
+export type QuoteIntent = {
   quote_title: string
   job_type: string
   scope: string[]
@@ -29,8 +43,8 @@ export type ProcessedQuote = {
   selected_template_name: string
   template_match_confidence: string
   learned_rules_applied: string[]
-  primary_quote: QuoteOption
-  optional_quotes: QuoteOption[]
+  primary_quote: QuoteIntent
+  optional_quotes: QuoteIntent[]
   customer_scope: string[]
   internal_notes: string[]
   labour_allowance: string
@@ -41,6 +55,8 @@ export type ProcessedQuote = {
   missing_information: string[]
   confidence_warnings: string[]
   line_items: QuoteLineItem[]
+  plant_calculator_results?: PlantCalculatorResult[]
+  quote_options?: QuoteOption[]
 }
 
 export type EditableQuoteSection = {
@@ -90,13 +106,15 @@ export const EMPTY_PROCESSED_QUOTE: ProcessedQuote = {
   missing_information: [],
   confidence_warnings: [],
   line_items: [],
+  plant_calculator_results: [],
+  quote_options: [],
 }
 
 function lines(items: string[]) {
   return items.join("\n")
 }
 
-function quoteOptionLines(option: QuoteOption) {
+function quoteIntentLines(option: QuoteIntent) {
   return [
     option.quote_title ? `Title: ${option.quote_title}` : "",
     option.job_type ? `Job type: ${option.job_type}` : "",
@@ -111,15 +129,118 @@ function matchedLineItemLines(items: QuoteLineItem[]) {
     [
       item.item_code ? `${item.item_code} · ${item.item_name}` : item.item_name || item.description || "Unmatched item",
       item.quantity ? `Qty ${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "",
-      item.rate ? `Rate ${item.rate}` : "",
+      item.knowledge_base_rate ? `KB rate ${item.knowledge_base_rate}` : "",
+      item.override_rate ? `Override ${item.override_rate}` : "",
+      item.final_rate_used ? `Final rate ${item.final_rate_used}` : item.rate ? `Rate ${item.rate}` : "",
       item.total ? `Total ${item.total}` : "",
+      item.account_code ? `Account ${item.account_code}` : item.sales_account_code ? `Sales account ${item.sales_account_code}` : "",
+      item.tax_type ? `Tax ${item.tax_type}` : item.tax_code ? `Tax code ${item.tax_code}` : "",
       item.match_confidence ? `Match ${item.match_confidence}` : "",
       item.match_reason ? `Reason: ${item.match_reason}` : "",
+      item.warning ? `Warning: ${item.warning}` : "",
       item.needs_review ? "Needs review" : "",
     ]
       .filter(Boolean)
       .join(" | "),
   )
+}
+
+function quoteOptionLines(options: QuoteOption[] | undefined) {
+  if (!Array.isArray(options) || options.length === 0) return []
+
+  return options.flatMap((option) => {
+    const lineItems = option.lineItems.map((item) =>
+      [
+        item.itemName,
+        item.itemCode ? `Code: ${item.itemCode}` : "",
+        item.accountCode ? `Account: ${item.accountCode}` : item.salesAccountCode ? `Sales account: ${item.salesAccountCode}` : "",
+        item.taxType ? `Tax: ${item.taxType}` : item.taxCode ? `Tax code: ${item.taxCode}` : "",
+        option.areaLabel ? `Area: ${option.areaLabel}` : "",
+        `Qty ${item.quantity} ${item.unit}`,
+        `Unit ${money(item.unitPrice)}`,
+        `Total ${money(item.total)}`,
+        item.supplier ? `Supplier: ${item.supplier}` : "",
+        item.stockStatus ? `Stock: ${item.stockStatus}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    )
+
+    return [
+      `${option.label}: ${option.title}`,
+      option.description ?? "",
+      option.areaLabel ? `Area: ${option.areaLabel}` : "",
+      `Category: ${option.category}`,
+      `Source: ${option.source}`,
+      `Subtotal: ${money(option.subtotal)}`,
+      ...lineItems,
+      ...(option.notes?.length ? option.notes.map((note) => `Note: ${note}`) : []),
+      ...(option.warnings?.length ? option.warnings.map((warning) => `Warning: ${warning}`) : []),
+    ].filter(Boolean)
+  })
+}
+
+function money(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? `$${value.toFixed(2)}` : "Not priced"
+}
+
+function plantingCalculatorResultLines(results: PlantCalculatorResult[] | undefined) {
+  if (!Array.isArray(results) || results.length === 0) return []
+
+  return results.flatMap((result, resultIndex) => {
+    const warnings = [
+      ...result.warnings.map((warning) => warning.message),
+      ...result.options.flatMap((option) => option.warnings.map((warning) => `${option.plant_name}: ${warning.message}`)),
+    ]
+    const optionLines = result.option_groups?.length
+      ? result.option_groups.map((option) =>
+          [
+            option.option_label,
+            option.plant_size || option.pot_size || "Size not captured",
+            `${option.plant_count ?? "Plant count not captured"} plants`,
+            money(option.plant_total),
+            option.supplier ? `Supplier: ${option.supplier}` : "",
+            option.stock_status ? `Stock: ${option.stock_status}` : "",
+          ]
+            .filter(Boolean)
+            .join(" | "),
+        )
+      : result.options.length
+        ? result.options.map((option, optionIndex) =>
+            [
+              `Option ${optionIndex + 1}`,
+              option.plant_size || option.pot_size || "Size not captured",
+              `${option.plant_count ?? "Plant count not captured"} plants`,
+              money(option.total_price),
+              option.supplier ? `Supplier: ${option.supplier}` : "",
+              option.stock_status ? `Stock: ${option.stock_status}` : "",
+            ]
+              .filter(Boolean)
+              .join(" | "),
+          )
+      : ["No Plant Library size options matched."]
+
+    return [
+      resultIndex > 0 ? "" : "Internal calculator output only.",
+      result.area_label ? `Area: ${result.area_label}` : "",
+      `Plant: ${result.plant_name ?? "Not captured"}`,
+      `Confidence: ${result.library_match?.match_confidence ?? "none"}${typeof result.library_match?.confidence_score === "number" ? ` (${result.library_match.confidence_score})` : ""}`,
+      `Spacing used: ${result.spacing_mm ? `${result.spacing_mm}mm` : "Not captured"}`,
+      `Spacing source: ${result.spacing_source}`,
+      `Plant count: ${result.plant_count ?? "Not calculated"}`,
+      result.formula ? `Calculation: ${result.formula}` : "Calculation: spoken quantity or not available",
+      ...optionLines,
+      ...(warnings.length > 0 ? ["Warnings:", ...warnings.map((warning) => `Warning: ${warning}`)] : ["Warnings: none"]),
+    ].filter((line) => line !== "")
+  })
+}
+
+function plantingCalculatorNotes(notes: string[]) {
+  return notes.filter((note) => note.trim().startsWith("Planting Calculator"))
+}
+
+function nonPlantingCalculatorNotes(notes: string[]) {
+  return notes.filter((note) => !note.trim().startsWith("Planting Calculator"))
 }
 
 function splitLines(value: string) {
@@ -130,6 +251,9 @@ function splitLines(value: string) {
 }
 
 export function processedQuoteToEditableSections(quote: ProcessedQuote): EditableQuoteSection[] {
+  const plantingNotes = plantingCalculatorNotes(quote.internal_notes)
+  const internalNotes = nonPlantingCalculatorNotes(quote.internal_notes)
+
   return [
     {
       key: "selected_template",
@@ -180,7 +304,7 @@ export function processedQuoteToEditableSections(quote: ProcessedQuote): Editabl
     {
       key: "primary_quote",
       title: "Primary quote",
-      content: lines(quoteOptionLines(quote.primary_quote)),
+      content: lines(quoteIntentLines(quote.primary_quote)),
       customer_visible: true,
       internal_visible: true,
       kind: "list",
@@ -188,7 +312,7 @@ export function processedQuoteToEditableSections(quote: ProcessedQuote): Editabl
     {
       key: "optional_quotes",
       title: "Optional / secondary quotes",
-      content: lines(quote.optional_quotes.flatMap(quoteOptionLines)),
+      content: lines(quote.optional_quotes.flatMap(quoteIntentLines)),
       customer_visible: true,
       internal_visible: true,
       kind: "list",
@@ -204,11 +328,47 @@ export function processedQuoteToEditableSections(quote: ProcessedQuote): Editabl
     {
       key: "internal_notes",
       title: "Internal notes",
-      content: lines(quote.internal_notes),
+      content: lines(internalNotes),
       customer_visible: false,
       internal_visible: true,
       kind: "list",
     },
+    ...(plantingNotes.length > 0
+      ? [
+          {
+            key: "planting_calculator",
+            title: "Planting Calculator",
+            content: lines(plantingNotes),
+            customer_visible: false,
+            internal_visible: true,
+            kind: "list" as const,
+          },
+        ]
+      : []),
+    ...(quote.plant_calculator_results?.length
+      ? [
+          {
+            key: "planting_calculator_review",
+            title: "Planting Calculator Review",
+            content: lines(plantingCalculatorResultLines(quote.plant_calculator_results)),
+            customer_visible: false,
+            internal_visible: true,
+            kind: "list" as const,
+          },
+        ]
+      : []),
+    ...(quote.quote_options?.length
+      ? [
+          {
+            key: "quote_options",
+            title: "Quote Options",
+            content: lines(quoteOptionLines(quote.quote_options)),
+            customer_visible: false,
+            internal_visible: true,
+            kind: "list" as const,
+          },
+        ]
+      : []),
     {
       key: "labour_allowance",
       title: "Labour allowance",
@@ -302,21 +462,47 @@ function lineItemsFromSaved(value: unknown): QuoteLineItem[] {
 
   return value.map((item) => {
     const lineItem = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+    const rate = stringOrNull(lineItem.rate ?? lineItem.unit_rate)
+    const knowledgeBaseRate = stringOrNull(lineItem.knowledge_base_rate)
+    const overrideRate = stringOrNull(lineItem.override_rate)
+    const finalRateUsed = stringOrNull(lineItem.final_rate_used ?? rate)
+    const quantity = stringOrNull(lineItem.quantity)
+    const total = stringOrNull(lineItem.total ?? lineItem.amount)
 
     return {
       item_code: String(lineItem.item_code ?? ""),
+      source_item_id: String(lineItem.source_item_id ?? ""),
+      source_system: String(lineItem.source_system ?? ""),
       item_name: String(lineItem.item_name ?? lineItem.label ?? ""),
       item_type: String(lineItem.item_type ?? ""),
       description: String(lineItem.description ?? lineItem.detail ?? ""),
-      quantity: String(lineItem.quantity ?? ""),
+      quantity,
       unit: String(lineItem.unit ?? ""),
-      rate: String(lineItem.rate ?? lineItem.unit_rate ?? ""),
-      total: String(lineItem.total ?? lineItem.amount ?? ""),
+      rate,
+      knowledge_base_rate: knowledgeBaseRate,
+      override_rate: overrideRate,
+      final_rate_used: finalRateUsed,
+      total,
+      account_code: String(lineItem.account_code ?? ""),
+      sales_account_code: String(lineItem.sales_account_code ?? ""),
+      tax_code: String(lineItem.tax_code ?? ""),
+      tax_type: String(lineItem.tax_type ?? ""),
+      gst_rate:
+        typeof lineItem.gst_rate === "number" && Number.isFinite(lineItem.gst_rate)
+          ? lineItem.gst_rate
+          : null,
       match_confidence: String(lineItem.match_confidence ?? ""),
       match_reason: String(lineItem.match_reason ?? lineItem.confidence_note ?? ""),
       needs_review: Boolean(lineItem.needs_review),
+      warning: String(lineItem.warning ?? ""),
     }
   })
+}
+
+function stringOrNull(value: unknown) {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text ? text : null
 }
 
 export function savedDraftToEditableState(draft: SavedQuoteDraft) {
@@ -378,7 +564,7 @@ export function editableSectionsToProcessedQuote(
           ]
         : baseQuote.optional_quotes,
     customer_scope: splitLines(byKey.get("customer_scope") ?? ""),
-    internal_notes: splitLines(byKey.get("internal_notes") ?? ""),
+    internal_notes: [...splitLines(byKey.get("internal_notes") ?? ""), ...splitLines(byKey.get("planting_calculator") ?? "")],
     labour_allowance: byKey.get("labour_allowance")?.trim() ?? "",
     materials: materialsAndGreenwaste.filter((item) => !item.toLowerCase().startsWith("greenwaste:")),
     greenwaste: greenwasteLine?.replace(/^greenwaste:\s*/i, "").trim() ?? "",
@@ -390,5 +576,7 @@ export function editableSectionsToProcessedQuote(
     selected_template_name: baseQuote.selected_template_name,
     template_match_confidence: baseQuote.template_match_confidence,
     learned_rules_applied: splitLines(byKey.get("learned_rules_applied") ?? ""),
+    plant_calculator_results: baseQuote.plant_calculator_results,
+    quote_options: baseQuote.quote_options,
   }
 }

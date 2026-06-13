@@ -52,18 +52,65 @@ function getOutputText(result: any) {
   return null
 }
 
-export async function POST(request: Request) {
-  try {
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: "OpenAI API key is not configured." }, { status: 500 })
+function correctionFallback(transcript: string, warning: string, details: Record<string, unknown> = {}) {
+  return NextResponse.json({
+    corrected_transcript: transcript,
+    corrections_applied: [],
+    uncertain_terms: [],
+    correction_failed: true,
+    warning,
+    details,
+  })
+}
+
+function errorDetails(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack,
     }
+  }
+
+  return {
+    message: String(error),
+  }
+}
+
+export async function POST(request: Request) {
+  const startedAt = Date.now()
+  let transcript = ""
+
+  try {
+    console.log("correct-transcript request started", {
+      has_openai_api_key: Boolean(process.env.OPENAI_API_KEY),
+      model: CORRECTION_MODEL,
+    })
 
     const body = await request.json().catch(() => null)
-    const transcript = typeof body?.transcript === "string" ? body.transcript.trim() : ""
+    transcript = typeof body?.transcript === "string" ? body.transcript.trim() : ""
 
     if (!transcript) {
       return NextResponse.json({ error: "Transcript text is required." }, { status: 400 })
     }
+
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("correct-transcript missing OpenAI API key", {
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        duration_ms: Date.now() - startedAt,
+      })
+
+      return correctionFallback(transcript, "Transcript correction skipped because OpenAI API key is not configured.", {
+        failed_stage: "configuration",
+        model: CORRECTION_MODEL,
+      })
+    }
+
+    console.log("correct-transcript calling OpenAI", {
+      has_openai_api_key: true,
+      model: CORRECTION_MODEL,
+      transcript_length: transcript.length,
+    })
 
     const response = await fetch(OPENAI_RESPONSES_URL, {
       method: "POST",
@@ -99,22 +146,110 @@ export async function POST(request: Request) {
       }),
     })
 
-    const result = await response.json().catch(() => null)
+    const durationMs = Date.now() - startedAt
+    const responseBody = await response.text().catch((error) => {
+      console.error("correct-transcript failed reading OpenAI response body", {
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        request_duration_ms: durationMs,
+        error: errorDetails(error),
+      })
+      return ""
+    })
+    let result: any = null
+    try {
+      result = responseBody ? JSON.parse(responseBody) : null
+    } catch (error) {
+      console.error("correct-transcript OpenAI response body was not JSON", {
+        has_openai_api_key: true,
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        request_duration_ms: durationMs,
+        openai_status: response.status,
+        parser_error: errorDetails(error),
+        openai_response_body: responseBody,
+      })
+
+      return correctionFallback(transcript, "Transcript correction failed: OpenAI returned a non-JSON response.", {
+        failed_stage: "openai_response_parse",
+        model: CORRECTION_MODEL,
+        openai_status: response.status,
+      })
+    }
 
     if (!response.ok) {
       const message =
         typeof result?.error?.message === "string" ? result.error.message : "OpenAI correction request failed."
 
-      return NextResponse.json({ error: message }, { status: response.status })
+      console.error("correct-transcript OpenAI error", {
+        has_openai_api_key: true,
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        request_duration_ms: durationMs,
+        openai_status: response.status,
+        openai_error_body: responseBody,
+      })
+
+      return correctionFallback(transcript, `Transcript correction failed: ${message}`, {
+        failed_stage: "openai_response",
+        model: CORRECTION_MODEL,
+        openai_status: response.status,
+      })
     }
 
     const outputText = getOutputText(result)
     if (!outputText) {
-      return NextResponse.json({ error: "OpenAI did not return corrected transcript JSON." }, { status: 502 })
+      console.error("correct-transcript missing output text", {
+        has_openai_api_key: true,
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        request_duration_ms: durationMs,
+        openai_status: response.status,
+        openai_response_body: responseBody,
+      })
+
+      return correctionFallback(transcript, "Transcript correction failed: OpenAI did not return corrected transcript JSON.", {
+        failed_stage: "missing_output_text",
+        model: CORRECTION_MODEL,
+        openai_status: response.status,
+      })
     }
 
-    return NextResponse.json(JSON.parse(outputText))
-  } catch {
-    return NextResponse.json({ error: "Unexpected transcript correction error." }, { status: 500 })
+    try {
+      const parsed = JSON.parse(outputText)
+      console.log("correct-transcript completed", {
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        request_duration_ms: Date.now() - startedAt,
+      })
+      return NextResponse.json(parsed)
+    } catch (error) {
+      console.error("correct-transcript output JSON parse error", {
+        has_openai_api_key: true,
+        model: CORRECTION_MODEL,
+        transcript_length: transcript.length,
+        request_duration_ms: Date.now() - startedAt,
+        parser_error: errorDetails(error),
+        openai_output_text: outputText,
+      })
+
+      return correctionFallback(transcript, "Transcript correction failed: OpenAI returned invalid correction JSON.", {
+        failed_stage: "json_parse",
+        model: CORRECTION_MODEL,
+      })
+    }
+  } catch (error) {
+    console.error("correct-transcript unexpected error", {
+      has_openai_api_key: Boolean(process.env.OPENAI_API_KEY),
+      model: CORRECTION_MODEL,
+      transcript_length: transcript.length,
+      request_duration_ms: Date.now() - startedAt,
+      error: errorDetails(error),
+    })
+
+    return correctionFallback(transcript, "Transcript correction failed unexpectedly. Continuing with the original transcript.", {
+      failed_stage: "unexpected_exception",
+      model: CORRECTION_MODEL,
+    })
   }
 }

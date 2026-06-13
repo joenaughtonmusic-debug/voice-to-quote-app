@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { CheckCircle, FileSpreadsheet, Loader2, Pencil, Save, Trash2, Upload, X } from "lucide-react"
 import * as XLSX from "xlsx"
 import { useAuth } from "@/hooks/use-auth"
+import { classifyPlantCatalogItem } from "@/lib/plant-item-classification"
 import { supabase } from "@/lib/supabase"
 
 const SOURCE_SYSTEMS = ["Tradify", "Jobber", "ServiceM8", "Xero", "Fergus", "SimPRO", "Other CSV"] as const
@@ -18,6 +19,10 @@ type KnowledgeField =
   | "unit"
   | "cost_price"
   | "sell_price"
+  | "account_code"
+  | "sales_account_code"
+  | "tax_code"
+  | "tax_type"
   | "gst_rate"
   | "category"
   | "source_category"
@@ -49,6 +54,10 @@ type ImportItem = {
   unit: string
   cost_price: number | null
   sell_price: number | null
+  account_code: string
+  sales_account_code: string
+  tax_code: string
+  tax_type: string
   gst_rate: number | null
   aliases: string[]
   category: string
@@ -68,13 +77,17 @@ type KnowledgeItem = ImportItem & {
 
 const FIELD_ALIASES: Record<KnowledgeField, string[]> = {
   item_type: ["item type", "type", "product type", "service type"],
-  item_code: ["item code", "code", "sku", "product code", "account code"],
+  item_code: ["item code", "code", "sku", "product code"],
   item_name: ["item name", "name", "product", "service", "product name", "description name"],
   description: ["description", "item description", "product description", "details"],
   unit: ["unit", "unit of measure", "uom", "measure"],
   cost_price: ["buy price", "cost price", "cost", "purchase price", "unit cost", "buy rate"],
   sell_price: ["sell price", "sales price", "sale price", "unit price", "charge out rate", "charge rate", "standard price", "standard markup", "rate", "customer price"],
-  gst_rate: ["gst rate", "gst", "tax rate", "tax"],
+  account_code: ["account code", "sales account", "sales account code", "revenue account", "income account"],
+  sales_account_code: ["sales account", "sales account code", "sales account number", "sales code"],
+  tax_code: ["tax code", "sales tax code", "sales tax rate", "gst code"],
+  tax_type: ["tax type", "sales tax type", "sales tax rate", "xero tax type"],
+  gst_rate: ["gst rate", "gst", "tax rate", "tax", "salestaxrate", "sales tax rate"],
   category: ["category", "item category", "group"],
   source_category: ["source category", "supplier category", "account", "sales account"],
   supplier: ["supplier", "supplier name", "vendor", "vendor name"],
@@ -90,6 +103,10 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     unit: ["Unit", "Unit of Measure"],
     cost_price: ["Buy Price"],
     sell_price: ["Sell Price", "Standard Markup"],
+    account_code: ["Sales Account Code", "Account Code"],
+    sales_account_code: ["Sales Account", "Sales Account Code"],
+    tax_code: ["Sales Tax Rate", "Sales Tax Code", "Tax Code"],
+    tax_type: ["Sales Tax Rate", "Sales Tax Type", "Tax Type"],
     gst_rate: ["Sales Tax Rate"],
     category: ["Category"],
     source_category: ["Supplier"],
@@ -104,6 +121,10 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     unit: ["Unit"],
     cost_price: ["Unit Cost", "Cost"],
     sell_price: ["Unit Price", "Price"],
+    account_code: ["Sales Account Code", "Account Code"],
+    sales_account_code: ["Sales Account", "Sales Account Code"],
+    tax_code: ["Tax Code"],
+    tax_type: ["Tax Type"],
     gst_rate: ["Tax Rate"],
     category: ["Category"],
     supplier: ["Supplier"],
@@ -117,6 +138,10 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     unit: ["Unit"],
     cost_price: ["Cost", "Buy Price"],
     sell_price: ["Price", "Sell Price"],
+    account_code: ["Sales Account Code", "Account Code"],
+    sales_account_code: ["Sales Account", "Sales Account Code"],
+    tax_code: ["Tax Code"],
+    tax_type: ["Tax Type"],
     gst_rate: ["Tax Rate", "GST Rate"],
     category: ["Category"],
     supplier: ["Supplier"],
@@ -130,6 +155,10 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     unit: ["Unit"],
     cost_price: ["Purchase Unit Price", "Purchase Price", "Cost Price"],
     sell_price: ["Sales Unit Price", "Unit Price", "Sales Price"],
+    account_code: ["Sales Account Code", "Account Code"],
+    sales_account_code: ["Sales Account", "Sales Account Code"],
+    tax_code: ["Sales Tax Rate", "Sales Tax Code", "Tax Code"],
+    tax_type: ["Sales Tax Rate", "Sales Tax Type", "Tax Type"],
     gst_rate: ["Sales Tax Rate", "Tax Rate"],
     category: ["Sales Account", "Category"],
     supplier: ["Supplier"],
@@ -143,6 +172,10 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     unit: ["Unit", "UOM"],
     cost_price: ["Cost Price", "Cost"],
     sell_price: ["Sell Price", "Charge Rate"],
+    account_code: ["Sales Account Code", "Account Code"],
+    sales_account_code: ["Sales Account", "Sales Account Code"],
+    tax_code: ["Tax Code"],
+    tax_type: ["Tax Type"],
     gst_rate: ["GST Rate", "Tax Rate"],
     category: ["Category"],
     supplier: ["Supplier"],
@@ -156,6 +189,10 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     unit: ["UOM", "Unit"],
     cost_price: ["Trade Price", "Cost Price", "Cost"],
     sell_price: ["Sell Price", "Customer Price"],
+    account_code: ["Sales Account Code", "Account Code"],
+    sales_account_code: ["Sales Account", "Sales Account Code"],
+    tax_code: ["Tax Code"],
+    tax_type: ["Tax Type"],
     gst_rate: ["Tax Rate", "GST Rate"],
     category: ["Catalogue", "Category"],
     supplier: ["Supplier"],
@@ -165,12 +202,27 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
   "Other CSV": {},
 }
 
-const EDITABLE_MAPPING_FIELDS: KnowledgeField[] = ["item_code", "item_name", "unit", "cost_price", "sell_price", "category"]
+const EDITABLE_MAPPING_FIELDS: KnowledgeField[] = [
+  "item_code",
+  "item_name",
+  "unit",
+  "cost_price",
+  "sell_price",
+  "category",
+  "account_code",
+  "sales_account_code",
+  "tax_code",
+  "tax_type",
+  "gst_rate",
+]
 
 function normalizeHeader(value: string) {
   return value
+    .replace(/^\*+/, "")
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .toLowerCase()
+    .replace(/[()[\]{}*]/g, " ")
+    .replace(/[+%$€£¥]/g, " ")
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
@@ -341,6 +393,19 @@ function toNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function taxMetadataFromMappedRow(row: ParsedRow, mapping: ColumnMapping) {
+  const taxType = toText(valueFrom(row, mapping, "tax_type"))
+  const taxCode = toText(valueFrom(row, mapping, "tax_code"))
+  const gstRateText = toText(valueFrom(row, mapping, "gst_rate"))
+  const fallbackTax = gstRateText && !/^\d+(?:\.\d+)?%?$/.test(gstRateText.replace(/\s+/g, "")) ? gstRateText : ""
+
+  return {
+    tax_code: taxCode || fallbackTax,
+    tax_type: taxType || fallbackTax,
+    gst_rate: toNumber(gstRateText),
+  }
+}
+
 function unique(values: string[]) {
   const seen = new Set<string>()
   return values
@@ -398,17 +463,30 @@ function classifyItem(values: {
 }) {
   const explicit = values.explicitType.toLowerCase()
   const validTypes = ["labour", "material", "plant", "waste", "equipment", "service", "chemical", "vehicle", "other"]
+  const plantClassification = classifyPlantCatalogItem({
+    explicitType: values.explicitType,
+    itemCode: values.itemCode,
+    itemName: values.itemName,
+    description: values.description,
+    category: values.category,
+    supplier: values.supplier,
+  })
+
+  if (explicit === "plant" && !plantClassification.is_true_plant) {
+    return { itemType: plantClassification.item_type, uncertain: false }
+  }
+
   if (validTypes.includes(explicit)) return { itemType: explicit, uncertain: false }
 
   const text = `${values.itemCode} ${values.itemName} ${values.description} ${values.category} ${values.supplier}`.toLowerCase()
   const rules: [string, RegExp][] = [
     ["labour", /\b(labour|labor|labourhrs|gardenlabour|man hours?|crew hours?|hourly labour)\b/],
     ["waste", /\b(green\s?waste|general waste|hardfill|tip fee|waste removal|disposal)\b/],
-    ["plant", /\b(plants?|trees?|shrubs?|seedlings?|pot size|pb\d+|hedging plants?)\b/],
     ["equipment", /\b(chipper|stump grinder|ladder hire|equipment hire|tool hire|digger|excavator|compactor|hireage)\b/],
-    ["chemical", /\b(weedkiller|herbicide|mavrik|copper|hydrocotyl|fertiliser|fertilizer|spray|pesticide|fungicide)\b/],
+    ["chemical", /\b(plant\s+soap|soap|wetting\s+agents?|weedkiller|herbicide|mavrik|copper|hydrocotyl|fertiliser|fertilizer|spray|pesticide|fungicide|surfactant|chemical|treatment)\b/],
     ["vehicle", /\b(vehicle|travel fee|mileage|truck fee|delivery vehicle)\b/],
     ["material", /\b(materials?|timber|aggregate|gravel|mulch|soil|compost|concrete|fasteners?|pavers?|retaining|rough sawn)\b/],
+    ["plant", /\b(plants?|trees?|shrubs?|seedlings?|pot size|pb\d+|hedging plants?)\b/],
     ["service", /\b(service|maintenance|tidy|trimming|weeding|mowing|pruning|installation)\b/],
   ]
 
@@ -432,6 +510,7 @@ function mapImportRow(row: ParsedRow, mapping: ColumnMapping, sourceSystem: Sour
     supplier,
   })
   const archivedHeader = mapping.archived ?? ""
+  const taxMetadata = taxMetadataFromMappedRow(row, mapping)
 
   return {
     source_system: sourceSystem,
@@ -442,7 +521,11 @@ function mapImportRow(row: ParsedRow, mapping: ColumnMapping, sourceSystem: Sour
     unit: toText(valueFrom(row, mapping, "unit")),
     cost_price: toNumber(valueFrom(row, mapping, "cost_price")),
     sell_price: toNumber(valueFrom(row, mapping, "sell_price")),
-    gst_rate: toNumber(valueFrom(row, mapping, "gst_rate")),
+    account_code: toText(valueFrom(row, mapping, "account_code")),
+    sales_account_code: toText(valueFrom(row, mapping, "sales_account_code")),
+    tax_code: taxMetadata.tax_code,
+    tax_type: taxMetadata.tax_type,
+    gst_rate: taxMetadata.gst_rate,
     aliases: generateAliases(itemName, itemCode),
     category: category || classification.itemType,
     source_category: sourceCategory,
@@ -495,7 +578,7 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
     const { data, error } = await supabase
       .from("knowledge_items")
       .select(
-        "id, user_id, source_system, item_type, item_code, item_name, description, unit, cost_price, sell_price, gst_rate, aliases, category, source_category, external_item_id, raw_import, import_batch_id",
+        "id, user_id, source_system, item_type, item_code, item_name, description, unit, cost_price, sell_price, account_code, sales_account_code, tax_code, tax_type, gst_rate, aliases, category, source_category, external_item_id, raw_import, import_batch_id",
       )
       .eq("user_id", user.id)
       .order("item_name", { ascending: true })
@@ -578,6 +661,10 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
         unit: item.unit,
         cost_price: item.cost_price,
         sell_price: item.sell_price,
+        account_code: item.account_code,
+        sales_account_code: item.sales_account_code,
+        tax_code: item.tax_code,
+        tax_type: item.tax_type,
         gst_rate: item.gst_rate,
         aliases: item.aliases,
         category: item.category,
@@ -635,6 +722,11 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
         item_name: editItem.item_name,
         unit: editItem.unit,
         sell_price: editItem.sell_price,
+        account_code: editItem.account_code,
+        sales_account_code: editItem.sales_account_code,
+        tax_code: editItem.tax_code,
+        tax_type: editItem.tax_type,
+        gst_rate: editItem.gst_rate,
         aliases: editItem.aliases,
         category: editItem.category,
       })

@@ -1,0 +1,23 @@
+import assert from "node:assert/strict"
+import test from "node:test"
+import { extractClientNameFromTranscript } from "./client-name-extraction"
+
+test("extracts client name from short Quote for Name sentence", () => {
+  const clientName = extractClientNameFromTranscript(
+    "Quote for Sarah. Lower planting area: 11.5m Ficus Tuffi hedge.",
+  )
+
+  assert.equal(clientName, "Sarah")
+})
+
+test("does not treat planting area labels as client names", () => {
+  const clientName = extractClientNameFromTranscript("Quote for lower planting area: 11.5m Ficus Tuffi hedge.")
+
+  assert.equal(clientName, null)
+})
+
+test("does not treat plant names as client names", () => {
+  const clientName = extractClientNameFromTranscript("Quote for Ficus Tuffi hedge.")
+
+  assert.equal(clientName, null)
+})

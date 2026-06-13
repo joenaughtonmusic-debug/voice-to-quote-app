@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   X,
   AlertTriangle,
@@ -12,16 +12,37 @@ import {
   Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { buildCustomerQuotePreview } from "@/lib/customer-quote-preview"
 import {
   editableSectionsToProcessedQuote,
   processedQuoteToEditableSections,
   type EditableQuoteSection,
   type ProcessedQuote,
 } from "@/lib/processed-quote"
+import { groupCustomerQuoteOptions, type CustomerQuoteOptionGroup } from "@/lib/customer-quote-options"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
+import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/hooks/use-auth"
+import type { ExportCategoryMapping } from "@/lib/export-mappings"
+import {
+  displayTemplateName,
+  type QuoteTemplateLibraryItem,
+  type QuoteTemplateSectionDraft,
+} from "@/lib/template-import-learning"
+import { renderTemplatePreviewSections } from "@/lib/template-preview-sandbox"
+import { quoteFactsFromProcessedQuote } from "@/lib/core/quote-facts"
+import { buildQuoteReviewNotices, type ReviewNotice } from "@/lib/core/review-notices"
+import {
+  recommendTemplateForQuote,
+  type TemplateRecommendation,
+} from "@/lib/template-recommendation"
+import { deckingReviewFromQuoteFacts, type DeckingReviewModel } from "@/lib/trades/decking/review"
+import { retainingReviewFromQuoteFacts, type RetainingReviewModel } from "@/lib/trades/retaining/review"
 
 type View = "customer" | "internal"
+export type CustomerPreviewMode = "standard" | "template"
 type SaveState = "idle" | "saving" | "success" | "error"
+type ExportState = "idle" | "exporting" | "success" | "error" | "not_configured"
 
 export function QuoteReview({
   onClose,
@@ -36,7 +57,7 @@ export function QuoteReview({
   initialSections,
 }: {
   onClose: () => void
-  onPreviewDraft: () => void
+  onPreviewDraft: (options: { mode: CustomerPreviewMode; templateSections: QuoteTemplateSectionDraft[] }) => void
   onSaved: () => void
   rawTranscript: string
   originalTranscript: string
@@ -46,19 +67,197 @@ export function QuoteReview({
   draftId?: string | null
   initialSections?: EditableQuoteSection[] | null
 }) {
+  const { user } = useAuth()
   const [view, setView] = useState<View>("internal")
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveMessage, setSaveMessage] = useState("")
+  const [exportState, setExportState] = useState<ExportState>("idle")
+  const [exportMessage, setExportMessage] = useState("")
+  const [customerPreviewMode, setCustomerPreviewMode] = useState<CustomerPreviewMode>("standard")
+  const [reviewedTemplates, setReviewedTemplates] = useState<QuoteTemplateLibraryItem[]>([])
+  const [templateSectionsByTemplateId, setTemplateSectionsByTemplateId] = useState<Record<string, QuoteTemplateSectionDraft[]>>({})
+  const [selectedTemplateId, setSelectedTemplateId] = useState("")
+  const [selectedTemplateSections, setSelectedTemplateSections] = useState<QuoteTemplateSectionDraft[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(false)
+  const [templateSectionsLoading, setTemplateSectionsLoading] = useState(false)
+  const [templatePreviewMessage, setTemplatePreviewMessage] = useState("")
   const [sections, setSections] = useState<EditableQuoteSection[]>(() =>
     initialSections ?? processedQuoteToEditableSections(processedQuote),
   )
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
 
-  const visible = sections.filter((section) => {
-    if (view === "customer") return section.customer_visible
-    return section.internal_visible
+  const editedQuoteForReview = editableSectionsToProcessedQuote(sections, processedQuote)
+  const customerPreview = buildCustomerQuotePreview(editedQuoteForReview, { includeDeckingScope: true })
+  const quoteFacts = quoteFactsFromProcessedQuote(editedQuoteForReview)
+  const deckingReview = deckingReviewFromQuoteFacts(quoteFacts)
+  const retainingReview = retainingReviewFromQuoteFacts(quoteFacts)
+  const reviewNotices = buildQuoteReviewNotices({
+    rawTranscript,
+    originalTranscript,
+    quoteTextParts: [
+      editedQuoteForReview.quote_title,
+      editedQuoteForReview.job_type,
+      editedQuoteForReview.primary_quote?.quote_title,
+      editedQuoteForReview.primary_quote?.job_type,
+      ...(editedQuoteForReview.primary_quote?.scope ?? []),
+      ...(editedQuoteForReview.primary_quote?.notes ?? []),
+      ...(editedQuoteForReview.customer_scope ?? []),
+      ...(editedQuoteForReview.materials ?? []),
+      editedQuoteForReview.greenwaste,
+      ...(editedQuoteForReview.exclusions ?? []),
+      ...(editedQuoteForReview.internal_notes ?? []),
+      ...(editedQuoteForReview.missing_information ?? []),
+      ...(editedQuoteForReview.confidence_warnings ?? []),
+    ],
   })
+  const templateRecommendation = recommendTemplateForQuote({
+    facts: quoteFacts,
+    templates: reviewedTemplates,
+    sectionsByTemplateId: templateSectionsByTemplateId,
+    trade: editedQuoteForReview.job_type,
+    jobType: editedQuoteForReview.primary_quote?.job_type || editedQuoteForReview.job_type,
+  })
+  const renderedCustomerScope = customerPreview.scopeItems.join("\n")
+  const visible = sections
+    .filter((section) => {
+      if (view === "customer") return section.customer_visible && section.key !== "primary_quote"
+      return section.internal_visible
+    })
+    .map((section) =>
+      view === "customer" &&
+      section.key === "customer_scope" &&
+      renderedCustomerScope &&
+      !dirtyKeys.has(section.key)
+        ? { ...section, title: "Scope", content: renderedCustomerScope }
+        : section,
+    )
+  const customerQuoteOptionGroups = groupCustomerQuoteOptions(editedQuoteForReview.quote_options)
   const hasUnsavedChanges = dirtyKeys.size > 0
+  const renderedTemplatePreviewSections =
+    selectedTemplateSections.length > 0
+      ? renderTemplatePreviewSections(selectedTemplateSections, editedQuoteForReview, customerPreview)
+      : []
+
+  useEffect(() => {
+    let active = true
+
+    async function loadReviewedTemplates() {
+      if (!user) {
+        setReviewedTemplates([])
+        setTemplateSectionsByTemplateId({})
+        return
+      }
+
+      setTemplatesLoading(true)
+      const { data, error } = await supabase
+        .from("quote_templates")
+        .select("id, user_id, name, template_name, trade, job_type, source_type, source_filename, source_text, status, created_at, updated_at")
+        .eq("user_id", user.id)
+        .in("status", ["reviewed", "active"])
+        .order("updated_at", { ascending: false })
+
+      if (!active) return
+      setTemplatesLoading(false)
+
+      if (error) {
+        setTemplatePreviewMessage("Reviewed templates are unavailable. Run the Template Import Learning schema if needed.")
+        return
+      }
+
+      const templates = (data ?? []) as QuoteTemplateLibraryItem[]
+      setReviewedTemplates(templates)
+
+      const templateIds = templates.map((template) => template.id).filter(Boolean)
+      if (templateIds.length === 0) {
+        setTemplateSectionsByTemplateId({})
+        return
+      }
+
+      const { data: sectionData, error: sectionError } = await supabase
+        .from("quote_template_sections")
+        .select("id, template_id, display_order, section_name, section_category, raw_text, template_text, placeholders, customer_facing, exportable, export_category, created_at, updated_at")
+        .in("template_id", templateIds)
+
+      if (!active) return
+
+      if (sectionError) {
+        setTemplateSectionsByTemplateId({})
+        setTemplatePreviewMessage("Template recommendations are unavailable until template sections can be loaded.")
+        return
+      }
+
+      const groupedSections = ((sectionData ?? []) as QuoteTemplateSectionDraft[]).reduce<Record<string, QuoteTemplateSectionDraft[]>>(
+        (groups, section) => {
+          const templateId = section.template_id
+          if (!groups[templateId]) groups[templateId] = []
+          groups[templateId].push(section)
+          return groups
+        },
+        {},
+      )
+      setTemplateSectionsByTemplateId(groupedSections)
+    }
+
+    void loadReviewedTemplates()
+
+    return () => {
+      active = false
+    }
+  }, [user])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadSelectedTemplateSections() {
+      setSelectedTemplateSections([])
+      setTemplatePreviewMessage("")
+
+      if (!selectedTemplateId) return
+
+      setTemplateSectionsLoading(true)
+      const { data, error } = await supabase
+        .from("quote_template_sections")
+        .select("id, template_id, display_order, section_name, section_category, raw_text, template_text, placeholders, customer_facing, exportable, export_category, created_at, updated_at")
+        .eq("template_id", selectedTemplateId)
+        .order("display_order", { ascending: true })
+
+      if (!active) return
+      setTemplateSectionsLoading(false)
+
+      if (error) {
+        setTemplatePreviewMessage("Could not load sections for this template.")
+        return
+      }
+
+      setSelectedTemplateSections((data ?? []) as QuoteTemplateSectionDraft[])
+      if ((data ?? []).length === 0) {
+        setTemplatePreviewMessage("This reviewed template has no saved sections yet.")
+      }
+    }
+
+    void loadSelectedTemplateSections()
+
+    return () => {
+      active = false
+    }
+  }, [selectedTemplateId])
+
+  async function loadExportMappingsForPayload(): Promise<ExportCategoryMapping[]> {
+    if (!user) return []
+
+    const { data, error } = await supabase
+      .from("export_category_mappings")
+      .select("id, user_id, provider, category, account_code, tax_type, export_enabled, item_code_policy, is_user_confirmed, source")
+      .eq("user_id", user.id)
+      .eq("provider", "xero")
+
+    if (error) {
+      console.warn("Could not load export mappings for Xero payload", error.message)
+      return []
+    }
+
+    return (data ?? []) as ExportCategoryMapping[]
+  }
 
   async function handleSaveDraft() {
     setSaveState("saving")
@@ -73,6 +272,45 @@ export function QuoteReview({
     if (result.ok) {
       setDirtyKeys(new Set())
       onSaved()
+    }
+  }
+
+  async function handlePushToJobManagement() {
+    setExportState("exporting")
+    setExportMessage("")
+
+    try {
+      const editedQuote = editableSectionsToProcessedQuote(sections, processedQuote)
+      const exportMappings = await loadExportMappingsForPayload()
+      const response = await fetch("/api/export-xero-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          processed_quote: editedQuote,
+          draft_id: draftId ?? null,
+          export_mappings: exportMappings,
+        }),
+      })
+      const result = await response.json().catch(() => null)
+      const message =
+        typeof result?.message === "string"
+          ? result.message
+          : response.ok
+            ? "Xero draft quote payload generated."
+            : "Could not generate Xero export payload."
+
+      if (result?.status === "missing_webhook") {
+        console.log("xero export payload ready", result.payload)
+        setExportState("not_configured")
+        setExportMessage(message)
+        return
+      }
+
+      setExportState(response.ok && result?.ok ? "success" : "error")
+      setExportMessage(message)
+    } catch (error) {
+      setExportState("error")
+      setExportMessage(error instanceof Error ? error.message : "Could not generate Xero export payload.")
     }
   }
 
@@ -140,18 +378,62 @@ export function QuoteReview({
             <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{rawTranscript}</p>
           </section>
 
-          {visible.map((section) => (
-            <EditableCard
-              key={section.key}
-              section={section}
-              dirty={dirtyKeys.has(section.key)}
-              onSave={handleSaveSection}
+          {view === "internal" && reviewNotices.length > 0 && <ReviewNoticesCard notices={reviewNotices} />}
+          {view === "internal" && deckingReview && <DeckingReviewCard review={deckingReview} />}
+          {view === "internal" && retainingReview && <RetainingReviewCard review={retainingReview} />}
+
+          {view === "customer" && (
+            <TemplatePreviewControls
+              templates={reviewedTemplates}
+              recommendation={templateRecommendation}
+              selectedTemplateId={selectedTemplateId}
+              templateSectionsAvailable={selectedTemplateSections.length > 0}
+              previewMode={customerPreviewMode}
+              loadingTemplates={templatesLoading}
+              loadingSections={templateSectionsLoading}
+              message={templatePreviewMessage}
+              onTemplateChange={(templateId) => {
+                setSelectedTemplateId(templateId)
+                setCustomerPreviewMode("standard")
+              }}
+              onPreviewModeChange={setCustomerPreviewMode}
+              onUseTemplateAsQuote={() => setCustomerPreviewMode("template")}
             />
+          )}
+
+          {visible.map((section) => (
+            view === "customer" && customerPreviewMode === "template" ? null : (
+              <EditableCard
+                key={section.key}
+                section={section}
+                dirty={dirtyKeys.has(section.key)}
+                onSave={handleSaveSection}
+              />
+            )
           ))}
+
+          {view === "customer" && customerPreviewMode === "template" && (
+            <TemplatePreviewCard
+              sections={renderedTemplatePreviewSections}
+              loading={templateSectionsLoading}
+              hasSelection={Boolean(selectedTemplateId)}
+            />
+          )}
+
+          {view === "customer" && customerPreviewMode === "standard" && customerQuoteOptionGroups.length > 0 && (
+            <CustomerQuoteOptionsCard groups={customerQuoteOptionGroups} />
+          )}
 
           <button
             type="button"
-            onClick={onPreviewDraft}
+            onClick={() => {
+              const mode =
+                customerPreviewMode === "template" && selectedTemplateSections.length > 0 ? "template" : "standard"
+              onPreviewDraft({
+                mode,
+                templateSections: mode === "template" ? selectedTemplateSections : [],
+              })
+            }}
             className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border border-primary/30 bg-accent py-3.5 text-sm font-semibold text-primary active:scale-[0.99]"
           >
             <FileText className="h-4 w-4" />
@@ -176,6 +458,20 @@ export function QuoteReview({
           {hasUnsavedChanges && saveState !== "success" && (
             <p className="mb-3 text-center text-xs font-medium text-warning-foreground">Unsaved changes</p>
           )}
+          {exportMessage && (
+            <p
+              className={cn(
+                "mb-3 text-center text-xs leading-relaxed",
+                exportState === "success"
+                  ? "text-success"
+                  : exportState === "not_configured"
+                    ? "text-warning-foreground"
+                    : "text-destructive",
+              )}
+            >
+              {exportMessage}
+            </p>
+          )}
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -188,16 +484,489 @@ export function QuoteReview({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handlePushToJobManagement}
+              disabled={exportState === "exporting"}
               className="flex flex-[1.4] items-center justify-center gap-2 rounded-2xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 active:scale-[0.99]"
             >
-              <Send className="h-4 w-4" />
+              {exportState === "exporting" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Push to Job Management
             </button>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+function severityClassName(severity: ReviewNotice["severity"]) {
+  if (severity === "error") return "bg-destructive/10 text-destructive"
+  if (severity === "warning") return "bg-warning/10 text-warning-foreground"
+  return "bg-secondary text-muted-foreground"
+}
+
+function ReviewNoticesCard({ notices }: { notices: ReviewNotice[] }) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Review Notices</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Guidance only. Review notices do not block quote creation.</p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="grid gap-2">
+        {notices.map((notice) => (
+          <div key={notice.id} className="rounded-xl border border-border bg-background p-3">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className={cn("rounded-full px-2 py-1 text-xs font-semibold capitalize", severityClassName(notice.severity))}>
+                {notice.severity}
+              </span>
+              <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground capitalize">
+                {notice.category.replaceAll("_", " ")}
+              </span>
+              <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground capitalize">
+                {notice.source}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-foreground">{notice.message}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function DeckingReviewCard({ review }: { review: DeckingReviewModel }) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Decking Review</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Decking detected. Review assumptions before sending or export.</p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="grid gap-2">
+        {review.areas.map((area, index) => (
+          <div key={`${area.label}-${index}`} className="rounded-xl border border-border bg-background p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-foreground">{area.label}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {area.dimensionsText} = {area.areaText}
+                </p>
+              </div>
+              <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">
+                {area.buildScopeText}
+              </span>
+            </div>
+            {(area.existingPostsRetained || area.existingSubframeRetained) && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {area.existingPostsRetained && (
+                  <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+                    Existing posts retained
+                  </span>
+                )}
+                {area.existingSubframeRetained && (
+                  <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+                    Existing subframe retained
+                  </span>
+                )}
+              </div>
+            )}
+            {area.notices.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-warning-foreground">
+                {area.notices.map((notice) => (
+                  <li key={notice}>{notice}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {review.totalAreaText && (
+        <div className="mt-3 rounded-xl bg-secondary/40 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total area</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{review.totalAreaText}</p>
+        </div>
+      )}
+
+      {review.wasteRemovalNotes.length > 0 && (
+        <div className="mt-3 rounded-xl bg-secondary/40 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Waste / removal</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-foreground">
+            {review.wasteRemovalNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {review.notices.length > 0 && (
+        <div className="mt-3 flex gap-2 rounded-xl bg-warning/10 p-3 text-xs text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>Some decking assumptions need review before sending.</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RetainingReviewCard({ review }: { review: RetainingReviewModel }) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Retaining Review</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Retaining detected. Review assumptions before sending or export.</p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+          {review.wallKindText}
+        </span>
+        {review.timberRetaining && (
+          <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+            Timber retaining
+          </span>
+        )}
+        {review.drainageMentioned && (
+          <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+            Drainage included
+          </span>
+        )}
+        {review.postsMentioned && (
+          <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+            Posts / post holes mentioned
+          </span>
+        )}
+        {review.accessDifficulty && (
+          <span className="rounded-full bg-secondary/70 px-2 py-1 text-xs font-medium text-muted-foreground">
+            Access difficulty
+          </span>
+        )}
+      </div>
+
+      <div className="grid gap-2">
+        {review.sections.map((section, index) => (
+          <div key={`${section.label}-${index}`} className="rounded-xl border border-border bg-background p-3">
+            <p className="text-sm font-semibold text-foreground">{section.label}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {section.dimensionsText} = {section.areaText}
+            </p>
+            {section.notices.length > 0 && (
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-warning-foreground">
+                {section.notices.map((notice) => (
+                  <li key={notice}>{notice}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {review.totalAreaText && (
+        <div className="mt-3 rounded-xl bg-secondary/40 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total wall face area</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{review.totalAreaText}</p>
+        </div>
+      )}
+
+      {review.wasteRemovalNotes.length > 0 && (
+        <div className="mt-3 rounded-xl bg-secondary/40 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Waste / removal</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-foreground">
+            {review.wasteRemovalNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {review.notices.length > 0 && (
+        <div className="mt-3 flex gap-2 rounded-xl bg-warning/10 p-3 text-xs text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>Some retaining assumptions need review before sending.</p>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function CustomerQuoteOptionsCard({ groups }: { groups: CustomerQuoteOptionGroup[] }) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <h3 className="mb-3 text-sm font-semibold text-foreground">Quote Options</h3>
+      <div className="flex flex-col gap-4">
+        {groups.map((group) => (
+          <div key={group.areaLabel} className="flex flex-col gap-2.5">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.areaLabel}</h4>
+            <div className="flex flex-col gap-2">
+              {group.options.map((option) => (
+                <div key={option.id} className="rounded-xl border border-border bg-background p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {option.label} — {option.title}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">{option.quantityText}</p>
+                    </div>
+                    <p className="shrink-0 text-sm font-semibold text-foreground">{option.subtotalText}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function TemplatePreviewControls({
+  templates,
+  recommendation,
+  selectedTemplateId,
+  templateSectionsAvailable,
+  previewMode,
+  loadingTemplates,
+  loadingSections,
+  message,
+  onTemplateChange,
+  onPreviewModeChange,
+  onUseTemplateAsQuote,
+}: {
+  templates: QuoteTemplateLibraryItem[]
+  recommendation: TemplateRecommendation | null
+  selectedTemplateId: string
+  templateSectionsAvailable: boolean
+  previewMode: CustomerPreviewMode
+  loadingTemplates: boolean
+  loadingSections: boolean
+  message: string
+  onTemplateChange: (templateId: string) => void
+  onPreviewModeChange: (mode: CustomerPreviewMode) => void
+  onUseTemplateAsQuote: () => void
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Template</h3>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Preview-only template rendering. Standard Preview remains the default.
+          </p>
+        </div>
+        {(loadingTemplates || loadingSections) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Reviewed template
+        <select
+          value={selectedTemplateId}
+          onChange={(event) => onTemplateChange(event.target.value)}
+          className="rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal normal-case tracking-normal text-foreground outline-none focus:border-primary"
+        >
+          <option value="">No template selected</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {displayTemplateName(template)}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {recommendation && (
+        <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary">Suggested Template</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {recommendation.templateName || displayTemplateName(recommendation.template)}
+              </p>
+            </div>
+            <span className="rounded-full bg-background px-2 py-1 text-xs font-semibold capitalize text-muted-foreground">
+              {recommendation.confidence} · {recommendation.score}
+            </span>
+          </div>
+          <RecommendationEvidence
+            title="Why this was suggested"
+            items={recommendation.positiveReasons}
+          />
+          <RecommendationEvidence
+            title="Weak signals"
+            items={recommendation.weakSignals}
+            emptyText="No major weak signals found."
+          />
+          {recommendation.matchedQuoteFactCategories.length > 0 && (
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Matched categories: {recommendation.matchedQuoteFactCategories.join(", ")}
+            </p>
+          )}
+          {recommendation.matchedKeywords.length > 0 && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Matched terms: {recommendation.matchedKeywords.join(", ")}
+            </p>
+          )}
+          {selectedTemplateId !== recommendation.template.id && (
+            <button
+              type="button"
+              onClick={() => onTemplateChange(recommendation.template.id)}
+              className="mt-3 rounded-lg border border-primary/30 bg-background px-3 py-2 text-xs font-semibold text-primary active:scale-[0.99]"
+            >
+              Use suggestion
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="mt-3 flex rounded-xl bg-secondary p-1">
+        {(
+          [
+            { id: "standard", label: "Use Standard Preview" },
+            { id: "template", label: "Use Template Preview" },
+          ] as const
+        ).map((mode) => (
+          <button
+            key={mode.id}
+            type="button"
+            onClick={() => onPreviewModeChange(mode.id)}
+            disabled={mode.id === "template" && !templateSectionsAvailable}
+            className={cn(
+              "flex-1 rounded-lg py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              previewMode === mode.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+            )}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+
+      {selectedTemplateId && (
+        <div className="mt-3 rounded-xl bg-secondary/40 p-3">
+          {previewMode === "template" ? (
+            <p className="text-xs font-medium text-muted-foreground">
+              Template Preview is currently the active customer preview. Standard Preview remains available.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-muted-foreground">
+                This template is selected but not active yet.
+              </p>
+              <button
+                type="button"
+                onClick={onUseTemplateAsQuote}
+                disabled={loadingSections || !templateSectionsAvailable}
+                className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Use Template As Quote
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {templates.length === 0 && !loadingTemplates && (
+        <p className="mt-3 rounded-xl bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">
+          No reviewed templates are available yet.
+        </p>
+      )}
+      {message && <p className="mt-3 rounded-xl bg-secondary/40 px-3 py-2 text-xs text-muted-foreground">{message}</p>}
+    </section>
+  )
+}
+
+function RecommendationEvidence({
+  title,
+  items,
+  emptyText,
+}: {
+  title: string
+  items: string[]
+  emptyText?: string
+}) {
+  if (items.length === 0 && !emptyText) return null
+
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-semibold text-foreground">{title}</p>
+      {items.length > 0 ? (
+        <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-xs text-muted-foreground">{emptyText}</p>
+      )}
+    </div>
+  )
+}
+
+function TemplatePreviewCard({
+  sections,
+  loading,
+  hasSelection,
+}: {
+  sections: ReturnType<typeof renderTemplatePreviewSections>
+  loading: boolean
+  hasSelection: boolean
+}) {
+  return (
+    <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4 shadow-sm">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Template Preview</h3>
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-primary">Preview only</p>
+        </div>
+        <span className="rounded-full bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+          Not used for export
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 rounded-xl bg-background p-3 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Loading template sections...
+        </div>
+      ) : !hasSelection ? (
+        <p className="rounded-xl bg-background p-3 text-sm text-muted-foreground">
+          Choose a reviewed template to preview this quote in that structure.
+        </p>
+      ) : sections.length === 0 ? (
+        <p className="rounded-xl bg-background p-3 text-sm text-muted-foreground">
+          No customer-facing sections are available for this template.
+        </p>
+      ) : (
+        <div className="grid gap-3">
+          {sections.map((section) => (
+            <article key={section.id} className="rounded-xl border border-border bg-card p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <h4 className="text-sm font-semibold text-foreground">{section.sectionName}</h4>
+                <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">
+                  {section.category.replaceAll("_", " ")}
+                </span>
+              </div>
+              {section.renderedText ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{section.renderedText}</p>
+              ) : (
+                <p className="text-sm italic text-muted-foreground">Missing data for this template section.</p>
+              )}
+              {section.missingPlaceholders.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Missing quote data for {section.missingPlaceholders.join(", ")}.
+                </p>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 

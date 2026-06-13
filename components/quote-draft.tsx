@@ -5,11 +5,19 @@ import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
+import { buildCustomerQuotePreview, type CustomerQuotePreview } from "@/lib/customer-quote-preview"
 import {
   processedQuoteToEditableSections,
   type EditableQuoteSection,
   type ProcessedQuote,
 } from "@/lib/processed-quote"
+import {
+  renderTemplatePreviewSections,
+  type SandboxRenderedTemplateSection,
+} from "@/lib/template-preview-sandbox"
+import type { QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
+
+type PreviewMode = "standard" | "template"
 
 type SaveState = "idle" | "saving" | "success" | "error"
 
@@ -20,6 +28,8 @@ export function QuoteDraft({
   processedQuote,
   draftId,
   quoteSections,
+  previewMode = "standard",
+  templateSections = [],
 }: {
   onBack: () => void
   onSaved: () => void
@@ -27,9 +37,25 @@ export function QuoteDraft({
   processedQuote: ProcessedQuote
   draftId?: string | null
   quoteSections?: EditableQuoteSection[] | null
+  previewMode?: PreviewMode
+  templateSections?: QuoteTemplateSectionDraft[]
 }) {
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveMessage, setSaveMessage] = useState("")
+  const [activePreviewMode, setActivePreviewMode] = useState<PreviewMode>(
+    previewMode === "template" && templateSections.length > 0 ? "template" : "standard",
+  )
+  const customerPreview = buildCustomerQuotePreview(processedQuote, { includeDeckingScope: true })
+  const hasTemplatePreview = templateSections.length > 0
+  const renderedTemplateSections = hasTemplatePreview
+    ? renderTemplatePreviewSections(templateSections, processedQuote, customerPreview)
+    : []
+  const quoteTitle = processedQuote.quote_title || processedQuote.primary_quote.quote_title || processedQuote.job_type || "Quote"
+  const fallbackScopeItems = [...processedQuote.customer_scope, ...processedQuote.primary_quote.scope, ...processedQuote.primary_quote.notes]
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const scopeItems = customerPreview.scopeItems.length > 0 ? customerPreview.scopeItems : fallbackScopeItems
+  const exclusions = processedQuote.exclusions.map((item) => item.trim()).filter(Boolean)
 
   async function handleSaveDraft() {
     setSaveState("saving")
@@ -88,60 +114,50 @@ export function QuoteDraft({
           {/* Client */}
           <div className="py-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prepared for</p>
-            <p className="mt-1 text-sm font-medium text-foreground">{quoteDraft.client.name}</p>
-            <p className="text-sm text-muted-foreground">{quoteDraft.client.address}</p>
+            <p className="mt-1 text-sm font-medium text-foreground">{processedQuote.client_name || "Not captured"}</p>
+            <p className="text-sm text-muted-foreground">{processedQuote.site_address || "Not captured"}</p>
           </div>
 
-          <p className="text-pretty text-sm leading-relaxed text-foreground">{quoteDraft.intro}</p>
-
-          {/* Line items */}
-          <div className="mt-5">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quotation</p>
-            <div className="divide-y divide-border rounded-xl border border-border">
-              {quoteDraft.lineItems.map((item, i) => (
-                <div key={i} className="flex items-start justify-between gap-3 px-3 py-2.5">
-                  <span className="text-sm text-foreground">{item.label}</span>
-                  <span className="shrink-0 text-sm font-medium text-foreground">{item.amount}</span>
-                </div>
-              ))}
-            </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quote</p>
+            <h3 className="mt-1 text-base font-semibold text-foreground">{quoteTitle}</h3>
+            {processedQuote.job_type && <p className="mt-0.5 text-sm text-muted-foreground">{processedQuote.job_type}</p>}
           </div>
 
-          {/* Totals */}
-          <div className="mt-3 space-y-1.5 rounded-xl bg-secondary p-3 text-sm">
-            <Row label="Subtotal" value={quoteDraft.subtotal} />
-            <Row label={`GST (15%)`} value={quoteDraft.gst} />
-            <div className="mt-1 flex items-center justify-between border-t border-border pt-2 text-base font-semibold text-foreground">
-              <span>Total (incl. GST)</span>
-              <span>{quoteDraft.total}</span>
-            </div>
-          </div>
-
-          {/* Inclusions / exclusions */}
-          <div className="mt-5 grid grid-cols-1 gap-4">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Includes</p>
-              <ul className="flex flex-col gap-1.5">
-                {quoteDraft.inclusions.map((inc) => (
-                  <li key={inc} className="flex items-start gap-2 text-sm text-foreground">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                    {inc}
-                  </li>
+          {hasTemplatePreview && (
+            <div className="mt-5">
+              <div className="flex rounded-xl bg-secondary p-1">
+                {(
+                  [
+                    { id: "standard", label: "Use Standard Preview" },
+                    { id: "template", label: "Use Template Preview" },
+                  ] as const
+                ).map((mode) => (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setActivePreviewMode(mode.id)}
+                    className={cn(
+                      "flex-1 rounded-lg py-2 text-xs font-semibold transition-colors",
+                      activePreviewMode === mode.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                    )}
+                  >
+                    {mode.label}
+                  </button>
                 ))}
-              </ul>
+              </div>
             </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Excludes</p>
-              <ul className="flex flex-col gap-1.5">
-                {quoteDraft.exclusions.map((exc) => (
-                  <li key={exc} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
-                    {exc}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+          )}
+
+          {activePreviewMode === "template" && hasTemplatePreview ? (
+            <TemplateCustomerPreview sections={renderedTemplateSections} />
+          ) : (
+            <StandardCustomerPreview
+              scopeItems={scopeItems}
+              exclusions={exclusions}
+              customerPreview={customerPreview}
+            />
+          )}
 
           <p className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">
             This quote is valid for {quoteDraft.validDays} days from {quoteDraft.date}. {quoteDraft.business.abn}.
@@ -187,11 +203,148 @@ export function QuoteDraft({
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function StandardCustomerPreview({
+  scopeItems,
+  exclusions,
+  customerPreview,
+}: {
+  scopeItems: string[]
+  exclusions: string[]
+  customerPreview: CustomerQuotePreview
+}) {
   return (
-    <div className="flex items-center justify-between text-muted-foreground">
-      <span>{label}</span>
-      <span className="font-medium text-foreground">{value}</span>
+    <>
+      {scopeItems.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Scope</p>
+          <ul className="flex flex-col gap-1.5">
+            {scopeItems.map((item, index) => (
+              <li key={`${item}-${index}`} className="flex items-start gap-2 text-sm text-foreground">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <CustomerQuotePricingPreview preview={customerPreview} />
+
+      <div className="mt-5 grid grid-cols-1 gap-4">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Excludes</p>
+          {exclusions.length > 0 ? (
+            <ul className="flex flex-col gap-1.5">
+              {exclusions.map((exc) => (
+                <li key={exc} className="flex items-start gap-2 text-sm text-muted-foreground">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
+                  {exc}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">No exclusions captured.</p>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function TemplateCustomerPreview({ sections }: { sections: SandboxRenderedTemplateSection[] }) {
+  if (sections.length === 0) {
+    return (
+      <div className="mt-5 rounded-xl border border-border bg-secondary/40 p-3">
+        <p className="text-sm text-muted-foreground">No data available.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-5 flex flex-col gap-4">
+      {sections.map((section) => (
+        <section key={section.id} className="border-t border-border pt-4 first:border-t-0 first:pt-0">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.sectionName}</p>
+            <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">
+              {section.category.replaceAll("_", " ")}
+            </span>
+          </div>
+          {section.renderedText ? (
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{section.renderedText}</p>
+          ) : (
+            <p className="text-sm italic text-muted-foreground">No data available.</p>
+          )}
+          {section.missingPlaceholders.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Not supplied: {section.missingPlaceholders.join(", ")}.
+            </p>
+          )}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function CustomerQuotePricingPreview({ preview }: { preview: CustomerQuotePreview }) {
+  const hasPricingSections = Boolean(preview.labourLine) || preview.plantOptions.length > 0 || preview.materialLines.length > 0
+  if (!hasPricingSections) return null
+
+  return (
+    <div className="mt-5 flex flex-col gap-4">
+      {preview.labourLine && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Planting labour</p>
+          <div className="rounded-xl border border-border px-3 py-2.5">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm font-medium text-foreground">{preview.labourLine.label}</p>
+              {preview.labourLine.amount && (
+                <p className="shrink-0 text-sm font-semibold text-foreground">{preview.labourLine.amount}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {preview.plantOptions.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plants</p>
+          <div className="divide-y divide-border rounded-xl border border-border">
+            {preview.plantOptions.map((option) => (
+              <div key={`${option.id}-${option.label}`} className="px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {option.label} — {option.title}
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">{option.quantityText}</p>
+                  </div>
+                  <p className="shrink-0 text-sm font-semibold text-foreground">{option.subtotalText}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {preview.materialLines.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Materials / removal</p>
+          <div className="divide-y divide-border rounded-xl border border-border">
+            {preview.materialLines.map((line) => (
+              <div key={line.id} className="px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{line.label}</p>
+                    {line.detail && <p className="mt-0.5 text-sm text-muted-foreground">{line.detail}</p>}
+                  </div>
+                  {line.amount && <p className="shrink-0 text-sm font-semibold text-foreground">{line.amount}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { BookOpen, Layers3, Leaf, Loader2, Package, ScrollText, Tags } from "luc
 import { TemplatesScreen } from "@/components/templates-screen"
 import { UploadsScreen } from "@/components/uploads-screen"
 import { JmsItemLibrary } from "@/components/jms-item-library"
+import { PlantLibrary } from "@/components/plant-library"
 import { useAuth } from "@/hooks/use-auth"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
@@ -97,10 +98,16 @@ export function KnowledgeBaseScreen() {
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
 
+    const { count: plantCount, error: plantError } = await supabase
+      .from("knowledge_items")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("item_type", "plant")
+
     setLoadingCounts(false)
 
-    if (templateError || uploadError || itemError) {
-      setError(`Could not load knowledge base counts: ${templateError?.message ?? uploadError?.message ?? itemError?.message}`)
+    if (templateError || uploadError || itemError || plantError) {
+      setError(`Could not load knowledge base counts: ${templateError?.message ?? uploadError?.message ?? itemError?.message ?? plantError?.message}`)
       return
     }
 
@@ -109,7 +116,7 @@ export function KnowledgeBaseScreen() {
       ...emptyCounts,
       templates: templateCount ?? 0,
       materials: itemCount ?? 0,
-      plants: documentTypes.filter((type) => type === "plant_list").length,
+      plants: plantCount ?? documentTypes.filter((type) => type === "plant_list").length,
       "price-lists": documentTypes.filter((type) => type === "materials_price_list").length,
       terms: documentTypes.filter((type) => type === "terms_conditions").length,
       exclusions: documentTypes.filter((type) => type === "common_exclusions").length,
@@ -215,6 +222,8 @@ export function KnowledgeBaseScreen() {
         </div>
       ) : activeSection === "materials" ? (
         <JmsItemLibrary onCountChange={() => void loadCounts()} />
+      ) : activeSection === "plants" ? (
+        <PlantLibrary onCountChange={() => void loadCounts()} />
       ) : (
         <PlaceholderSection section={sections.find((section) => section.id === activeSection)!} count={counts[activeSection]} />
       )}
