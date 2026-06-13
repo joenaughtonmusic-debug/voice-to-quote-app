@@ -80,6 +80,10 @@ export function QuoteDraft({
   })
   const useAssemblyPreview = Boolean(previewModel.assembly)
   const rendererPath = useAssemblyPreview ? "assembly" : "legacy"
+  const quoteJobType = processedQuote.job_type || "not captured"
+  const primaryQuoteJobType = processedQuote.primary_quote?.job_type || "not captured"
+  const maintenanceDraft = isMaintenanceDraft(processedQuote, rawTranscript)
+  const assemblyFailedForMaintenance = maintenanceDraft && !useAssemblyPreview
 
   async function handleSaveDraft() {
     setSaveState("saving")
@@ -152,6 +156,9 @@ export function QuoteDraft({
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dev diagnostics</p>
             <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-muted-foreground">
               <p>Renderer path: {rendererPath}</p>
+              <p>quote.job_type: {quoteJobType}</p>
+              <p>primary_quote.job_type: {primaryQuoteJobType}</p>
+              <p>Assembly exists: {useAssemblyPreview ? "yes" : "no"}</p>
               <p>Selected template: {selectedTemplate ? displayTemplateName(selectedTemplate) : "None"}</p>
               <p>Selected template source: {selectedTemplateSource}</p>
               <p>Pricing facts count: {customerPreview.pricingFacts.length}</p>
@@ -192,6 +199,8 @@ export function QuoteDraft({
               exclusions={previewModel.exclusions}
               customerPreview={customerPreview}
               assemblySections={previewModel.assembly?.sections ?? []}
+              assemblyFailedForMaintenance={assemblyFailedForMaintenance}
+              hideLegacyLabourPricing={maintenanceDraft}
             />
           )}
 
@@ -239,16 +248,34 @@ export function QuoteDraft({
   )
 }
 
+function isMaintenanceDraft(processedQuote: ProcessedQuote, rawTranscript: string) {
+  return /\bmaintenance|garden\s+maintenance\b/i.test(
+    [
+      processedQuote.job_type,
+      processedQuote.primary_quote?.job_type,
+      processedQuote.quote_title,
+      processedQuote.primary_quote?.quote_title,
+      rawTranscript,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  )
+}
+
 function StandardCustomerPreview({
   scopeItems,
   exclusions,
   customerPreview,
   assemblySections,
+  assemblyFailedForMaintenance,
+  hideLegacyLabourPricing,
 }: {
   scopeItems: string[]
   exclusions: string[]
   customerPreview: CustomerQuotePreview
   assemblySections: Array<{ title: string; items: string[] }>
+  assemblyFailedForMaintenance: boolean
+  hideLegacyLabourPricing: boolean
 }) {
   if (assemblySections.length > 0) {
     return (
@@ -290,6 +317,18 @@ function StandardCustomerPreview({
     )
   }
 
+  if (assemblyFailedForMaintenance) {
+    return (
+      <div className="mt-5 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+        <p className="text-sm font-semibold text-destructive">Maintenance quote assembly did not render.</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          The legacy Scope/Labour renderer has been disabled for maintenance drafts to avoid showing incorrect labour
+          labels or calculated labour totals. Review the draft diagnostics above before sending.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <>
       {scopeItems.length > 0 && (
@@ -306,7 +345,7 @@ function StandardCustomerPreview({
         </div>
       )}
 
-      <CustomerQuotePricingPreview preview={customerPreview} />
+      <CustomerQuotePricingPreview preview={customerPreview} hideLabourLine={hideLegacyLabourPricing} />
 
       <div className="mt-5 grid grid-cols-1 gap-4">
         <div>
@@ -364,10 +403,16 @@ function TemplateCustomerPreview({ sections }: { sections: SandboxRenderedTempla
   )
 }
 
-function CustomerQuotePricingPreview({ preview }: { preview: CustomerQuotePreview }) {
+function CustomerQuotePricingPreview({
+  preview,
+  hideLabourLine = false,
+}: {
+  preview: CustomerQuotePreview
+  hideLabourLine?: boolean
+}) {
   const hasPricingSections =
     preview.pricingFacts.length > 0 ||
-    Boolean(preview.labourLine) ||
+    (!hideLabourLine && Boolean(preview.labourLine)) ||
     preview.plantOptions.length > 0 ||
     preview.materialLines.length > 0
   if (!hasPricingSections) return null
@@ -397,7 +442,7 @@ function CustomerQuotePricingPreview({ preview }: { preview: CustomerQuotePrevie
         </div>
       )}
 
-      {preview.labourLine && (
+      {!hideLabourLine && preview.labourLine && (
         <div>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Labour</p>
           <div className="rounded-xl border border-border px-3 py-2.5">

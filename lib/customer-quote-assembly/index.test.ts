@@ -37,6 +37,15 @@ function sectionItems(title: string, assembly: NonNullable<ReturnType<typeof ass
   return assembly.sections.find((section) => section.title === title)?.items ?? []
 }
 
+function renderedAssembly(assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
+  return [
+    assembly.title,
+    assembly.customer_name,
+    assembly.site_address,
+    ...assembly.sections.flatMap((section) => [section.title, ...section.items]),
+  ].join("\n")
+}
+
 test("maintenance MVP transcript assembles customer quote sections", () => {
   const assembly = assembleCustomerQuote({
     quote: maintenanceQuote(),
@@ -69,14 +78,67 @@ test("maintenance MVP transcript assembles customer quote sections", () => {
   assert.equal(sectionItems("Ongoing Maintenance", assembly).some((item) => /Ongoing garden maintenance/i.test(item)), true)
   assert.equal(sectionItems("Site Notes", assembly).some((item) => /two-thirds full/i.test(item)), true)
 
-  const rendered = [
-    assembly.title,
-    assembly.customer_name,
-    assembly.site_address,
-    ...assembly.sections.flatMap((section) => [section.title, ...section.items]),
-  ].join("\n")
+  assert.equal(/Planting labour|Planting template|Supply and install selected plants/i.test(renderedAssembly(assembly)), false)
+})
 
-  assert.equal(/Planting labour|Planting template|Supply and install selected plants/i.test(rendered), false)
+test("James maintenance quote produces grouped customer-facing sections", () => {
+  const jamesTranscript = `Monthly maintenance for James at 14 Kowhai Avenue, New Lynn.
+Main focus pruning and trimming.
+All greenwaste to be removed.
+Allow 4 hours labour per visit.
+Price per visit $495 including small fertiliser.
+Each visit may include weeding, spraying, plant health checks, and general garden maintenance as required.
+Keep gates closed due to dog.`
+  const address = extractAddressDetails(jamesTranscript)
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: extractClientNameFromTranscript(jamesTranscript) ?? "",
+    site_address: address.cleaned_address ?? "",
+    quote_title: "Monthly Maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      quote_title: "Monthly Maintenance",
+      job_type: "maintenance",
+      cadence: "monthly",
+      scope: [
+        "Monthly maintenance",
+        "Main focus pruning and trimming",
+        "All greenwaste to be removed",
+        "Allow 4 hours labour per visit",
+        "Price per visit $495 including small fertiliser",
+        "Each visit may include weeding, spraying, plant health checks, and general garden maintenance as required",
+      ],
+      notes: ["Keep gates closed due to dog."],
+    },
+  }
+  const assembly = assembleCustomerQuote({
+    quote,
+    rawTranscript: jamesTranscript,
+    pricingFacts: extractPricing(jamesTranscript).pricing,
+  })
+
+  assert.ok(assembly)
+  assert.deepEqual(assembly.sections.map((section) => section.title), [
+    "Main Focus",
+    "Service Includes",
+    "Ongoing Maintenance",
+    "Price",
+    "Site Notes",
+  ])
+  assert.deepEqual(sectionItems("Main Focus", assembly), ["Pruning", "Trimming"])
+  assert.deepEqual(sectionItems("Service Includes", assembly), [
+    "Small fertiliser",
+    "Greenwaste removal",
+    "Weeding",
+    "Spraying",
+    "Plant health checks",
+  ])
+  assert.deepEqual(sectionItems("Ongoing Maintenance", assembly), ["General garden maintenance as required"])
+  assert.deepEqual(sectionItems("Price", assembly), ["$495 per visit"])
+  assert.deepEqual(sectionItems("Site Notes", assembly), ["Keep gates closed due to dog"])
+
+  const rendered = renderedAssembly(assembly)
+  assert.equal(/4 hours|labou?r per visit/i.test(rendered), false)
 })
 
 test("non-maintenance quotes keep existing preview behavior for now", () => {
