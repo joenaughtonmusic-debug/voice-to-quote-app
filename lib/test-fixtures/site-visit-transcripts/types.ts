@@ -24,6 +24,7 @@ export type ExpectedNonEvent = {
   trade?: string
   fact?: string
   measurementValue?: number
+  measurementUnit?: Measurement["unit"]
   category?: string
 }
 

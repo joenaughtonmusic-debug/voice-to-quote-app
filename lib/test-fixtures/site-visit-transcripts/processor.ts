@@ -70,13 +70,13 @@ function siteConditionFacts(text: string) {
   const facts: string[] = []
 
   if (/\b(access\s+is\s+poor|poor\s+access|steep\s+steps|access\s+.*\bpoor\b)\b/i.test(text)) facts.push("access:poor")
-  if (/\baccess\s+is\s+straightforward\b|\baccess\s+is\s+normal\b/i.test(text)) facts.push("access:straightforward")
+  if (/\baccess\s+is\s+(?:straightforward|normal|good|easy)\b/i.test(text)) facts.push("access:straightforward")
   if (/\bdrainage|novaflow|scoria\b/i.test(text)) facts.push("drainage:detected")
   if (/\bremove|removal|cart\s+away|take\s+away|waste|green\s?waste|hardfill|old\s+soil\b/i.test(text)) {
     facts.push("waste:detected")
   }
   if (/\bremove\s+existing\s+deck\b|\bremoval\s+calculator\b/i.test(text)) facts.push("removal:detected")
-  if (/\bposts?\s+(?:are\s+)?still\s+in\s+good\s+condition\b|\bposts?\s+(?:retained|stay)\b/i.test(text)) {
+  if (/\bposts?\s+(?:are\s+)?still\s+in\s+good\s+condition\b|\bposts?\s+(?:(?:are\s+)?retained|stay|(?:are\s+)?staying)\b/i.test(text)) {
     facts.push("existing_posts:retained")
   }
   if (/\bgreen\s?waste\b/i.test(text)) facts.push("greenwaste:detected")
@@ -143,6 +143,7 @@ function addressFacts(transcript: string) {
 function exclusionNotes(transcript: string) {
   return unique([
     ...sentenceMatches(transcript, /\bno\s+(?:irrigation|staining)\b/i),
+    ...sentenceMatches(transcript, /\bno\s+removal\s+needed\b/i),
     ...sentenceMatches(transcript, /\bclient\s+supplying\s+plants?\b/i),
   ])
 }

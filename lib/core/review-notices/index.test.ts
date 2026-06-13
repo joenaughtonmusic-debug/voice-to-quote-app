@@ -23,7 +23,7 @@ test("approximate and uncertain measurements create warning notices", () => {
 test("rough measurements and inferred units create universal review notices", () => {
   const notices = buildReviewNotices({ text: "Retaining wall roughly 10m long and 800 high" })
   const approximate = notices.find((notice) => /10m long/i.test(notice.message))
-  const inferred = notices.find((notice) => /800 high/i.test(notice.message) && /inferred or missing unit/i.test(notice.message))
+  const inferred = notices.find((notice) => /Assumed 800 means 800mm\. Please verify\./i.test(notice.message))
 
   assert.equal(approximate?.severity, "warning")
   assert.equal(approximate?.metadata?.approximate, true)
@@ -60,6 +60,22 @@ test("decking quote with material scope waste and access creates fewer missing-i
   const deckingMissingInfo = notices.filter((notice) => notice.metadata?.trade === "decking" && notice.category === "missing_info")
 
   assert.deepEqual(deckingMissingInfo, [])
+})
+
+test("decking quote with remove existing deck does not create missing waste notice", () => {
+  const notices = buildReviewNotices({
+    text: "Deck comes out 12.8m and across 15.6m. Need to remove existing deck. Use Kwila 140x19. Posts are still in good condition. Access is poor.",
+  })
+
+  assert.equal(notices.some((notice) => notice.id === "decking.missing-waste"), false)
+})
+
+test("decking quote without removal or waste language still creates missing waste notice", () => {
+  const notices = buildReviewNotices({
+    text: "Build a 4m x 5m Kwila deck. Existing posts are retained. Access is easy.",
+  })
+
+  assert.equal(notices.some((notice) => notice.id === "decking.missing-waste"), true)
 })
 
 test("retaining quote with missing estimating details creates retaining notices", () => {

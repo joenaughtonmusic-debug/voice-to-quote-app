@@ -304,10 +304,10 @@ function noticeMatches(actual: FixtureResult["reviewNotices"][number], expected:
 
 function nonEventHappened(result: FixtureResult, nonEvent: ExpectedNonEvent) {
   if (nonEvent.fact && result.facts.includes(nonEvent.fact)) return true
-  if (
-    typeof nonEvent.measurementValue === "number" &&
-    result.measurements.some((measurement) => measurement.value === nonEvent.measurementValue)
-  ) {
+  if (typeof nonEvent.measurementValue === "number" && result.measurements.some((measurement) => {
+    if (measurement.value !== nonEvent.measurementValue) return false
+    return nonEvent.measurementUnit === undefined || measurement.unit === nonEvent.measurementUnit
+  })) {
     return true
   }
 
@@ -333,5 +333,9 @@ function noticeLabel(notice: ExpectedReviewNotice) {
 }
 
 function nonEventLabel(nonEvent: ExpectedNonEvent) {
-  return nonEvent.id ?? nonEvent.fact ?? nonEvent.messageIncludes ?? String(nonEvent.measurementValue ?? "expected non-event")
+  if (typeof nonEvent.measurementValue === "number") {
+    return `${nonEvent.measurementValue}${nonEvent.measurementUnit ?? ""}`
+  }
+
+  return nonEvent.id ?? nonEvent.fact ?? nonEvent.messageIncludes ?? "expected non-event"
 }

@@ -22,7 +22,9 @@ export function reviewNoticesForMeasurements(measurements: Measurement[]): Revie
 
     if (measurement.unit_inferred || measurement.unit === "unknown") {
       notices.push({
-        message: `Measurement "${measurement.source_text}" has an inferred or missing unit.`,
+        message: measurement.unit_inferred && measurement.unit !== "unknown"
+          ? `Assumed ${measurement.value} means ${measurement.value}${measurement.unit}. Please verify.`
+          : `Measurement "${measurement.source_text}" has an inferred or missing unit.`,
         severity: "warning",
         measurement_id: measurement.id,
       })

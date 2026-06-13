@@ -80,6 +80,38 @@ Access is poor down steep steps, allow extra time.`,
     },
   },
   {
+    id: "decking-builder-spoken-mm-dimensions",
+    name: "Decking - Builder spoken mm dimensions",
+    transcript: `Deck comes fourteen hundred out from the house, fifty four hundred across, and eight hundred high.
+Use pine decking.
+Existing posts are staying.
+No removal needed.
+Access is good.`,
+    expected: {
+      tradeCategory: "decking",
+      measurements: [
+        { value: 1400, unit: "mm", dimension: "depth", unit_inferred: true },
+        { value: 5400, unit: "mm", dimension: "width", unit_inferred: true },
+        { value: 800, unit: "mm", dimension: "height", unit_inferred: true },
+      ],
+      reviewNotices: [
+        { messageIncludes: "Assumed 1400 means 1400mm. Please verify." },
+        { messageIncludes: "Assumed 5400 means 5400mm. Please verify." },
+        { messageIncludes: "Assumed 800 means 800mm. Please verify." },
+      ],
+      exclusionsOrNotes: ["No removal needed"],
+      facts: [
+        "decking:detected",
+        "existing_posts:retained",
+        "access:straightforward",
+      ],
+      nonEvents: [
+        { measurementValue: 1400, measurementUnit: "m" },
+        { measurementValue: 5400, measurementUnit: "m" },
+      ],
+    },
+  },
+  {
     id: "amy-hedge-quote",
     name: "Amy Hedge Quote",
     transcript: `Quote for Amy at 44 Amy Street.

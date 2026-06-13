@@ -10,6 +10,12 @@ function hasAccessNote(text: string) {
   return /\baccess\b|\bsteep\b|\btight\b|\blimited\b|\bdifficult\b|\beasy\s+access\b/i.test(text)
 }
 
+function hasWasteRemovalSignal(text: string) {
+  return /\b(waste|rubbish|debris|offcuts|disposal|dispose|removal|cart\s+away|take\s+away)\b|\bremove\s+(?:existing|old)\s+(?:deck|decking|boards?)\b|\bremove\s+old\s+decking\b/i.test(
+    text,
+  )
+}
+
 function deckingNotice(id: string, message: string, metadata: Record<string, string | number | boolean | null> = {}): ReviewNotice {
   return {
     id: `decking.${id}`,
@@ -54,7 +60,7 @@ export function deckingReviewNotices(input: ReviewNoticeInput): ReviewNotice[] {
     }))
   }
 
-  if (result.waste_removal_notes.length === 0) {
+  if (result.waste_removal_notes.length === 0 && !hasWasteRemovalSignal(text)) {
     notices.push(deckingNotice("missing-waste", "Decking waste/removal not specified. Confirm disposal allowance before pricing.", {
       check: "waste_removal",
     }))

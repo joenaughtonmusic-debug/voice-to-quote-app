@@ -31,10 +31,10 @@ function noticeMatches(actual: ReturnType<typeof analyseSiteVisitTranscriptFixtu
 
 function nonEventHappened(result: ReturnType<typeof analyseSiteVisitTranscriptFixture>, nonEvent: ExpectedNonEvent) {
   if (nonEvent.fact && result.facts.includes(nonEvent.fact)) return true
-  if (
-    typeof nonEvent.measurementValue === "number" &&
-    result.measurements.some((measurement) => measurement.value === nonEvent.measurementValue)
-  ) {
+  if (typeof nonEvent.measurementValue === "number" && result.measurements.some((measurement) => {
+    if (measurement.value !== nonEvent.measurementValue) return false
+    return nonEvent.measurementUnit === undefined || measurement.unit === nonEvent.measurementUnit
+  })) {
     return true
   }
 
@@ -48,7 +48,7 @@ function nonEventHappened(result: ReturnType<typeof analyseSiteVisitTranscriptFi
 }
 
 test("site visit transcript fixtures cover deterministic app quote-processing layers", () => {
-  assert.equal(siteVisitTranscriptFixtures.length, 10)
+  assert.equal(siteVisitTranscriptFixtures.length, 11)
 
   for (const fixture of siteVisitTranscriptFixtures) {
     const result = analyseSiteVisitTranscriptFixture(fixture.transcript)
