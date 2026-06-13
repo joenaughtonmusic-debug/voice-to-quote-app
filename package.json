@@ -8,6 +8,7 @@
     "test:measurements": "tsc --project lib/core/measurement-extraction/tsconfig.test.json && node --test .tmp/measurement-tests/lib/core/measurement-extraction/index.test.js",
     "test:review-notices": "tsc --project lib/core/review-notices/tsconfig.test.json && node --test .tmp/review-notice-tests/lib/core/review-notices/index.test.js",
     "test:core": "npm run test:measurements && npm run test:review-notices",
+    "test:site-fixtures": "tsc --project lib/test-fixtures/site-visit-transcripts/tsconfig.test.json && node --test .tmp/site-visit-fixture-tests/lib/test-fixtures/site-visit-transcripts/index.test.js",
     "test:decking": "tsc --project lib/trades/decking/tsconfig.test.json && node --test .tmp/decking-tests/lib/trades/decking/index.test.js .tmp/decking-tests/lib/trades/decking/e2e.test.js .tmp/decking-tests/lib/trades/decking/review.test.js .tmp/decking-tests/lib/core/quote-facts.test.js .tmp/decking-tests/lib/customer-quote-preview.test.js .tmp/decking-tests/lib/xero-quote-payload.test.js",
     "test:retaining": "tsc --project lib/trades/retaining/tsconfig.test.json && node --test .tmp/retaining-tests/lib/trades/retaining/index.test.js .tmp/retaining-tests/lib/trades/retaining/e2e.test.js .tmp/retaining-tests/lib/trades/retaining/review.test.js",
     "test:trades": "npm run test:decking && npm run test:retaining",

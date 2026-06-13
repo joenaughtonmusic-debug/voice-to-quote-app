@@ -1,0 +1,42 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "rootDir": "../../..",
+    "outDir": "../../../.tmp/site-visit-fixture-tests",
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./index.ts",
+    "./fixtures.ts",
+    "./processor.ts",
+    "./types.ts",
+    "../../address-extraction.ts",
+    "../../client-name-extraction.ts",
+    "../../calculators/planting/index.ts",
+    "../../core/measurement-extraction/index.ts",
+    "../../core/measurement-extraction/types.ts",
+    "../../core/measurement-extraction/confidence.ts",
+    "../../core/measurement-extraction/review.ts",
+    "../../core/measurement-extraction/extractor.ts",
+    "../../core/review-notices/index.ts",
+    "../../core/review-notices/types.ts",
+    "../../core/review-notices/registry.ts",
+    "../../core/review-notices/measurement-notices.ts",
+    "../../trades/decking/detector.ts",
+    "../../trades/decking/review-notices.ts",
+    "../../trades/decking/calculator.ts",
+    "../../trades/decking/types.ts",
+    "../../trades/retaining/detector.ts",
+    "../../trades/retaining/review-notices.ts",
+    "../../trades/retaining/calculator.ts",
+    "../../trades/retaining/types.ts"
+  ]
+}
