@@ -1912,6 +1912,16 @@
     }
   }
 
+  .border-primary\/50 {
+    border-color: var(--primary);
+  }
+
+  @supports (color: color-mix(in lab, red, red)) {
+    .border-primary\/50 {
+      border-color: color-mix(in oklab, var(--primary) 50%, transparent);
+    }
+  }
+
   .border-sidebar-border {
     border-color: var(--sidebar-border);
   }
