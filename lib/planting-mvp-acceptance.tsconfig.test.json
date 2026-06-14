@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/planting-mvp-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "planting-mvp-acceptance.test.ts",
+    "client-name-extraction.test.ts"
+  ]
+}

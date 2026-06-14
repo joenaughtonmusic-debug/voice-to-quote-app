@@ -132,6 +132,9 @@ function normalizeRequestedSize(value: string) {
 function isLikelyPlantName(value: string) {
   const text = cleanPlantName(value).toLowerCase()
   if (text.length < 3) return false
+  if (/\b(?:street|st|road|rd|avenue|ave|terrace|terr|lane|ln|drive|dr|place|pl|crescent|cres|way|court|ct)\b/.test(text)) {
+    return false
+  }
   if (
     /\b(lower|upper|front|side|rear|back|driveway|paver|paving|planting|area|hedge\s+row|garden\s+mix|mulch|hardfill|soil|labou?r|access|pricing|options?)\b/.test(
       text,
@@ -211,7 +214,7 @@ function rawImportSizeValues(rawImport: unknown) {
 
 function extractRequestedOptionSizes(text: string) {
   const optionIntentMatch = text.match(
-    /\b(?:provide\s+)?(?:price\s+options?|available\s+sizes?|options?|sizes?|need\s+pricing)\b\s*(?::|\bfor\b)?/i,
+    /\b(?:provide|price\s+options?|available\s+sizes?|options?|sizes?|need\s+pricing)\b\s*(?::|\bfor\b)?/i,
   )
   if (!optionIntentMatch || optionIntentMatch.index === undefined) return []
   const optionText = optionScopeFrom(text, optionIntentMatch.index + optionIntentMatch[0].length)
@@ -312,7 +315,7 @@ function plantNameFromContext(text: string, index: number, fallbackPlantName?: s
 
 function plantNameFromOptionRequest(text: string) {
   const optionIntentMatch = text.match(
-    /\b(?:provide\s+)?(?:price\s+options?|available\s+sizes?|options?|sizes?|need\s+pricing)\b\s*(?::|\bfor\b)?/i,
+    /\b(?:provide|price\s+options?|available\s+sizes?|options?|sizes?|need\s+pricing)\b\s*(?::|\bfor\b)?/i,
   )
   if (!optionIntentMatch || optionIntentMatch.index === undefined) return ""
 

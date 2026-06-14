@@ -369,6 +369,97 @@ test("selected planting template does not activate garden tidy assembly", () => 
   assert.equal(assembly, null)
 })
 
+test("planting quotes assemble options materials labour and exclusions", () => {
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Amy",
+    site_address: "44 Amy Street",
+    quote_title: "Planting Quote",
+    job_type: "planting",
+    primary_quote: {
+      quote_title: "Planting Quote",
+      job_type: "planting",
+      cadence: "",
+      scope: ["Plant 11.5 metres of Ficus Tuffi hedge", "Garden mix", "Mulch", "Labour included"],
+      notes: [],
+    },
+    customer_scope: ["Plant 11.5 metres of Ficus Tuffi hedge", "Garden mix", "Mulch", "Labour included"],
+    materials: ["Garden mix", "Mulch"],
+    exclusions: ["No irrigation"],
+    quote_options: [
+      {
+        id: "ficus-12m",
+        label: "Option A",
+        title: "Ficus Tuffi 1.2m",
+        category: "planting",
+        source: "plant_calculator",
+        lineItems: [
+          {
+            itemName: "Ficus Tuffi 1.2m",
+            quantity: 15,
+            unit: "each",
+            unitPrice: 34.88,
+            total: 523.2,
+          },
+        ],
+        subtotal: 523.2,
+      },
+      {
+        id: "ficus-14l",
+        label: "Option B",
+        title: "Ficus Tuffi 14L",
+        category: "planting",
+        source: "plant_calculator",
+        lineItems: [
+          {
+            itemName: "Ficus Tuffi 14L",
+            quantity: 15,
+            unit: "each",
+            unitPrice: 81.25,
+            total: 1218.75,
+          },
+        ],
+        subtotal: 1218.75,
+      },
+      {
+        id: "ficus-25l",
+        label: "Option C",
+        title: "Ficus Tuffi 25L",
+        category: "planting",
+        source: "plant_calculator",
+        lineItems: [
+          {
+            itemName: "Ficus Tuffi 25L",
+            quantity: 15,
+            unit: "each",
+            unitPrice: 118.75,
+            total: 1781.25,
+          },
+        ],
+        subtotal: 1781.25,
+      },
+    ],
+  }
+
+  const assembly = assembleCustomerQuote({
+    quote,
+    rawTranscript: "Quote for Amy. Plant 11.5 metres of Ficus Tuffi hedge. Include garden mix, mulch, labour. No irrigation.",
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "Planting Quote")
+  assert.deepEqual(sectionItems("Planting Options", assembly), [
+    "Option 1: Ficus Tuffi 1.2m",
+    "Option 2: Ficus Tuffi 14L",
+    "Option 3: Ficus Tuffi 25L",
+  ])
+  assert.deepEqual(sectionItems("Materials", assembly), ["Garden mix", "Mulch"])
+  assert.deepEqual(sectionItems("Labour", assembly), ["Included"])
+  assert.deepEqual(sectionItems("Exclusions", assembly), ["Irrigation not included"])
+  assert.equal(/Maintenance|Garden tidy|legacy labour total|Irrigation included/i.test(renderedAssembly(assembly)), false)
+})
+
 test("non-maintenance quotes keep existing preview behavior for now", () => {
   const assembly = assembleCustomerQuote({
     quote: {

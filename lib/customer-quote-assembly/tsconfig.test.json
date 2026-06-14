@@ -14,6 +14,7 @@
     "./assembler.ts",
     "./garden-tidy.ts",
     "./maintenance.ts",
+    "./planting.ts",
     "./types.ts",
     "../address-extraction.ts",
     "../client-name-extraction.ts",

@@ -1,6 +1,7 @@
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput } from "./types"
 import { assembleGardenTidyCustomerQuote } from "./garden-tidy"
 import { assembleMaintenanceCustomerQuote } from "./maintenance"
+import { assemblePlantingCustomerQuote } from "./planting"
 
 function isMaintenance(value: string | null | undefined) {
   return /\bmaintenance|garden\s+maintenance\b/i.test(value ?? "")
@@ -8,6 +9,20 @@ function isMaintenance(value: string | null | undefined) {
 
 function isGardenTidy(value: string | null | undefined) {
   return /\bgarden[_\s-]?tidy|one[_\s-]?off[_\s-]?tidy|property[_\s-]?tidy\b/i.test(value ?? "")
+}
+
+function isPlanting(value: string | null | undefined) {
+  return /\bplanting|hedge\s+planting|plant\s+supply|plant\s+install|plant\s+options?\b/i.test(value ?? "")
+}
+
+function hasPlantingFacts(input: CustomerQuoteAssemblyInput) {
+  return (
+    (input.quote.quote_options ?? []).some((option) => option.category === "planting" && option.lineItems.length > 0) ||
+    (input.quote.plant_calculator_results ?? []).some((result) => result.plant_name || result.plant_count || result.length_m) ||
+    [...input.quote.customer_scope, ...input.quote.primary_quote.scope].some((item) =>
+      /\bplant\s+\d+(?:\.\d+)?\s*(?:m|metres?|meters?)\s+of\b|\bficus\s+tuffi\b|\bplanting\s+options?\b/i.test(item),
+    )
+  )
 }
 
 function selectedTemplateText(input: CustomerQuoteAssemblyInput) {
@@ -41,6 +56,14 @@ export function assembleCustomerQuote(input: CustomerQuoteAssemblyInput): Custom
 
   if (isGardenTidy(selectedTemplateText(input))) {
     return assembleGardenTidyCustomerQuote(input)
+  }
+
+  if ((isPlanting(input.quote.job_type) || isPlanting(input.quote.primary_quote.job_type)) && hasPlantingFacts(input)) {
+    return assemblePlantingCustomerQuote(input)
+  }
+
+  if (isPlanting(selectedTemplateText(input)) && hasPlantingFacts(input)) {
+    return assemblePlantingCustomerQuote(input)
   }
 
   if (isMaintenance(input.quote.job_type) || isMaintenance(input.quote.primary_quote.job_type)) {
