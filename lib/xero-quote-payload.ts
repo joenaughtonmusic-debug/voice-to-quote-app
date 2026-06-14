@@ -8,6 +8,7 @@ import {
   makeXeroLineItem,
 } from "./export/xero/helpers"
 import { buildGenericXeroExportLineItems } from "./export/xero/generic-renderer"
+import { buildMaintenanceXeroExportLineItems } from "./export/xero/maintenance-renderer"
 import type { MakeXeroQuoteLineItem, XeroExportLineItem, XeroPayloadQuote, XeroQuoteLineItem } from "./export/xero/types"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote, type QuoteLineItem } from "./processed-quote"
@@ -85,7 +86,24 @@ function scopeNotes(quote: XeroPayloadQuote) {
     ...(quote.primary_quote?.notes ?? []),
   ].filter(Boolean)
 
-  return generatedScope.length > 0 ? generatedScope : fallbackScope
+  const pricingInclusions = (quote.pricing_facts ?? [])
+    .filter((fact) => fact.type === "fixed_price")
+    .flatMap((fact) => fact.inclusions ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return uniqueText([...(generatedScope.length > 0 ? generatedScope : fallbackScope), ...pricingInclusions])
+}
+
+function uniqueText(values: string[]) {
+  const seen = new Set<string>()
+  return values.filter((value) => {
+    const cleaned = value.trim()
+    const key = cleaned.toLowerCase().replace(/\s+/g, " ")
+    if (!cleaned || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function normalisedLineItem(item: XeroPayloadQuote["line_items"][number]): QuoteLineItem {
@@ -149,12 +167,15 @@ export function buildXeroQuotePayload(
   const quoteFacts = quoteFactsForXero(quote)
   const deckingExportLineItems = buildDeckingXeroExportLineItemsFromQuoteFacts(quoteFacts)
   const retainingExportLineItems = buildRetainingXeroExportLineItemsFromQuoteFacts(quoteFacts)
+  const maintenanceExportLineItems = buildMaintenanceXeroExportLineItems(quote)
   const now = options.now ?? new Date()
   const renderedExportLineItems =
     deckingExportLineItems.length > 0
       ? deckingExportLineItems
       : retainingExportLineItems.length > 0
         ? retainingExportLineItems
+        : maintenanceExportLineItems.length > 0
+        ? maintenanceExportLineItems
         : isPlantingQuote(quote)
         ? buildPlantingXeroExportLineItems(quote, preview)
         : buildGenericXeroExportLineItems(quote, preview)

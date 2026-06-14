@@ -370,7 +370,13 @@ export function QuoteReview({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          processed_quote: editedQuote,
+          processed_quote: buildCustomerPreviewQuoteInput({
+            processedQuote: editedQuote,
+            rawTranscript,
+            originalTranscript,
+            selectedTemplate,
+            pricingFacts,
+          }),
           draft_id: draftId ?? null,
           export_mappings: exportMappings,
         }),
