@@ -10,12 +10,25 @@ function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+function stripInternalPrefix(value: string) {
+  return cleanLine(value).replace(/^[\s\-•]*(?:scope|note|site\s+note)\s*:\s*/i, "")
+}
+
+function lowerKey(value: string) {
+  return stripInternalPrefix(value)
+    .toLowerCase()
+    .replace(/\bgreen\s*waste\b/g, "greenwaste")
+    .replace(/^there\s+is\s+a\s+/, "")
+    .replace(/^a\s+/, "")
+    .replace(/\s+as\s+required$/, "")
+}
+
 function unique(values: string[]) {
   const seen = new Set<string>()
   return values
     .map(cleanLine)
     .filter((value) => {
-      const key = value.toLowerCase()
+      const key = lowerKey(value)
       if (!value || seen.has(key)) return false
       seen.add(key)
       return true
@@ -49,11 +62,18 @@ function sourceSentences(input: CustomerQuoteAssemblyInput) {
   ])
 }
 
+function siteNoteSentences(input: CustomerQuoteAssemblyInput) {
+  return unique([
+    ...sentences(input.rawTranscript ?? ""),
+    ...input.quote.primary_quote.notes.flatMap(sentences),
+  ])
+}
+
 function mainFocusItems(input: CustomerQuoteAssemblyInput) {
   const explicit = sentenceMatching(input.rawTranscript, /\bmain\s+focus\b/i)
   const source = explicit || input.quote.primary_quote.scope.join(", ")
   const match = source.match(/\bmain\s+focus(?:\s+of\s+visits)?\s*(?:will\s+be|is|are|:)?\s+(.+)$/i)
-  const value = match?.[1] ?? source
+  const value = match?.[1] ?? source.replace(/\bmain\s+focus(?:\s+of\s+visits)?\b/i, "")
   const cleaned = value
     .replace(/\bwill\s+be\b/i, "")
     .replace(/\bas\s+required\b/i, "")
@@ -62,7 +82,11 @@ function mainFocusItems(input: CustomerQuoteAssemblyInput) {
   return unique(
     splitList(cleaned)
       .map((item) => item.replace(/^main\s+focus\s*(?:of\s+visits)?\s*/i, ""))
-      .filter((item) => /\b(weed\w*|prun\w*|trim\w*|self-seeded|removal|spray\w*|maintenance|plant health)\b/i.test(item))
+      .filter((item) =>
+        /\b(weed\w*|prun\w*|trim\w*|pathways?|paths?|clear|self-seeded|removal|spray\w*|maintenance|plant health)\b/i.test(
+          item,
+        ),
+      )
       .map(titleCase),
   )
 }
@@ -72,7 +96,7 @@ function serviceIncludes(input: CustomerQuoteAssemblyInput, mainFocus: string[])
       .flatMap((fact) => fact.inclusions)
       .map((item) => item.replace(/\s+/g, " ").trim())
       .filter(Boolean)
-  const includeTranscriptServices = pricingIncludes.length < 2
+  const includeTranscriptServices = pricingIncludes.length === 0
   const transcriptIncludes = sourceSentences(input).flatMap((sentence) => {
     const items: string[] = []
 
@@ -103,27 +127,41 @@ function serviceIncludes(input: CustomerQuoteAssemblyInput, mainFocus: string[])
 }
 
 function ongoingMaintenanceItems(input: CustomerQuoteAssemblyInput, mainFocus: string[]) {
-  const transcriptItem = ongoingMaintenanceText(sentenceMatching(input.rawTranscript, /\beach\s+visit\s+may\s+include\b/i))
-  const scopeItems = input.quote.customer_scope.filter((item) =>
-    /\beach\s+visit\s+may\s+include|general\s+garden\s+maintenance|ongoing\s+garden\s+maintenance|scheduled\s+visits?\b/i.test(
-      item,
-    ),
-  ).map(ongoingMaintenanceText)
+  const quoteItems = sourceSentences(input)
+    .filter((item) =>
+      /\b(?:each\s+)?visits?\s+may\s+include|general\s+garden\s+maintenance|ongoing\s+garden\s+maintenance|scheduled\s+visits?\b/i.test(
+        item,
+      ),
+    )
+    .map(ongoingMaintenanceText)
   const templateItems = selectedTemplateWording(input.selectedTemplate).filter((item) =>
     /\bongoing|maintenance|visit\b/i.test(item),
   )
 
-  return unique([
-    transcriptItem,
-    ...scopeItems,
+  const items = unique([
+    ...quoteItems,
     ...templateItems,
-  ]).filter((item) => !mainFocus.some((focus) => focus.toLowerCase() === item.toLowerCase()))
+  ]).filter((item) => !mainFocus.some((focus) => lowerKey(focus) === lowerKey(item)))
+
+  const hasDetailedVisitLine = items.some((item) => /^each visit may include\b/i.test(item))
+  if (!hasDetailedVisitLine) return uniqueMaintenanceLines(items)
+
+  return items.filter((item) => !/^general garden maintenance(?: as required)?$/i.test(item))
 }
 
 function ongoingMaintenanceText(value: string) {
-  const match = value.match(/\bgeneral\s+garden\s+maintenance(?:\s+as\s+required)?\b/i)
-  if (match?.[0]) return titleCase(match[0])
-  return value
+  const cleaned = stripInternalPrefix(value)
+    .replace(/\bvisits\s+may\s+include\b/i, "Each visit may include")
+    .replace(/\beach\s+visit\s+may\s+include\b/i, "Each visit may include")
+  return titleCase(cleaned)
+}
+
+function uniqueMaintenanceLines(values: string[]) {
+  const hasGeneralAsRequired = values.some((item) => /^general garden maintenance as required$/i.test(item))
+  return values.filter((item) => {
+    if (hasGeneralAsRequired && /^general garden maintenance$/i.test(item)) return false
+    return true
+  })
 }
 
 function selectedTemplateWording(template?: SelectedQuoteTemplate | null): string[] {
@@ -186,17 +224,58 @@ function cadenceText(cadence: PricingFact["cadence"]) {
   return ""
 }
 
+function formatSiteNote(value: string) {
+  const note = stripInternalPrefix(value).replace(/\bwhich\s+can\s+be\b/i, "may be")
+
+  if (/^(?:(?:there\s+is\s+)?a\s+)?greenwaste\s+bin\s+(?:is\s+)?available\s+on\s+site$/i.test(note)) {
+    return "A green waste bin is available on site"
+  }
+
+  if (/^(?:(?:there\s+is\s+)?a\s+)?green\s*waste\s+bin\s+(?:is\s+)?available\s+on\s+site$/i.test(note)) {
+    return "A green waste bin is available on site"
+  }
+
+  return titleCase(note.replace(/^there\s+is\s+a\s+/i, ""))
+}
+
 function siteNotes(input: CustomerQuoteAssemblyInput) {
-  const notes = sourceSentences(input)
+  const notes = siteNoteSentences(input)
+    .filter((sentence) => !/^[\s\-•]*(?:title|job\s*type|cadence|scope)\s*:/i.test(sentence))
+    .map(stripInternalPrefix)
     .filter((sentence) =>
       /\b(greenwaste\s+bin|green\s*waste\s+bin|dog|gate|gates|access|parking|key|lock|alarm|neighbou?r|tenant)\b/i.test(
         sentence,
       ),
     )
     .filter((sentence) => !/\b(price|per\s+visit|\$\d|labou?r|hours?)\b/i.test(sentence))
-    .map((sentence) => sentence.replace(/\bthere\s+is\s+a\s+/i, "").replace(/\bwhich\s+can\s+be\b/i, "may be"))
+    .map(formatSiteNote)
 
-  return unique(notes.map((note) => titleCase(note)))
+  return unique(notes)
+}
+
+function maintenanceTitle(input: CustomerQuoteAssemblyInput) {
+  const explicitTitle = cleanLine(input.quote.quote_title || input.quote.primary_quote.quote_title || "")
+  const cadence = cleanLine(input.quote.primary_quote.cadence || "")
+  const raw = [
+    input.rawTranscript,
+    explicitTitle,
+    cadence,
+    input.quote.job_type,
+    input.quote.primary_quote.job_type,
+    ...input.quote.customer_scope,
+    ...input.quote.primary_quote.scope,
+    ...input.quote.primary_quote.notes,
+  ].filter(Boolean).join(" ")
+  const titleWords = explicitTitle.toLowerCase().split(/\s+/).filter(Boolean)
+  const genericMaintenanceTitle =
+    titleWords.length > 0 && titleWords.every((word) => word === "maintenance" || word === "monthly")
+  const isMonthly = /\bmonthly\b/i.test(raw)
+
+  if (genericMaintenanceTitle && isMonthly) return "Monthly Maintenance"
+  if (genericMaintenanceTitle) return "Maintenance"
+  if (explicitTitle) return titleCase(explicitTitle)
+  if (isMonthly) return "Monthly Maintenance"
+  return "Maintenance Quote"
 }
 
 function section(title: string, items: string[]): CustomerQuoteAssemblySection | null {
@@ -216,7 +295,7 @@ export function assembleMaintenanceCustomerQuote(input: CustomerQuoteAssemblyInp
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)
 
   return {
-    title: input.quote.quote_title || input.quote.primary_quote.quote_title || "Maintenance Quote",
+    title: maintenanceTitle(input),
     customer_name: input.quote.client_name,
     site_address: input.quote.site_address,
     sections,

@@ -94,10 +94,10 @@ Keep gates closed due to dog.`
     ...EMPTY_PROCESSED_QUOTE,
     client_name: extractClientNameFromTranscript(jamesTranscript) ?? "",
     site_address: address.cleaned_address ?? "",
-    quote_title: "Monthly Maintenance",
+    quote_title: "maintenance",
     job_type: "maintenance",
     primary_quote: {
-      quote_title: "Monthly Maintenance",
+      quote_title: "maintenance",
       job_type: "maintenance",
       cadence: "monthly",
       scope: [
@@ -108,7 +108,13 @@ Keep gates closed due to dog.`
         "Price per visit $495 including small fertiliser",
         "Each visit may include weeding, spraying, plant health checks, and general garden maintenance as required",
       ],
-      notes: ["Keep gates closed due to dog."],
+      notes: [
+        "Title: maintenance",
+        "Job type: maintenance",
+        "Cadence: monthly",
+        "Scope: Visits may include weeding, spraying, plant health checks, and general garden maintenance as required",
+        "Note: Keep gates closed due to dog.",
+      ],
     },
   }
   const assembly = assembleCustomerQuote({
@@ -118,6 +124,7 @@ Keep gates closed due to dog.`
   })
 
   assert.ok(assembly)
+  assert.equal(assembly.title, "Monthly Maintenance")
   assert.deepEqual(assembly.sections.map((section) => section.title), [
     "Main Focus",
     "Service Includes",
@@ -129,16 +136,84 @@ Keep gates closed due to dog.`
   assert.deepEqual(sectionItems("Service Includes", assembly), [
     "Small fertiliser",
     "Greenwaste removal",
-    "Weeding",
-    "Spraying",
-    "Plant health checks",
   ])
-  assert.deepEqual(sectionItems("Ongoing Maintenance", assembly), ["General garden maintenance as required"])
+  assert.deepEqual(sectionItems("Ongoing Maintenance", assembly), [
+    "Each visit may include weeding, spraying, plant health checks, and general garden maintenance as required",
+  ])
   assert.deepEqual(sectionItems("Price", assembly), ["$495 per visit"])
   assert.deepEqual(sectionItems("Site Notes", assembly), ["Keep gates closed due to dog"])
 
   const rendered = renderedAssembly(assembly)
   assert.equal(/4 hours|labou?r per visit/i.test(rendered), false)
+  assert.equal(/Title:|Job type:|Cadence:|Scope:/i.test(rendered), false)
+})
+
+test("Sarah maintenance quote keeps focus, ongoing wording, and site notes customer-facing", () => {
+  const sarahTranscript = `Monthly maintenance for Sarah at 28 Rata Street, Mount Eden.
+Main focus will be hedge trimming, weeding, and keeping pathways clear.
+Price per visit $365 including greenwaste removal and standard maintenance materials.
+Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required.
+A greenwaste bin is available on site.
+Please keep the side gate shut as there is a dog on the property.`
+  const address = extractAddressDetails(sarahTranscript)
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: extractClientNameFromTranscript(sarahTranscript) ?? "",
+    site_address: address.cleaned_address ?? "",
+    quote_title: "maintenance maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      quote_title: "maintenance",
+      job_type: "maintenance",
+      cadence: "monthly",
+      scope: [
+        "Title: maintenance",
+        "Job type: maintenance",
+        "Cadence: monthly",
+        "Main focus will be hedge trimming, weeding, and keeping pathways clear",
+        "Scope: General garden maintenance as required",
+        "Scope: Visits may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
+      ],
+      notes: [
+        "Title: maintenance",
+        "Job type: maintenance",
+        "Cadence: monthly",
+        "Scope: General garden maintenance as required",
+        "Note: A greenwaste bin is available on site.",
+        "Note: Please keep the side gate shut as there is a dog on the property.",
+      ],
+    },
+  }
+
+  const assembly = assembleCustomerQuote({
+    quote,
+    rawTranscript: sarahTranscript,
+    pricingFacts: extractPricing(sarahTranscript).pricing,
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "Monthly Maintenance")
+  assert.deepEqual(sectionItems("Main Focus", assembly), [
+    "Hedge trimming",
+    "Weeding",
+    "Keeping pathways clear",
+  ])
+  assert.deepEqual(sectionItems("Service Includes", assembly), [
+    "Greenwaste removal",
+    "Standard maintenance materials",
+  ])
+  assert.deepEqual(sectionItems("Ongoing Maintenance", assembly), [
+    "Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
+  ])
+  assert.deepEqual(sectionItems("Price", assembly), ["$365 per visit"])
+  assert.deepEqual(sectionItems("Site Notes", assembly), [
+    "A green waste bin is available on site",
+    "Please keep the side gate shut as there is a dog on the property",
+  ])
+
+  const rendered = renderedAssembly(assembly)
+  assert.equal(/Title:|Job type:|Cadence:|Scope:|Note:/i.test(rendered), false)
+  assert.equal(/Planting labour|legacy \$ labour total/i.test(rendered), false)
 })
 
 test("non-maintenance quotes keep existing preview behavior for now", () => {

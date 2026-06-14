@@ -416,6 +416,89 @@ test("maintenance MVP uses the real customer preview/template path", () => {
   assert.match(mismatchNotices[0]?.message ?? "", /Spoken price is \$405 per visit, but matched labour total is \$360/)
 })
 
+test("Sarah maintenance rendered draft uses assembled customer-facing content", () => {
+  const sarahTranscript = `Monthly maintenance for Sarah at 28 Rata Street, Mount Eden.
+Main focus will be hedge trimming, weeding, and keeping pathways clear.
+Price per visit $365 including green waste removal and standard maintenance materials.
+Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required.
+A green waste bin is available on site.
+Please keep the side gate shut as dog on the property.`
+  const address = extractAddressDetails(sarahTranscript)
+  const processedQuote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: extractClientNameFromTranscript(sarahTranscript) ?? "",
+    site_address: address.cleaned_address ?? "",
+    quote_title: "maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      quote_title: "maintenance",
+      job_type: "maintenance",
+      cadence: "",
+      scope: [
+        "Hedge trimming",
+        "Weeding",
+        "Scope: General garden maintenance as required",
+      ],
+      notes: [
+        "Title: maintenance",
+        "Job type: maintenance",
+        "Cadence: monthly",
+        "Scope: General garden maintenance as required",
+        "Scope: Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
+        "Note: A green waste bin is available on site",
+        "Note: Please keep the side gate shut as dog on the property",
+      ],
+    },
+    customer_scope: [
+      "Hedge trimming",
+      "Weeding",
+      "Scope: General garden maintenance as required",
+    ],
+  }
+  const pricing = extractPricing(sarahTranscript)
+  const previewInput = buildCustomerPreviewQuoteInput({
+    processedQuote,
+    rawTranscript: sarahTranscript,
+    pricingFacts: pricing.pricing,
+  })
+  const preview = buildCustomerQuotePreview(previewInput)
+  const model = buildCustomerDraftPreviewModel({
+    processedQuote,
+    customerPreview: preview,
+    mode: "standard",
+    rawTranscript: sarahTranscript,
+    selectedTemplate: previewInput.selected_template,
+  })
+  const renderedText = renderCustomerDraftPreviewText(model)
+
+  assert.ok(model.assembly, "Sarah maintenance draft should use customer quote assembly")
+  assert.equal(model.quoteTitle, "Monthly Maintenance")
+  assert.equal(includesText(renderedText, "Monthly Maintenance"), true, renderedText)
+  assert.equal(/Quote\s+Monthly Maintenance\s+maintenance\b/i.test(renderedText), false, renderedText)
+  assert.equal(includesText(renderedText, "Hedge trimming"), true, renderedText)
+  assert.equal(includesText(renderedText, "Weeding"), true, renderedText)
+  assert.equal(includesText(renderedText, "Keeping pathways clear"), true, renderedText)
+  assert.equal(
+    includesText(
+      renderedText,
+      "Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
+    ),
+    true,
+    renderedText,
+  )
+  assert.equal(includesText(renderedText, "$365 per visit"), true, renderedText)
+  assert.equal(includesText(renderedText, "Greenwaste removal"), true, renderedText)
+  assert.equal(includesText(renderedText, "Standard maintenance materials"), true, renderedText)
+  assert.equal(includesText(renderedText, "A green waste bin is available on site"), true, renderedText)
+  assert.equal(includesText(renderedText, "Please keep the side gate shut as dog on the property"), true, renderedText)
+  assert.equal((renderedText.match(/^General garden maintenance(?: as required)?$/gim) ?? []).length, 0, renderedText)
+  assert.equal((renderedText.match(/green waste bin available on site|green waste bin is available on site/gi) ?? []).length, 1, renderedText)
+  assert.equal((renderedText.match(/Please keep the side gate shut as dog on the property/gi) ?? []).length, 1, renderedText)
+  assert.equal(/Title:|Job type:|Cadence:|Scope:|Note:/i.test(renderedText), false, renderedText)
+  assert.equal(includesText(renderedText, "Planting labour"), false, renderedText)
+  assert.equal(/\$320(?:\.00)?/.test(renderedText), false, renderedText)
+})
+
 test("maintenance draft preview handoff uses edited quote instead of stale parent quote", () => {
   const transcript = acceptanceTranscript()
   const editedQuoteForReview = maintenanceMvpProcessedQuote(transcript)

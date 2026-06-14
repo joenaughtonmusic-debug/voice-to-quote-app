@@ -40,7 +40,7 @@ function customerScopeFromTranscript(text: string) {
     .split(/\n|(?<=[.!?])\s+/)
     .map((sentence) => sentence.replace(/\s+/g, " ").trim().replace(/[.]+$/g, ""))
     .filter((sentence) =>
-      /\b(each\s+visit\s+may\s+include|main\s+focus\s+of\s+visits|general\s+garden\s+maintenance|ongoing\s+garden\s+maintenance|scheduled\s+visits?)\b/i.test(
+      /\b(each\s+visit\s+may\s+include|main\s+focus(?:\s+of\s+visits)?|general\s+garden\s+maintenance|ongoing\s+garden\s+maintenance|scheduled\s+visits?)\b/i.test(
         sentence,
       ),
     )

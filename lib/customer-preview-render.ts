@@ -39,7 +39,7 @@ export function buildCustomerDraftPreviewModel({
   rawTranscript,
   selectedTemplate,
 }: CustomerDraftPreviewRenderInput): CustomerDraftPreviewModel {
-  const quoteTitle =
+  const fallbackQuoteTitle =
     processedQuote.quote_title || processedQuote.primary_quote.quote_title || processedQuote.job_type || "Quote"
   const scopeItems = customerPreview.scopeItems.length > 0
     ? customerPreview.scopeItems
@@ -72,7 +72,7 @@ export function buildCustomerDraftPreviewModel({
     mode,
     clientName: processedQuote.client_name || "Not captured",
     siteAddress: processedQuote.site_address || "Not captured",
-    quoteTitle,
+    quoteTitle: assembly?.title || fallbackQuoteTitle,
     jobType: processedQuote.job_type,
     scopeItems,
     pricingLines: customerPreview.pricingFacts.flatMap((fact) => [
@@ -124,7 +124,7 @@ export function renderCustomerDraftPreviewText(model: CustomerDraftPreviewModel)
     model.siteAddress,
     "Quote",
     model.quoteTitle,
-    model.jobType,
+    model.assembly ? "" : model.jobType,
     ...body,
   ]
     .filter(Boolean)
