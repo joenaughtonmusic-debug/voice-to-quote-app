@@ -16,6 +16,7 @@
     "./garden-tidy.ts",
     "./maintenance.ts",
     "./planting.ts",
+    "./retaining.ts",
     "./types.ts",
     "../address-extraction.ts",
     "../client-name-extraction.ts",
@@ -27,6 +28,10 @@
     "../trades/decking/index.ts",
     "../trades/decking/types.ts",
     "../trades/decking/detector.ts",
-    "../trades/decking/calculator.ts"
+    "../trades/decking/calculator.ts",
+    "../trades/retaining/index.ts",
+    "../trades/retaining/types.ts",
+    "../trades/retaining/detector.ts",
+    "../trades/retaining/calculator.ts"
   ]
 }

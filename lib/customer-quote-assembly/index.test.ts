@@ -523,6 +523,63 @@ Access is poor, allow an additional 10 hours.`
   assert.equal(/Planting labour|Maintenance|Garden tidy|Irrigation|legacy labour total/i.test(renderedAssembly(assembly)), false)
 })
 
+test("retaining quotes assemble wall scope fence reinstatement materials access and exclusions", () => {
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Mary",
+    site_address: "12 Hill Road",
+    quote_title: "Retaining Wall Quote",
+    job_type: "retaining",
+    primary_quote: {
+      quote_title: "Retaining Wall Quote",
+      job_type: "retaining",
+      cadence: "",
+      scope: [
+        "Replace timber retaining wall along the back boundary",
+        "Install new retaining wall",
+        "Remove old retaining",
+        "Remove old fence",
+        "Attach new standard paling fence after retaining is complete",
+      ],
+      notes: ["Reasonable access conditions"],
+    },
+    customer_scope: [
+      "Replace timber retaining wall along the back boundary",
+      "Install new retaining wall",
+      "Remove old retaining",
+      "Remove old fence",
+      "Attach new standard paling fence after retaining is complete",
+    ],
+    materials: ["125x125 H4 posts at 1 metre spacing", "Standard paling fence"],
+    exclusions: ["Planting not included"],
+  }
+
+  const assembly = assembleCustomerQuote({
+    quote,
+    rawTranscript: "Replace timber retaining wall. Wall is 12.4 metres long and approximately 1 metre high. Access is reasonable. No planting included.",
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "Retaining Wall Quote")
+  assert.deepEqual(sectionItems("Retaining Wall Scope", assembly), [
+    "Replace timber retaining wall along the back boundary",
+    "Install new retaining wall",
+    "Remove old retaining",
+  ])
+  assert.deepEqual(sectionItems("Fence Reinstatement", assembly), [
+    "Remove old fence",
+    "Attach new standard paling fence after retaining is complete",
+  ])
+  assert.deepEqual(sectionItems("Materials", assembly), [
+    "125x125 H4 posts at 1 metre spacing",
+    "Standard paling fence",
+  ])
+  assert.deepEqual(sectionItems("Access", assembly), ["Reasonable access conditions"])
+  assert.deepEqual(sectionItems("Exclusions", assembly), ["Planting not included"])
+  assert.equal(/Planting labour|Maintenance|Garden tidy|Decking|Irrigation|legacy labour total/i.test(renderedAssembly(assembly)), false)
+})
+
 test("non-maintenance quotes keep existing preview behavior for now", () => {
   const assembly = assembleCustomerQuote({
     quote: {

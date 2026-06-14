@@ -8,6 +8,10 @@ export function hasPlantingCalculatorIntent(transcript: string) {
   const text = transcript.toLowerCase()
   const explicitPlantingIntent = hasExplicitPlantingIntent(transcript)
 
+  if (/\bno\s+planting\s+included\b|\bplanting\s+not\s+included\b|\bno\s+plants?\b|\bplants?\s+not\s+included\b/i.test(transcript) && !explicitPlantingIntent) {
+    return false
+  }
+
   if (/\b(?:one[_\s-]?off\s+)?garden\s+tidy|one[_\s-]?off[_\s-]?tidy|property\s+tidy\b/i.test(transcript) && !explicitPlantingIntent) {
     return false
   }

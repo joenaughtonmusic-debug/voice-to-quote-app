@@ -25,7 +25,7 @@ function dimensionSections(text: string): RetainingWallSectionRequest[] {
   const sections: RetainingWallSectionRequest[] = []
   const matches = Array.from(
     text.matchAll(
-      /(?:(one|first|second|third)\s+wall\s+)?(\d+(?:\.\d+)?)\s*(m|mm)\s+long(?:[^.:\n]{0,50}?)(\d+(?:\.\d+)?)\s*(m|mm)\s+high/gi,
+      /(?:(one|first|second|third)\s+wall\s+)?(\d+(?:\.\d+)?)\s*(m|metres?|meters?|mm)\s+long(?:[^.:\n]{0,70}?)(?:approximately|approx\.?|about|around)?\s*(\d+(?:\.\d+)?)\s*(m|metres?|meters?|mm)\s+high/gi,
     ),
   )
 

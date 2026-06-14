@@ -11,6 +11,7 @@ import {
 import { isTruePlantCatalogItem } from "@/lib/plant-item-classification"
 import { matchPlantRowsFromLibrary, type KnowledgePlantRow } from "@/lib/plants"
 import { parseJsonWithRepair } from "@/lib/quote-json-repair"
+import { normalizeRetainingProcessedQuote } from "@/lib/retaining-processing"
 import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
 import { hasPlantingCalculatorIntent } from "@/lib/trades/planting/intent"
 import { quoteOptionsFromPlantCalculatorResults } from "@/lib/trades/planting/quote-options"
@@ -3335,7 +3336,7 @@ export async function POST(request: Request) {
 
     try {
       const extraction = await extractQuoteWithRetry(extractionContext)
-      const quote = applyAddressReviewDetails(
+      const quote = normalizeRetainingProcessedQuote(applyAddressReviewDetails(
         removeCapturedLeadMissingInformation(
           surfaceLineItemMissingInformation(
             normalizeClassificationSpecificOutput(
@@ -3376,7 +3377,7 @@ export async function POST(request: Request) {
           leadDetails,
         ),
         leadDetails,
-      )
+      ), transcript)
       quote.client_name = leadDetails.client_name ?? quote.client_name ?? "Not captured"
       quote.site_address = formatLeadSiteAddress(leadDetails) ?? quote.site_address ?? "Not captured"
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
@@ -3423,7 +3424,7 @@ export async function POST(request: Request) {
         error_message: message,
       })
 
-      return NextResponse.json(fallbackQuote(transcript, leadDetails, classification, message, templateContext))
+      return NextResponse.json(normalizeRetainingProcessedQuote(fallbackQuote(transcript, leadDetails, classification, message, templateContext), transcript))
     }
   } catch {
     return NextResponse.json({ error: "Unexpected quote processing error." }, { status: 500 })
