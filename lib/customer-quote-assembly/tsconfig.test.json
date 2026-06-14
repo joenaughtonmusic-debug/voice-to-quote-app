@@ -12,6 +12,7 @@
     "./index.test.ts",
     "./index.ts",
     "./assembler.ts",
+    "./decking.ts",
     "./garden-tidy.ts",
     "./maintenance.ts",
     "./planting.ts",
@@ -22,6 +23,10 @@
     "../core/pricing-extraction/index.ts",
     "../core/pricing-extraction/extractor.ts",
     "../core/pricing-extraction/review.ts",
-    "../core/pricing-extraction/types.ts"
+    "../core/pricing-extraction/types.ts",
+    "../trades/decking/index.ts",
+    "../trades/decking/types.ts",
+    "../trades/decking/detector.ts",
+    "../trades/decking/calculator.ts"
   ]
 }

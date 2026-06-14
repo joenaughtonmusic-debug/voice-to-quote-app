@@ -1,4 +1,5 @@
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput } from "./types"
+import { assembleDeckingCustomerQuote, hasDeckingAssemblyFacts } from "./decking"
 import { assembleGardenTidyCustomerQuote } from "./garden-tidy"
 import { assembleMaintenanceCustomerQuote } from "./maintenance"
 import { assemblePlantingCustomerQuote } from "./planting"
@@ -13,6 +14,10 @@ function isGardenTidy(value: string | null | undefined) {
 
 function isPlanting(value: string | null | undefined) {
   return /\bplanting|hedge\s+planting|plant\s+supply|plant\s+install|plant\s+options?\b/i.test(value ?? "")
+}
+
+function isDecking(value: string | null | undefined) {
+  return /\bdeck(?:ing)?\b/i.test(value ?? "")
 }
 
 function hasPlantingFacts(input: CustomerQuoteAssemblyInput) {
@@ -56,6 +61,14 @@ export function assembleCustomerQuote(input: CustomerQuoteAssemblyInput): Custom
 
   if (isGardenTidy(selectedTemplateText(input))) {
     return assembleGardenTidyCustomerQuote(input)
+  }
+
+  if ((isDecking(input.quote.job_type) || isDecking(input.quote.primary_quote.job_type)) && hasDeckingAssemblyFacts(input)) {
+    return assembleDeckingCustomerQuote(input)
+  }
+
+  if (isDecking(selectedTemplateText(input)) && hasDeckingAssemblyFacts(input)) {
+    return assembleDeckingCustomerQuote(input)
   }
 
   if ((isPlanting(input.quote.job_type) || isPlanting(input.quote.primary_quote.job_type)) && hasPlantingFacts(input)) {

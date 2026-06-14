@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/decking-mvp-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "decking-mvp-acceptance.test.ts",
+    "client-name-extraction.test.ts"
+  ]
+}

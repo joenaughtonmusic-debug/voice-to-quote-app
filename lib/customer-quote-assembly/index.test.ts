@@ -460,6 +460,69 @@ test("planting quotes assemble options materials labour and exclusions", () => {
   assert.equal(/Maintenance|Garden tidy|legacy labour total|Irrigation included/i.test(renderedAssembly(assembly)), false)
 })
 
+test("decking quotes assemble project overview details material access programme and exclusions", () => {
+  const transcript = `Quote for Susan at 6 Tarawera Terrace.
+Deck measures 12.8m by 15.6m.
+Remove existing deck.
+Use Kwila 140x19 for the entire deck.
+Posts are still in good condition and will remain.
+Entire project should take approximately 2 weeks with 2 people.
+No staining.
+Access is poor, allow an additional 10 hours.`
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Susan",
+    site_address: "6 Tarawera Terrace",
+    quote_title: "Deck Construction / Deck Replacement Quote",
+    job_type: "decking",
+    primary_quote: {
+      quote_title: "Deck Construction / Deck Replacement Quote",
+      job_type: "decking",
+      cadence: "",
+      scope: [
+        "Deck measures 12.8m by 15.6m",
+        "Remove existing deck",
+        "Use Kwila 140x19 for the entire deck",
+        "Posts are still in good condition and will remain",
+        "Entire project should take approximately 2 weeks with 2 people",
+      ],
+      notes: ["Access is poor, allow an additional 10 hours"],
+    },
+    customer_scope: [
+      "Deck measures 12.8m by 15.6m",
+      "Remove existing deck",
+      "Use Kwila 140x19 for the entire deck",
+      "Posts are still in good condition and will remain",
+      "Entire project should take approximately 2 weeks with 2 people",
+    ],
+    materials: ["Kwila 140x19"],
+    exclusions: ["staining"],
+  }
+
+  const assembly = assembleCustomerQuote({
+    quote,
+    rawTranscript: transcript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "Deck Construction / Deck Replacement Quote")
+  assert.deepEqual(sectionItems("Project Overview", assembly), [
+    "Existing deck removed",
+    "Existing posts retained",
+    "New Kwila 140x19 decking installed",
+  ])
+  assert.deepEqual(sectionItems("Deck Details", assembly), [
+    "12.8m x 15.6m",
+    "Approximate area 199.68m²",
+  ])
+  assert.deepEqual(sectionItems("Material", assembly), ["Kwila 140x19"])
+  assert.deepEqual(sectionItems("Access", assembly), ["Poor access conditions"])
+  assert.deepEqual(sectionItems("Programme", assembly), ["Approximately 2 weeks"])
+  assert.deepEqual(sectionItems("Exclusions", assembly), ["Staining not included"])
+  assert.equal(/Planting labour|Maintenance|Garden tidy|Irrigation|legacy labour total/i.test(renderedAssembly(assembly)), false)
+})
+
 test("non-maintenance quotes keep existing preview behavior for now", () => {
   const assembly = assembleCustomerQuote({
     quote: {
