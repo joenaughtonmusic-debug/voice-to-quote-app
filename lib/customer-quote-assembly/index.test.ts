@@ -216,6 +216,159 @@ Please keep the side gate shut as there is a dog on the property.`
   assert.equal(/Planting labour|legacy \$ labour total/i.test(rendered), false)
 })
 
+test("garden tidy job types activate customer quote assembly", () => {
+  const tidyTranscript = `One-off garden tidy for Sarah at 44 Amy Street.
+Remove overgrowth around the boundary.
+Cut back shrubs.
+Weed garden beds.
+Remove self-seeded plants.
+Price $1,440 including greenwaste removal.
+Greenwaste to be removed from site.`
+
+  for (const jobType of ["garden_tidy", "one_off_tidy"]) {
+    const quote: ProcessedQuote = {
+      ...EMPTY_PROCESSED_QUOTE,
+      client_name: "Sarah",
+      site_address: "44 Amy Street",
+      quote_title: "One-Off Garden Tidy",
+      job_type: jobType,
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        job_type: jobType,
+        cadence: "",
+        scope: [
+          "Scope: Remove overgrowth around boundary",
+          "Remove overgrowth around boundary",
+          "Cut back shrubs",
+          "Weed garden beds",
+          "Remove self-seeded plants",
+        ],
+        notes: ["Greenwaste removed from site"],
+      },
+      customer_scope: [
+        "Remove overgrowth around boundary",
+        "Cut back shrubs",
+        "Weed garden beds",
+        "Remove self-seeded plants",
+      ],
+      greenwaste: "Greenwaste removed from site",
+    }
+    const assembly = assembleCustomerQuote({
+      quote,
+      rawTranscript: tidyTranscript,
+      pricingFacts: extractPricing(tidyTranscript).pricing,
+    })
+
+    assert.ok(assembly, `${jobType} should use garden tidy assembly`)
+    assert.equal(assembly.title, "One-Off Garden Tidy")
+    assert.deepEqual(assembly.sections.map((section) => section.title), [
+      "Main Scope",
+      "Service Includes",
+      "Price",
+      "Site Notes",
+    ])
+    assert.deepEqual(sectionItems("Main Scope", assembly), [
+      "Remove overgrowth around boundary",
+      "Cut back shrubs",
+      "Weed garden beds",
+      "Remove self-seeded plants",
+    ])
+    assert.equal(renderedAssembly(assembly).includes("Scope:"), false)
+    assert.deepEqual(sectionItems("Service Includes", assembly), ["Greenwaste removal"])
+    assert.deepEqual(sectionItems("Price", assembly), ["$1,440"])
+    assert.deepEqual(sectionItems("Site Notes", assembly), ["Greenwaste removed from site"])
+  }
+})
+
+test("selected garden tidy template can activate assembly when job type is missing", () => {
+  const tidyTranscript = `One-off garden tidy for Sarah at 44 Amy Street.
+Remove overgrowth around the boundary.
+Cut back shrubs.
+Weed garden beds.
+Remove self-seeded plants.
+Price $1,440 including greenwaste removal.
+Greenwaste to be removed from site.`
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Sarah",
+    site_address: "44 Amy Street",
+    quote_title: "",
+    job_type: "",
+    primary_quote: {
+      quote_title: "",
+      job_type: "",
+      cadence: "",
+      scope: [
+        "Remove overgrowth around boundary",
+        "Cut back shrubs",
+        "Weed garden beds",
+        "Remove self-seeded plants",
+      ],
+      notes: ["Greenwaste removed from site"],
+    },
+    customer_scope: [
+      "Remove overgrowth around boundary",
+      "Cut back shrubs",
+      "Weed garden beds",
+      "Remove self-seeded plants",
+    ],
+    greenwaste: "Greenwaste removed from site",
+  }
+
+  const assembly = assembleCustomerQuote({
+    quote,
+    rawTranscript: tidyTranscript,
+    pricingFacts: extractPricing(tidyTranscript).pricing,
+    selectedTemplate: {
+      template_name: "One-Off Garden Tidy",
+      category: "garden_tidy",
+      job_type: "garden_tidy",
+      template_content: {},
+      default_scope: null,
+    },
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "One-Off Garden Tidy")
+  assert.deepEqual(sectionItems("Main Scope", assembly), [
+    "Remove overgrowth around boundary",
+    "Cut back shrubs",
+    "Weed garden beds",
+    "Remove self-seeded plants",
+  ])
+})
+
+test("selected planting template does not activate garden tidy assembly", () => {
+  const assembly = assembleCustomerQuote({
+    quote: {
+      ...EMPTY_PROCESSED_QUOTE,
+      client_name: "Sarah",
+      site_address: "44 Amy Street",
+      quote_title: "",
+      job_type: "",
+      primary_quote: {
+        quote_title: "",
+        job_type: "",
+        cadence: "",
+        scope: ["Remove overgrowth around boundary"],
+        notes: [],
+      },
+      customer_scope: ["Remove overgrowth around boundary"],
+    },
+    rawTranscript: "Remove overgrowth around the boundary.",
+    pricingFacts: [],
+    selectedTemplate: {
+      template_name: "Planting Template",
+      category: "planting",
+      job_type: "planting",
+      template_content: {},
+      default_scope: null,
+    },
+  })
+
+  assert.equal(assembly, null)
+})
+
 test("non-maintenance quotes keep existing preview behavior for now", () => {
   const assembly = assembleCustomerQuote({
     quote: {

@@ -21,6 +21,27 @@ function getDisplayName(user: User | null) {
   return user.email ?? null
 }
 
+function normalizePublicUrl(value: string | undefined) {
+  const trimmed = value?.trim()
+  if (!trimmed) return null
+
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+  return withProtocol.replace(/\/+$/g, "")
+}
+
+function authRedirectUrl() {
+  if (process.env.NODE_ENV === "development") {
+    return "http://localhost:3000"
+  }
+
+  return (
+    normalizePublicUrl(process.env.NEXT_PUBLIC_SITE_URL) ??
+    normalizePublicUrl(process.env.NEXT_PUBLIC_APP_URL) ??
+    normalizePublicUrl(process.env.NEXT_PUBLIC_VERCEL_URL) ??
+    (typeof window !== "undefined" ? window.location.origin : undefined)
+  )
+}
+
 async function upsertProfile(user: User) {
   const fullName = getDisplayName(user) ?? user.id
 
@@ -73,7 +94,7 @@ export function useAuth(): AuthState {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: authRedirectUrl(),
       },
     })
 

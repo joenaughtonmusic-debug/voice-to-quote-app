@@ -12,6 +12,7 @@ import { isTruePlantCatalogItem } from "@/lib/plant-item-classification"
 import { matchPlantRowsFromLibrary, type KnowledgePlantRow } from "@/lib/plants"
 import { parseJsonWithRepair } from "@/lib/quote-json-repair"
 import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
+import { hasPlantingCalculatorIntent } from "@/lib/trades/planting/intent"
 import { quoteOptionsFromPlantCalculatorResults } from "@/lib/trades/planting/quote-options"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -673,12 +674,6 @@ function transcriptHasPlantRequest(transcript: string) {
   return /\b((?:plant|install|supply\s*(?:&|and)?\s*plant|supply\s*(?:&|and)?\s*install)\s+\d+|planting|hedge\s+plant|hedge\s+plants|shrubs?|trees?|groundcovers?|metres?\s+of\s+[A-Z]?[A-Za-z]+|griselinia|ficus\s+tuffi|lomandra|buxus|pittosporum|flax)\b/i.test(
     transcript,
   )
-}
-
-function transcriptHasPlantingCalculatorIntent(transcript: string) {
-  return /\b(?:plant|install|supply\s*(?:&|and)?\s*plant|supply\s*(?:&|and)?\s*install|supply\s*\/\s*install)\s+\d+\s+[A-Za-z]/i.test(transcript) ||
-    /\b\d+(?:\.\d+)?\s*(?:m|metres?|meters?)\s+(?:of|for|row\s+of|length\s+of)?\s*[A-Za-z][A-Za-z\s.'-]{2,60}?\s+(?:hedge|row|plants?)\b/i.test(transcript) ||
-    /\b(planting|hedge\s+planting|hedge\s+row|hedge\s+plants|shrubs?|groundcovers?|griselinia|ficus\s+tuffi|lomandra|buxus|pittosporum|flax)\b/i.test(transcript)
 }
 
 function transcriptExplicitlyMentionsItem(transcript: string, item: z.infer<typeof quoteLineItemSchema>) {
@@ -1694,7 +1689,7 @@ function applyPlantingCalculator(
   transcript: string,
   knowledgeItemContext: unknown[],
 ) {
-  if (!transcriptHasPlantingCalculatorIntent(transcript)) return quote
+  if (!hasPlantingCalculatorIntent(transcript)) return quote
 
   const plantItems = getPlantLibraryItems(knowledgeItemContext)
   const ficusDebugRecords = debugFicusTuffiPlantRecords(plantItems)

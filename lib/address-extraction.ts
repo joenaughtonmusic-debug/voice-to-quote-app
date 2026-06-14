@@ -261,7 +261,7 @@ export function extractAddressDetails(transcript: string): AddressExtractionResu
       : parts.street_number && parts.street_name
         ? "medium"
         : "low"
-  const needsAddressConfirmation = confidence !== "high" || hasMediumOrLowCorrection
+  const needsAddressConfirmation = confidence === "low" || hasMediumOrLowCorrection
 
   if (needsAddressConfirmation && !addressWarnings.some((warning) => /confirm/i.test(warning))) {
     addressWarnings.push("Please confirm site address.")

@@ -18,6 +18,11 @@ export type TemplateRenderLineItem = {
 }
 
 export type SelectedQuoteTemplate = {
+  name?: string | null
+  template_name?: string | null
+  category?: string | null
+  job_type?: string | null
+  trade?: string | null
   template_content?: unknown
   default_scope?: string | null
 }

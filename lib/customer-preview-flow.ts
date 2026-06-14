@@ -61,6 +61,11 @@ function selectedTemplateForPreview(template?: QuoteTemplateLibraryItem | null):
   if (!template) return null
 
   return {
+    name: template.name,
+    template_name: template.template_name,
+    category: template.category,
+    job_type: template.job_type,
+    trade: template.trade,
     template_content: template.template_content,
     default_scope: defaultScopeText(template.default_scope),
   }

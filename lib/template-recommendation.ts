@@ -28,7 +28,7 @@ const MEDIUM_CONFIDENCE_SCORE = 8
 const STRONG_CATEGORY_ALIGNMENT_SCORE = 12
 const PLANTING_MAINTENANCE_MISMATCH_PENALTY = 80
 
-type TemplateDomain = "maintenance" | "planting" | "decking" | "retaining" | null
+type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | null
 
 const CATEGORY_LABELS: Partial<Record<QuoteFactCategory, string>> = {
   job_scope: "job scope",
@@ -492,18 +492,26 @@ function quoteDomainFromContext(trade?: string | null, jobType?: string | null):
 }
 
 function templateDomainFromMetadata(template: QuoteTemplateLibraryItem): TemplateDomain {
+  const nameDomain =
+    canonicalDomain(template.name) ??
+    canonicalDomain(template.template_name) ??
+    canonicalDomain(template.source_filename) ??
+    canonicalDomain(template.source_text)
+
+  if (nameDomain === "garden_tidy") return "garden_tidy"
+
   return (
     canonicalDomain(template.category) ??
     canonicalDomain(template.job_type) ??
     canonicalDomain(template.trade) ??
-    canonicalDomain(template.name) ??
-    canonicalDomain(template.template_name)
+    nameDomain
   )
 }
 
 function canonicalDomain(value: string | null | undefined): TemplateDomain {
   const text = normalize(value)
   if (!text) return null
+  if (/\b(garden tidy|one off garden tidy|one off tidy|property tidy|tidy up)\b/.test(text)) return "garden_tidy"
   if (/\b(maintenance|maintain|ongoing garden|garden service|groundskeeping|weeding|pruning)\b/.test(text)) return "maintenance"
   if (/\b(decking|deck)\b/.test(text)) return "decking"
   if (/\b(retaining|retainer)\b/.test(text)) return "retaining"

@@ -58,6 +58,16 @@ const deckingTemplate: QuoteTemplateLibraryItem = {
   status: "active",
 }
 
+const gardenTidyTemplate: QuoteTemplateLibraryItem = {
+  id: "one-off-garden-tidy",
+  template_name: "One-Off Garden Tidy",
+  category: "maintenance",
+  job_type: "one_off_tidy",
+  document_type: "quote_template",
+  common_line_items: ["Garden tidy", "Greenwaste removal", "Weeding", "Shrub cut back"],
+  status: "active",
+}
+
 test("template recommendation loading does not require document_type column", () => {
   assert.equal(TEMPLATE_RECOMMENDATION_SELECT.includes("document_type"), false)
   assert.equal(TEMPLATE_RECOMMENDATION_FALLBACK_SELECT.includes("document_type"), false)
@@ -305,6 +315,32 @@ test("decking quotes still recommend decking", () => {
   })
 
   assert.equal(recommendation?.template.id, deckingTemplate.id)
+})
+
+test("one off garden tidy prefers garden tidy template over ongoing maintenance", () => {
+  const facts = [
+    fact("job_scope", "One-off garden tidy with overgrowth removal, shrub cut back and weeding."),
+    fact("waste", "Greenwaste removal included."),
+  ]
+  const templates = [maintenanceTemplate, gardenTidyTemplate, plantingTemplate]
+  const recommendation = recommendTemplateForQuote({
+    facts,
+    templates,
+    sectionsByTemplateId: {},
+    jobType: "one_off_tidy",
+    trade: "one_off_tidy",
+  })
+  const selection = resolveTemplateSelection({
+    templates,
+    recommendation,
+    facts,
+    jobType: "one_off_tidy",
+    trade: "one_off_tidy",
+  })
+
+  assert.equal(recommendation?.template.id, gardenTidyTemplate.id)
+  assert.notEqual(recommendation?.template.id, maintenanceTemplate.id)
+  assert.deepEqual(selection, { templateId: gardenTidyTemplate.id, source: "deterministic" })
 })
 
 test("stored templates with metadata and empty reviewed sections remain eligible candidates", () => {

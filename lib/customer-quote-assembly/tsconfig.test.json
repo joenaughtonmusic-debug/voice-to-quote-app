@@ -12,6 +12,7 @@
     "./index.test.ts",
     "./index.ts",
     "./assembler.ts",
+    "./garden-tidy.ts",
     "./maintenance.ts",
     "./types.ts",
     "../address-extraction.ts",

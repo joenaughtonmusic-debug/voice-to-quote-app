@@ -6,6 +6,8 @@ Tests in this document are product-level expectations. Some are already represen
 
 Trade module baselines should follow the [Trade Module Contract](./TRADE_MODULE_CONTRACT.md), which defines how future modules plug into QuoteFacts, preview, export, and internal review without adding trade-specific fields to the universal quote schema.
 
+All future workflow and module work should also follow the [Voice-to-Quote Build Constitution](./VOICE_TO_QUOTE_BUILD_CONSTITUTION.md). It defines the app pipeline, activation rules, live QuoteDraft test-path requirements, manual override rules, and the definition of done for customer-ready quote workflows.
+
 ## Current Stable Baseline
 
 - Plant Library MVP complete.
