@@ -9,7 +9,9 @@ import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
-import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "./processed-quote"
+import { buildFencingProcessedQuote, normalizeFencingProcessedQuote } from "./fencing-processing"
+import type { ProcessedQuote } from "./processed-quote"
+import { normalizeRetainingProcessedQuote } from "./retaining-processing"
 import type { QuoteTemplateLibraryItem } from "./template-import-learning"
 import { recommendTemplateForQuote, scoreTemplatesForQuote } from "./template-recommendation"
 
@@ -46,12 +48,7 @@ function includesText(text: string, expected: string) {
 }
 
 function currentDeterministicFencingQuote(transcript: string): ProcessedQuote {
-  const address = extractAddressDetails(transcript)
-  return {
-    ...EMPTY_PROCESSED_QUOTE,
-    client_name: extractClientNameFromTranscript(transcript) ?? "",
-    site_address: address.cleaned_address ?? "",
-  }
+  return buildFencingProcessedQuote(transcript)
 }
 
 function currentRenderedDraft(transcript: string, quote: ProcessedQuote) {
@@ -103,9 +100,64 @@ test("fencing MVP renders customer-ready quote draft through QuoteDraft-equivale
   assert.ok(model.assembly, "Fencing draft should use customer quote assembly")
   assert.equal(includesText(renderedText, "Fencing Quote"), true, renderedText)
   assert.equal(includesText(renderedText, "Fence Scope"), true, renderedText)
+  assert.equal(includesText(renderedText, "Replace 18 metres of timber paling fence along the left boundary"), true, renderedText)
+  assert.equal(includesText(renderedText, "Remove existing fence"), true, renderedText)
   assert.equal(includesText(renderedText, "Fence Details"), true, renderedText)
+  assert.equal(includesText(renderedText, "18 metres long"), true, renderedText)
+  assert.equal(includesText(renderedText, "1.8 metres high"), true, renderedText)
   assert.equal(includesText(renderedText, "Materials"), true, renderedText)
+  assert.equal(includesText(renderedText, "Standard timber posts"), true, renderedText)
+  assert.equal(includesText(renderedText, "Rails"), true, renderedText)
+  assert.equal(includesText(renderedText, "Palings"), true, renderedText)
   assert.equal(includesText(renderedText, "Access"), true, renderedText)
+  assert.equal(includesText(renderedText, "Straightforward access conditions"), true, renderedText)
   assert.equal(includesText(renderedText, "Exclusions"), true, renderedText)
+  assert.equal(includesText(renderedText, "Painting not included"), true, renderedText)
+  assert.equal(includesText(renderedText, "Staining not included"), true, renderedText)
   assert.equal(/^Scope$/im.test(renderedText), false, renderedText)
+  assert.equal(includesText(renderedText, "Planting labour"), false, renderedText)
+  assert.equal(includesText(renderedText, "Maintenance"), false, renderedText)
+  assert.equal(includesText(renderedText, "Garden tidy"), false, renderedText)
+  assert.equal(includesText(renderedText, "Decking"), false, renderedText)
+  assert.equal(includesText(renderedText, "Retaining"), false, renderedText)
+  assert.equal(includesText(renderedText, "Irrigation"), false, renderedText)
+  assert.equal(includesText(renderedText, "$360"), false, renderedText)
+})
+
+test("live-equivalent fencing transcript is not retained as retaining", () => {
+  const transcript = acceptanceTranscript()
+  const staleRetainingQuote: ProcessedQuote = {
+    ...buildFencingProcessedQuote(transcript),
+    quote_title: "Retaining Wall Quote",
+    job_type: "retaining",
+    selected_template_id: "retaining",
+    selected_template_name: "Retaining Wall Quote",
+    template_match_confidence: "high",
+    primary_quote: {
+      quote_title: "Retaining Wall Quote",
+      job_type: "retaining",
+      cadence: "",
+      scope: [
+        "Replace 18 metres of timber paling fence along the left boundary",
+        "Remove existing fence",
+        "Standard timber posts",
+        "Rails",
+        "Palings",
+      ],
+      notes: ["Straightforward access conditions"],
+    },
+    customer_scope: ["Replace 18 metres of timber paling fence along the left boundary", "Remove existing fence"],
+  }
+  const normalized = normalizeFencingProcessedQuote(normalizeRetainingProcessedQuote(staleRetainingQuote, transcript), transcript)
+  const { model, renderedText } = currentRenderedDraft(transcript, normalized)
+
+  assert.equal(normalized.job_type, "fencing")
+  assert.equal(normalized.primary_quote.job_type, "fencing")
+  assert.notEqual(normalized.selected_template_name, "Retaining Wall Quote")
+  assert.ok(model.assembly, "Fencing transcript should render through fencing assembly")
+  assert.equal(model.assembly?.title, "Fencing Quote")
+  assert.equal(includesText(renderedText, "Fencing Quote"), true, renderedText)
+  assert.equal(includesText(renderedText, "Fence Scope"), true, renderedText)
+  assert.equal(includesText(renderedText, "Retaining Wall Quote"), false, renderedText)
+  assert.equal(includesText(renderedText, "Retaining Wall Scope"), false, renderedText)
 })

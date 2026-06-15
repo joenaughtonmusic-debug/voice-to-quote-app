@@ -13,6 +13,7 @@
     "./index.ts",
     "./assembler.ts",
     "./decking.ts",
+    "./fencing.ts",
     "./garden-tidy.ts",
     "./maintenance.ts",
     "./planting.ts",

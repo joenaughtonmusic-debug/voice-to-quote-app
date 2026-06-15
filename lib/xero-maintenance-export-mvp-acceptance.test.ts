@@ -150,8 +150,8 @@ test("Xero maintenance export MVP payload uses the spoken customer price and inc
   if (!lineItem) {
     failures.push("Xero export payload did not contain a maintenance line item.")
   } else {
-    if (lineItem.Description !== "Ongoing Garden Maintenance") {
-      failures.push(`Line item description was "${lineItem.Description}", expected "Ongoing Garden Maintenance".`)
+    if (!lineItem.Description.startsWith("Ongoing Garden Maintenance")) {
+      failures.push(`Line item description started with "${lineItem.Description.split("\n")[0]}", expected "Ongoing Garden Maintenance".`)
     }
     if (lineItem.Quantity !== 1) {
       failures.push(`Line item quantity was ${lineItem.Quantity}, expected 1.`)
@@ -161,6 +161,23 @@ test("Xero maintenance export MVP payload uses the spoken customer price and inc
     }
     if (taxLabel(lineItem.TaxType) !== "15% GST") {
       failures.push(`Line item tax was "${taxLabel(lineItem.TaxType)}", expected "15% GST".`)
+    }
+
+    for (const expectedDescriptionText of [
+      "Main focus:",
+      "- Weeding",
+      "- Pruning",
+      "- Removal of self-seeded plants",
+      "Includes:",
+      "- Greenwaste removal",
+      "- Herbicide spraying",
+      "- Standard maintenance materials",
+      "Ongoing maintenance:",
+      "Each visit may include weeding, pruning, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
+    ]) {
+      if (!includesText(lineItem.Description, expectedDescriptionText)) {
+        failures.push(`Line item description did not include "${expectedDescriptionText}".`)
+      }
     }
   }
 

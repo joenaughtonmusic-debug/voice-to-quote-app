@@ -28,7 +28,7 @@ const MEDIUM_CONFIDENCE_SCORE = 8
 const STRONG_CATEGORY_ALIGNMENT_SCORE = 12
 const PLANTING_MAINTENANCE_MISMATCH_PENALTY = 80
 
-type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | null
+type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | "fencing" | null
 
 const CATEGORY_LABELS: Partial<Record<QuoteFactCategory, string>> = {
   job_scope: "job scope",
@@ -515,6 +515,7 @@ function canonicalDomain(value: string | null | undefined): TemplateDomain {
   if (/\b(maintenance|maintain|ongoing garden|garden service|groundskeeping|weeding|pruning)\b/.test(text)) return "maintenance"
   if (/\b(decking|deck)\b/.test(text)) return "decking"
   if (/\b(retaining|retainer)\b/.test(text)) return "retaining"
+  if (/\b(fencing|fence|paling fence)\b/.test(text)) return "fencing"
   if (/\b(planting|plant install|hedge planting|plant supply|supply plants|plants)\b/.test(text)) return "planting"
   return null
 }

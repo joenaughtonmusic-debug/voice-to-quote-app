@@ -8,6 +8,7 @@ import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
+import { normalizeFencingProcessedQuote } from "./fencing-processing"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "./processed-quote"
 import { buildRetainingProcessedQuote, normalizeRetainingProcessedQuote } from "./retaining-processing"
 import type { QuoteTemplateLibraryItem } from "./template-import-learning"
@@ -172,6 +173,35 @@ test("retaining normalisation corrects live landscaping or planting misclassific
   assert.equal(normalized.line_items.some((item) => /plant|camellia/i.test([item.item_name, item.description, item.item_type].join(" "))), false)
   assert.equal(normalized.missing_information.some((item) => /plant/i.test(item)), false)
   assert.equal(normalized.confidence_warnings.some((item) => /plant/i.test(item)), false)
+})
+
+test("retaining transcript remains retaining when fencing normalisation also runs", () => {
+  const transcript = acceptanceTranscript()
+  const misclassifiedQuote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Mary",
+    site_address: "12 Hill Road",
+    quote_title: "Landscaping Quote",
+    job_type: "landscaping",
+    primary_quote: {
+      quote_title: "Landscaping Quote",
+      job_type: "landscaping",
+      cadence: "",
+      scope: ["Replace timber retaining wall along the back boundary", "Attach new standard paling fence after retaining is complete"],
+      notes: [],
+    },
+    customer_scope: ["Replace timber retaining wall along the back boundary"],
+  }
+
+  const normalized = normalizeFencingProcessedQuote(normalizeRetainingProcessedQuote(misclassifiedQuote, transcript), transcript)
+  const { model, renderedText } = currentRenderedDraft(transcript, normalized)
+
+  assert.equal(normalized.job_type, "retaining")
+  assert.equal(normalized.primary_quote.job_type, "retaining")
+  assert.ok(model.assembly, "Retaining transcript should render through retaining assembly")
+  assert.equal(model.assembly?.title, "Retaining Wall Quote")
+  assert.equal(includesText(renderedText, "Retaining Wall Scope"), true, renderedText)
+  assert.equal(includesText(renderedText, "Fence Scope"), false, renderedText)
 })
 
 test("retaining MVP renders customer-ready quote draft through QuoteDraft-equivalent path", () => {

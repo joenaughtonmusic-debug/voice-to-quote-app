@@ -1,13 +1,16 @@
 import { extractAddressDetails } from "./address-extraction"
 import { extractClientNameFromTranscript } from "./client-name-extraction"
+import { isFencingTranscript } from "./fencing-processing"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "./processed-quote"
 import { detectRetainingFromText } from "./trades/retaining"
 
 const RETAINING_PATTERN = /\b(retaining\s+wall|timber\s+retaining|replace\s+(?:old\s+)?retaining|install\s+(?:new\s+)?retaining\s+wall)\b/i
+const RETAINING_SUPPORT_PATTERN = /\b(drainage|draincoil|novaflow|scoria|backfill|retaining\s+posts?|H4\s+posts?\s+at\s+\d+(?:\.\d+)?\s*(?:m|metres?|meters?)\s+spacing)\b/i
 
 export function isRetainingTranscript(transcript: string) {
+  if (isFencingTranscript(transcript)) return false
   const detection = detectRetainingFromText(transcript)
-  return detection.is_retaining || RETAINING_PATTERN.test(transcript)
+  return RETAINING_PATTERN.test(transcript) || (detection.is_retaining && RETAINING_SUPPORT_PATTERN.test(transcript))
 }
 
 export function buildRetainingProcessedQuote(transcript: string): ProcessedQuote {
