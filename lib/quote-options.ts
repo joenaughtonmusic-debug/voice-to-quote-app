@@ -1,6 +1,6 @@
 export type QuoteOptionCategory = "planting" | "material" | "labour" | "general"
 
-export type QuoteOptionSource = "plant_calculator" | "manual" | "ai_extraction"
+export type QuoteOptionSource = "plant_calculator" | "trade_calculator" | "manual" | "ai_extraction"
 
 export type QuoteOptionLineItem = {
   itemName: string

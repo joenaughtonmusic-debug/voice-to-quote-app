@@ -16,6 +16,9 @@
     "./index.test.ts",
     "./e2e.test.ts",
     "./review.test.ts",
+    "./to-bill.test.ts",
+    "./to-bill.ts",
+    "../../items/resolve-bill.ts",
     "./index.ts",
     "./types.ts",
     "./detector.ts",
@@ -44,6 +47,10 @@
     "../planting/customer-renderer.ts",
     "../retaining/xero-renderer.ts",
     "../retaining/types.ts",
+    "../paving/types.ts",
+    "../paving/calculator.ts",
+    "../paving/detector.ts",
+    "../paving/quote-facts.ts",
     "../../../lib/calculators/planting/index.ts"
   ]
 }
