@@ -5,6 +5,7 @@ import { CheckCircle, FileSpreadsheet, Loader2, Pencil, Save, Trash2, Upload, X 
 import * as XLSX from "xlsx"
 import { useAuth } from "@/hooks/use-auth"
 import { classifyPlantCatalogItem } from "@/lib/plant-item-classification"
+import { normaliseSupplierRows, type NormalisationResult } from "@/lib/import/normalise-rows"
 import { supabase } from "@/lib/supabase"
 
 const SOURCE_SYSTEMS = ["Tradify", "Jobber", "ServiceM8", "Xero", "Fergus", "SimPRO", "Other CSV", "Supplier Price List"] as const
@@ -203,8 +204,22 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
   "Supplier Price List": {
     item_name: ["Item", "Item Name", "Description", "Product", "Material", "Name"],
     unit: ["Unit", "UOM", "Unit of Measure"],
-    cost_price: ["Buy Price", "Cost", "Cost Price", "Trade Price", "Net Price", "Buy"],
-    sell_price: ["Price", "Sell Price", "Retail Price", "RRP", "Rate", "Unit Price"],
+    cost_price: [
+      // Generic
+      "Buy Price", "Cost", "Cost Price", "Trade Price", "Net Price", "Buy",
+      "Supplier Price", "Price ex GST", "Price (ex GST)", "Trade Price (ex GST)",
+      // Bunnings-specific: "Bunnings Price (NZD)" normalises to "bunnings price nzd"
+      "Bunnings Price (NZD)", "Bunnings Price NZD",
+      // Generic catch-all — safe here because Total/Qty are excluded before mapping
+      "Price",
+    ],
+    sell_price: [
+      // Generic
+      "Sell Price", "Retail Price", "RRP", "Rate", "Unit Price",
+      "Price inc GST", "Price (inc GST)", "Charge Price",
+      // Bunnings-specific: "Markup Price (+15%)" normalises to "markup price 15"
+      "Markup Price (+15%)", "Markup Price",
+    ],
     source_category: ["Category", "Supplier", "Supplier Category", "Group"],
     supplier: ["Supplier", "Vendor"],
   },
@@ -563,6 +578,7 @@ export function JmsItemLibrary({ onCountChange, fixedSourceSystem }: { onCountCh
     cost_price_reasoning: "No file analysed yet.",
     sell_price_reasoning: "No file analysed yet.",
   })
+  const [normalisationResult, setNormalisationResult] = useState<NormalisationResult | null>(null)
   const [previewItems, setPreviewItems] = useState<ImportItem[]>([])
   const [items, setItems] = useState<KnowledgeItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -618,21 +634,40 @@ export function JmsItemLibrary({ onCountChange, fixedSourceSystem }: { onCountCh
       if (parsedRows.length === 0) throw new Error("No item rows were detected.")
 
       const parsedHeaders = unique(parsedRows.flatMap((row) => Object.keys(row)))
-      const detected = detectColumnMapping(parsedHeaders, parsedRows, sourceSystem)
-      const savedMapping = user ? loadSavedMapping(user.id, sourceSystem, parsedHeaders) : {}
+
+      // Normalise supplier price list sheets before column mapping.
+      // Other source systems are structured exports that don't need this step.
+      let activeRows = parsedRows
+      let activeHeaders = parsedHeaders
+      let normResult: NormalisationResult | null = null
+
+      if (sourceSystem === "Supplier Price List") {
+        normResult = normaliseSupplierRows(parsedRows, parsedHeaders)
+        activeRows = normResult.cleanRows
+        activeHeaders = normResult.cleanHeaders
+        if (activeRows.length === 0) {
+          throw new Error("No item rows remain after cleaning. The sheet may contain only headings or blank rows.")
+        }
+      }
+
+      setNormalisationResult(normResult)
+
+      const detected = detectColumnMapping(activeHeaders, activeRows, sourceSystem)
+      const savedMapping = user ? loadSavedMapping(user.id, sourceSystem, activeHeaders) : {}
       const combinedMapping = { ...detected.mapping, ...savedMapping }
       const combinedConfidences = { ...detected.confidences }
       for (const field of Object.keys(savedMapping) as KnowledgeField[]) combinedConfidences[field] = "high"
-      const forced = forceTradifyMapping(sourceSystem, parsedHeaders, combinedMapping, combinedConfidences)
+      const forced = forceTradifyMapping(sourceSystem, activeHeaders, combinedMapping, combinedConfidences)
       const detectedMapping = forced.mapping
       const detectedConfidences = forced.confidences
-      setRows(parsedRows)
-      setHeaders(parsedHeaders)
+      setRows(activeRows)
+      setHeaders(activeHeaders)
       setMapping(detectedMapping)
       setMappingConfidences(detectedConfidences)
-      setPriceDiagnostics(getPriceDiagnostics(detectedMapping, parsedRows))
-      setPreviewItems(parsedRows.map((row) => mapImportRow(row, detectedMapping, sourceSystem)))
+      setPriceDiagnostics(getPriceDiagnostics(detectedMapping, activeRows))
+      setPreviewItems(activeRows.map((row) => mapImportRow(row, detectedMapping, sourceSystem)))
     } catch (parseError) {
+      setNormalisationResult(null)
       setRows([])
       setHeaders([])
       setMapping({})
@@ -691,6 +726,7 @@ export function JmsItemLibrary({ onCountChange, fixedSourceSystem }: { onCountCh
     }
 
     setImporting(false)
+    setNormalisationResult(null)
     setRows([])
     setHeaders([])
     setMapping({})
@@ -927,6 +963,7 @@ export function JmsItemLibrary({ onCountChange, fixedSourceSystem }: { onCountCh
           priceDiagnostics={priceDiagnostics}
           warnings={warnings}
           importing={importing}
+          normalisationResult={normalisationResult}
           onMappingChange={(field, header) => {
             const nextMapping = { ...mapping }
             if (header) nextMapping[field] = header
@@ -1022,6 +1059,7 @@ function ImportPreview({
   priceDiagnostics,
   warnings,
   importing,
+  normalisationResult,
   onMappingChange,
   onImport,
 }: {
@@ -1034,15 +1072,38 @@ function ImportPreview({
   priceDiagnostics: PriceDiagnostics
   warnings: string[]
   importing: boolean
+  normalisationResult?: NormalisationResult | null
   onMappingChange: (field: KnowledgeField, header: string) => void
   onImport: () => void
 }) {
   const labourHoursItem = items.find((item) => /labour\s*hrs|labourhrs/i.test(`${item.item_code} ${item.item_name}`))
+  const showNormNotice =
+    normalisationResult &&
+    (normalisationResult.droppedRowCount > 0 || normalisationResult.excludedColumns.length > 0)
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <h2 className="font-semibold text-foreground">Import preview</h2>
       <p className="mt-1 text-sm text-muted-foreground">{items.length} rows detected</p>
+
+      {showNormNotice && (
+        <div className="mt-3 rounded-xl border border-primary/30 bg-accent/50 px-3 py-2.5 text-xs">
+          <p className="font-semibold text-foreground">Sheet cleaned before mapping</p>
+          {normalisationResult.droppedRowCount > 0 && (
+            <p className="mt-1 text-muted-foreground">
+              {normalisationResult.droppedRowCount} row{normalisationResult.droppedRowCount !== 1 ? "s" : ""} dropped
+              {normalisationResult.sectionHeadingsFound.length > 0
+                ? ` — section headings: ${normalisationResult.sectionHeadingsFound.join(", ")}`
+                : " (blank rows)"}
+            </p>
+          )}
+          {normalisationResult.excludedColumns.length > 0 && (
+            <p className="mt-1 text-muted-foreground">
+              Columns excluded from mapping: {normalisationResult.excludedColumns.join(", ")}
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 max-h-[60vh] overflow-y-auto overscroll-contain rounded-xl border border-border bg-background/40 p-3">
         <div>
