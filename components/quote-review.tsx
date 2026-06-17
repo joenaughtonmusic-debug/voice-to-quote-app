@@ -128,7 +128,7 @@ export function QuoteReview({
     selectedTemplate,
     pricingFacts,
   })
-  const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true })
+  const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true, includeRetainingScope: true })
   const quoteFacts = quoteFactsFromProcessedQuote(editedQuoteForReview)
   const deckingReview = deckingReviewFromQuoteFacts(quoteFacts)
   const retainingReview = retainingReviewFromQuoteFacts(quoteFacts)

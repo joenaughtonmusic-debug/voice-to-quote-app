@@ -65,7 +65,7 @@ export function QuoteDraft({
     selectedTemplate,
     pricingFacts,
   })
-  const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true })
+  const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true, includeRetainingScope: true })
   const hasTemplatePreview = templateSections.length > 0
   const renderedTemplateSections = hasTemplatePreview
     ? renderTemplatePreviewSections(templateSections, customerPreviewInput as ProcessedQuote, customerPreview, selectedTemplate)
