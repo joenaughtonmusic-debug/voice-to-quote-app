@@ -14,9 +14,25 @@
   },
   "include": [
     "./index.test.ts",
+    "./e2e.test.ts",
     "./index.ts",
     "./types.ts",
     "./detector.ts",
-    "./calculator.ts"
+    "./calculator.ts",
+    "./quote-facts.ts",
+    "../registry.ts",
+    "../decking/quote-facts.ts",
+    "../decking/detector.ts",
+    "../decking/calculator.ts",
+    "../decking/types.ts",
+    "../retaining/quote-facts.ts",
+    "../retaining/detector.ts",
+    "../retaining/calculator.ts",
+    "../retaining/types.ts",
+    "../../core/quote-facts.ts",
+    "../../processed-quote.ts",
+    "../../quote-options.ts",
+    "../../core/material-price-association.ts",
+    "../../../lib/calculators/planting/index.ts"
   ]
 }

@@ -123,7 +123,7 @@ test("trade QuoteFacts contributor ordering is stable after universal facts", ()
   const universalScopeIndex = facts.findIndex((fact) => fact.sourceField === "primary_quote.scope")
   const deckingIndex = facts.findIndex((fact) => fact.sourceField === "decking.calculator.areas")
 
-  assert.deepEqual(quoteFactContributors.map((contributor) => contributor.tradeId), ["decking", "retaining"])
+  assert.deepEqual(quoteFactContributors.map((contributor) => contributor.tradeId), ["decking", "retaining", "paving"])
   assert.equal(universalScopeIndex >= 0, true)
   assert.equal(deckingIndex > universalScopeIndex, true)
 })

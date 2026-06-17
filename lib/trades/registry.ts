@@ -2,8 +2,9 @@ import type { QuoteFact } from "../core/quote-facts"
 import type { ProcessedQuote } from "../processed-quote"
 import { deckingQuoteFactsFromProcessedQuote } from "./decking/quote-facts"
 import { retainingQuoteFactsFromProcessedQuote } from "./retaining/quote-facts"
+import { pavingQuoteFactsFromProcessedQuote } from "./paving/quote-facts"
 
-export type TradeModuleId = "decking" | "retaining"
+export type TradeModuleId = "decking" | "retaining" | "paving"
 
 export type QuoteFactsContributor = {
   tradeId: TradeModuleId
@@ -18,6 +19,10 @@ export const quoteFactContributors: QuoteFactsContributor[] = [
   {
     tradeId: "retaining",
     buildQuoteFacts: retainingQuoteFactsFromProcessedQuote,
+  },
+  {
+    tradeId: "paving",
+    buildQuoteFacts: pavingQuoteFactsFromProcessedQuote,
   },
 ]
 
