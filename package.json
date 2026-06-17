@@ -24,6 +24,7 @@
     "test:site-fixtures": "tsc --project lib/test-fixtures/site-visit-transcripts/tsconfig.test.json && node --test .tmp/site-visit-fixture-tests/lib/test-fixtures/site-visit-transcripts/index.test.js",
     "test:decking": "tsc --project lib/trades/decking/tsconfig.test.json && node --test .tmp/decking-tests/lib/trades/decking/index.test.js .tmp/decking-tests/lib/trades/decking/e2e.test.js .tmp/decking-tests/lib/trades/decking/review.test.js .tmp/decking-tests/lib/core/quote-facts.test.js .tmp/decking-tests/lib/customer-quote-preview.test.js .tmp/decking-tests/lib/xero-quote-payload.test.js",
     "test:retaining": "tsc --project lib/trades/retaining/tsconfig.test.json && node --test .tmp/retaining-tests/lib/trades/retaining/index.test.js .tmp/retaining-tests/lib/trades/retaining/e2e.test.js .tmp/retaining-tests/lib/trades/retaining/review.test.js",
+    "test:paving": "tsc --project lib/trades/paving/tsconfig.test.json && node --test .tmp/paving-tests/lib/trades/paving/index.test.js",
     "test:trades": "npm run test:decking && npm run test:retaining",
     "start": "next start",
     "lint": "eslint ."

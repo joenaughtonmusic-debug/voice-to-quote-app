@@ -1,0 +1,22 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "rootDir": "../../..",
+    "outDir": "../../../.tmp/paving-tests",
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./index.ts",
+    "./types.ts",
+    "./detector.ts",
+    "./calculator.ts"
+  ]
+}
