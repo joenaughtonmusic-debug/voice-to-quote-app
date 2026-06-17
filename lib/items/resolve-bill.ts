@@ -1,5 +1,5 @@
 import type { QuoteOption, QuoteOptionLineItem } from "../quote-options"
-import type { MaterialBill, MaterialBillEntry } from "../trades/decking/to-bill"
+import type { MaterialBill, MaterialBillEntry } from "../trades/material-bill"
 
 // ---------------------------------------------------------------------------
 // Minimal shape of a knowledge item as it arrives in knowledgeItemContext.
@@ -7,7 +7,13 @@ import type { MaterialBill, MaterialBillEntry } from "../trades/decking/to-bill"
 // ---------------------------------------------------------------------------
 
 export type ResolvableItem = {
+  /** DB row id — used by test fixtures and legacy callers. */
   id?: string | null
+  /**
+   * Field name used by getKnowledgeItemContext() in the live route.
+   * The resolver prefers this over `id` when both are present.
+   */
+  source_item_id?: string | null
   item_code?: string | null
   item_name?: string | null
   sell_price?: number | string | null
@@ -76,7 +82,7 @@ function entryToLineItem(entry: MaterialBillEntry, match: ResolvableItem | null)
     total: total ?? 0,
     supplier: match?.supplier ?? undefined,
     stockStatus: match?.stock_status ?? undefined,
-    sourceItemId: match?.id ?? undefined,
+    sourceItemId: match?.source_item_id ?? match?.id ?? undefined,
   }
 }
 
