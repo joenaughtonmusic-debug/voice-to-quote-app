@@ -16,6 +16,7 @@ import { normalizeRetainingProcessedQuote } from "@/lib/retaining-processing"
 import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
 import { hasPlantingCalculatorIntent } from "@/lib/trades/planting/intent"
 import { quoteOptionsFromPlantCalculatorResults } from "@/lib/trades/planting/quote-options"
+import { applyDeckingBillOptions } from "@/lib/trades/decking/apply-bill-options"
 import { type QuoteSpecialist, getSpecialistInstructions, getSharedUniversalExtractionInstructions } from "@/lib/quote-specialist-instructions"
 import {
   type QuoteClassification,
@@ -2982,6 +2983,7 @@ export async function POST(request: Request) {
       ), transcript), transcript)
       quote.client_name = leadDetails.client_name ?? quote.client_name ?? "Not captured"
       quote.site_address = formatLeadSiteAddress(leadDetails) ?? quote.site_address ?? "Not captured"
+      applyDeckingBillOptions(quote, transcript, knowledgeItemContext)
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       quote.missing_information = Array.isArray(quote.missing_information) ? quote.missing_information : []
 
