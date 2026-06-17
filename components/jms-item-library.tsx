@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { classifyPlantCatalogItem } from "@/lib/plant-item-classification"
 import { supabase } from "@/lib/supabase"
 
-const SOURCE_SYSTEMS = ["Tradify", "Jobber", "ServiceM8", "Xero", "Fergus", "SimPRO", "Other CSV"] as const
+const SOURCE_SYSTEMS = ["Tradify", "Jobber", "ServiceM8", "Xero", "Fergus", "SimPRO", "Other CSV", "Supplier Price List"] as const
 const ITEM_TYPES = ["labour", "material", "plant", "waste", "equipment", "service", "chemical", "vehicle", "other"] as const
 
 type SourceSystem = (typeof SOURCE_SYSTEMS)[number]
@@ -200,6 +200,14 @@ const SOURCE_PROFILES: Record<SourceSystem, Partial<Record<KnowledgeField, strin
     external_item_id: ["Part ID", "ID"],
   },
   "Other CSV": {},
+  "Supplier Price List": {
+    item_name: ["Item", "Item Name", "Description", "Product", "Material", "Name"],
+    unit: ["Unit", "UOM", "Unit of Measure"],
+    cost_price: ["Buy Price", "Cost", "Cost Price", "Trade Price", "Net Price", "Buy"],
+    sell_price: ["Price", "Sell Price", "Retail Price", "RRP", "Rate", "Unit Price"],
+    source_category: ["Category", "Supplier", "Supplier Category", "Group"],
+    supplier: ["Supplier", "Vendor"],
+  },
 }
 
 const EDITABLE_MAPPING_FIELDS: KnowledgeField[] = [
@@ -541,10 +549,10 @@ function formatPrice(value: number | null | undefined, missingLabel: string) {
   return value == null ? missingLabel : new Intl.NumberFormat("en-NZ", { style: "currency", currency: "NZD" }).format(value)
 }
 
-export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }) {
+export function JmsItemLibrary({ onCountChange, fixedSourceSystem }: { onCountChange?: () => void; fixedSourceSystem?: SourceSystem }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const { user } = useAuth()
-  const [sourceSystem, setSourceSystem] = useState<SourceSystem>("Tradify")
+  const [sourceSystem, setSourceSystem] = useState<SourceSystem>(fixedSourceSystem ?? "Tradify")
   const [rows, setRows] = useState<ParsedRow[]>([])
   const [headers, setHeaders] = useState<string[]>([])
   const [mapping, setMapping] = useState<ColumnMapping>({})
@@ -563,7 +571,7 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
   const [editItem, setEditItem] = useState<KnowledgeItem | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
-  const [clearSourceSystem, setClearSourceSystem] = useState<SourceSystem>("Tradify")
+  const [clearSourceSystem, setClearSourceSystem] = useState<SourceSystem>(fixedSourceSystem ?? "Tradify")
   const [clearBatchId, setClearBatchId] = useState("all")
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -824,8 +832,12 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
       ? `${previewItems.filter((item) => item.archived).length} archived items detected.`
       : "",
   ].filter(Boolean)
+  const displayedItems = fixedSourceSystem
+    ? items.filter((item) => item.source_system === fixedSourceSystem)
+    : items.filter((item) => item.source_system !== "Supplier Price List")
+
   const availableBatches = unique(
-    items
+    displayedItems
       .filter((item) => item.source_system === clearSourceSystem)
       .map((item) => item.import_batch_id ?? "")
       .filter(Boolean),
@@ -839,39 +851,47 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
             <FileSpreadsheet className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="font-semibold text-foreground">JMS Item Library Import</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Import products, materials, services, and pricing from CSV or XLSX.</p>
+            <h2 className="font-semibold text-foreground">
+              {fixedSourceSystem === "Supplier Price List" ? "Supplier Price List Import" : "JMS Item Library Import"}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {fixedSourceSystem === "Supplier Price List"
+                ? "Import material prices from a supplier CSV or XLSX. Items are used for estimating only — not exported as individual Xero items."
+                : "Import products, materials, services, and pricing from CSV or XLSX."}
+            </p>
           </div>
         </div>
 
-        <label className="mt-4 grid gap-1 text-sm font-medium text-foreground">
-          Source system
-          <select
-            value={sourceSystem}
-            onChange={(event) => {
-              const nextSource = event.target.value as SourceSystem
-              setSourceSystem(nextSource)
-              setClearSourceSystem(nextSource)
-              if (rows.length > 0) {
-                const detected = detectColumnMapping(headers, rows, nextSource)
-                const savedMapping = user ? loadSavedMapping(user.id, nextSource, headers) : {}
-                const combinedMapping = { ...detected.mapping, ...savedMapping }
-                const combinedConfidences = { ...detected.confidences }
-                for (const field of Object.keys(savedMapping) as KnowledgeField[]) combinedConfidences[field] = "high"
-                const forced = forceTradifyMapping(nextSource, headers, combinedMapping, combinedConfidences)
-                const nextMapping = forced.mapping
-                const nextConfidences = forced.confidences
-                setMapping(nextMapping)
-                setMappingConfidences(nextConfidences)
-                setPriceDiagnostics(getPriceDiagnostics(nextMapping, rows))
-                setPreviewItems(rows.map((row) => mapImportRow(row, nextMapping, nextSource)))
-              }
-            }}
-            className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-          >
-            {SOURCE_SYSTEMS.map((source) => <option key={source}>{source}</option>)}
-          </select>
-        </label>
+        {!fixedSourceSystem && (
+          <label className="mt-4 grid gap-1 text-sm font-medium text-foreground">
+            Source system
+            <select
+              value={sourceSystem}
+              onChange={(event) => {
+                const nextSource = event.target.value as SourceSystem
+                setSourceSystem(nextSource)
+                setClearSourceSystem(nextSource)
+                if (rows.length > 0) {
+                  const detected = detectColumnMapping(headers, rows, nextSource)
+                  const savedMapping = user ? loadSavedMapping(user.id, nextSource, headers) : {}
+                  const combinedMapping = { ...detected.mapping, ...savedMapping }
+                  const combinedConfidences = { ...detected.confidences }
+                  for (const field of Object.keys(savedMapping) as KnowledgeField[]) combinedConfidences[field] = "high"
+                  const forced = forceTradifyMapping(nextSource, headers, combinedMapping, combinedConfidences)
+                  const nextMapping = forced.mapping
+                  const nextConfidences = forced.confidences
+                  setMapping(nextMapping)
+                  setMappingConfidences(nextConfidences)
+                  setPriceDiagnostics(getPriceDiagnostics(nextMapping, rows))
+                  setPreviewItems(rows.map((row) => mapImportRow(row, nextMapping, nextSource)))
+                }
+              }}
+              className="rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            >
+              {SOURCE_SYSTEMS.map((source) => <option key={source}>{source}</option>)}
+            </select>
+          </label>
+        )}
 
         <input
           ref={inputRef}
@@ -920,18 +940,21 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
       <section>
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Materials Library</h2>
-            <p className="text-xs text-muted-foreground">{items.length} imported items</p>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              {fixedSourceSystem === "Supplier Price List" ? "Supplier Price List" : "Materials Library"}
+            </h2>
+            <p className="text-xs text-muted-foreground">{displayedItems.length} imported items</p>
           </div>
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
 
         <div className="grid gap-3">
-          {items.map((item) =>
+          {displayedItems.map((item) =>
             editingId === item.id && editItem ? (
               <ItemEditor
                 key={item.id}
                 item={editItem}
+                fixedSourceSystem={fixedSourceSystem}
                 saving={savingId === item.id}
                 onChange={setEditItem}
                 onCancel={() => {
@@ -944,7 +967,7 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
               <ItemCard key={item.id} item={item} onEdit={() => startEdit(item)} />
             ),
           )}
-          {!loading && items.length === 0 && (
+          {!loading && displayedItems.length === 0 && (
             <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">No imported items yet.</div>
           )}
         </div>
@@ -954,16 +977,18 @@ export function JmsItemLibrary({ onCountChange }: { onCountChange?: () => void }
         <h2 className="text-sm font-semibold text-foreground">Clear Imported Items</h2>
         <p className="mt-1 text-xs text-muted-foreground">Delete an incorrect import by source system or import batch.</p>
         <div className="mt-3 grid gap-2">
-          <select
-            value={clearSourceSystem}
-            onChange={(event) => {
-              setClearSourceSystem(event.target.value as SourceSystem)
-              setClearBatchId("all")
-            }}
-            className="rounded-lg border border-border bg-background px-2 py-2 text-sm text-foreground"
-          >
-            {SOURCE_SYSTEMS.map((source) => <option key={source}>{source}</option>)}
-          </select>
+          {!fixedSourceSystem && (
+            <select
+              value={clearSourceSystem}
+              onChange={(event) => {
+                setClearSourceSystem(event.target.value as SourceSystem)
+                setClearBatchId("all")
+              }}
+              className="rounded-lg border border-border bg-background px-2 py-2 text-sm text-foreground"
+            >
+              {SOURCE_SYSTEMS.map((source) => <option key={source}>{source}</option>)}
+            </select>
+          )}
           <select
             value={clearBatchId}
             onChange={(event) => setClearBatchId(event.target.value)}
@@ -1197,12 +1222,14 @@ function ItemCard({ item, onEdit }: { item: KnowledgeItem; onEdit: () => void })
 
 function ItemEditor({
   item,
+  fixedSourceSystem,
   saving,
   onChange,
   onCancel,
   onSave,
 }: {
   item: KnowledgeItem
+  fixedSourceSystem?: SourceSystem
   saving: boolean
   onChange: (item: KnowledgeItem) => void
   onCancel: () => void
@@ -1229,16 +1256,18 @@ function ItemEditor({
           {ITEM_TYPES.map((type) => <option key={type}>{type}</option>)}
         </select>
       </label>
-      <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
-        Source system
-        <select
-          value={item.source_system}
-          onChange={(event) => onChange({ ...item, source_system: event.target.value as SourceSystem })}
-          className="rounded-lg border border-border bg-background px-2 py-2 text-sm font-normal text-foreground outline-none focus:border-primary"
-        >
-          {SOURCE_SYSTEMS.map((source) => <option key={source}>{source}</option>)}
-        </select>
-      </label>
+      {!fixedSourceSystem && (
+        <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
+          Source system
+          <select
+            value={item.source_system}
+            onChange={(event) => onChange({ ...item, source_system: event.target.value as SourceSystem })}
+            className="rounded-lg border border-border bg-background px-2 py-2 text-sm font-normal text-foreground outline-none focus:border-primary"
+          >
+            {SOURCE_SYSTEMS.map((source) => <option key={source}>{source}</option>)}
+          </select>
+        </label>
+      )}
       <ItemInput label="Aliases, comma separated" value={item.aliases.join(", ")} onChange={(value) => onChange({ ...item, aliases: unique(value.split(",")) })} />
       <div className="grid grid-cols-2 gap-2">
         <button type="button" onClick={onCancel} className="inline-flex items-center justify-center gap-2 rounded-xl border border-border py-2 text-sm font-semibold">
