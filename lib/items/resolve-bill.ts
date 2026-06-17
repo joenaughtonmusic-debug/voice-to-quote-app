@@ -17,6 +17,8 @@ export type ResolvableItem = {
   item_code?: string | null
   item_name?: string | null
   sell_price?: number | string | null
+  /** Fallback used when sell_price is absent (e.g. supplier price list items that only have a buy price). */
+  cost_price?: number | string | null
   unit?: string | null
   account_code?: string | null
   sales_account_code?: string | null
@@ -64,7 +66,9 @@ function parseGstRate(value: number | string | null | undefined): number | null 
 }
 
 function entryToLineItem(entry: MaterialBillEntry, match: ResolvableItem | null): QuoteOptionLineItem {
-  const unitPrice = match ? parseSellPrice(match.sell_price) : null
+  const unitPrice = match
+    ? (parseSellPrice(match.sell_price) ?? parseSellPrice(match.cost_price))
+    : null
   const total = unitPrice !== null ? unitPrice * entry.quantity : null
 
   return {

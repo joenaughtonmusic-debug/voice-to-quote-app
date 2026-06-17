@@ -45,6 +45,19 @@ test("detects multiple deck areas with existing posts and waste removal", () => 
   )
 })
 
+test("detects and calculates area from 'N by M metre' phrasing", () => {
+  const transcript = "Build a 4 by 5 metre Kwila deck."
+  const detection = detectDeckingFromText(transcript)
+  const result = calculateDecking(detection.request)
+
+  assert.equal(detection.is_decking, true)
+  assert.equal(detection.request.areas.length, 1)
+  assert.equal(result.areas[0].length_m, 4)
+  assert.equal(result.areas[0].width_m, 5)
+  assert.equal(result.areas[0].square_metres, 20)
+  assert.equal(result.areas[0].board_type, "kwila")
+})
+
 test("does not detect decking from electrical transcript", () => {
   const transcript = "Install six downlights and two power points."
   const detection = detectDeckingFromText(transcript)

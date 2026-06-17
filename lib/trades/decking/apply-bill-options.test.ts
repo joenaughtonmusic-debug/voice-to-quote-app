@@ -90,6 +90,107 @@ test("applyDeckingBillOptions: sourceItemId falls back to id field for backward 
 })
 
 // ---------------------------------------------------------------------------
+// Tests — cost_price fallback behaviour in the resolver
+// ---------------------------------------------------------------------------
+
+test("applyDeckingBillOptions: sell_price takes priority over cost_price when both are present", () => {
+  const quote = freshQuote()
+
+  const item: ResolvableItem = {
+    source_item_id: "ki-1",
+    item_name: "Pine Decking Boards",
+    sell_price: 55,
+    cost_price: 40,
+    unit: "m2",
+    source_system: "JMS",
+  }
+
+  applyDeckingBillOptions(quote, "Construct a 4m x 5m pine deck", [item])
+
+  const li = (quote.quote_options ?? [])[0]?.lineItems[0]
+  assert.equal(li?.unitPrice, 55, "sell_price should win when present")
+  assert.equal(li?.total, 1100)
+})
+
+test("applyDeckingBillOptions: cost_price is used as fallback when sell_price is null", () => {
+  const quote = freshQuote()
+
+  const item: ResolvableItem = {
+    source_item_id: "ki-supplier-1",
+    item_name: "90x19 Kwila Decking",
+    sell_price: null,
+    cost_price: 6.80,
+    unit: "lm",
+    source_system: "Supplier Price List",
+  }
+
+  applyDeckingBillOptions(quote, "Build a 4m x 5m kwila deck", [item])
+
+  const options = quote.quote_options ?? []
+  assert.equal(options.length, 1)
+  const li = options[0].lineItems[0]
+  assert.equal(li.unitPrice, 6.80, "cost_price should be used when sell_price is null")
+  assert.equal(li.total, 20 * 6.80)
+  assert.equal(options[0].subtotal, 136)
+})
+
+test("applyDeckingBillOptions: zero-priced option when both sell_price and cost_price are null", () => {
+  const quote = freshQuote()
+
+  const item: ResolvableItem = {
+    source_item_id: "ki-no-price",
+    item_name: "Kwila Decking Boards",
+    sell_price: null,
+    cost_price: null,
+    unit: "m2",
+    source_system: "Supplier Price List",
+  }
+
+  applyDeckingBillOptions(quote, "Build a 4m x 5m kwila deck", [item])
+
+  const options = quote.quote_options ?? []
+  assert.equal(options.length, 1)
+  const li = options[0].lineItems[0]
+  assert.equal(li.unitPrice, 0)
+  assert.equal(li.total, 0)
+  assert.equal(options[0].subtotal, 0)
+})
+
+// ---------------------------------------------------------------------------
+// Test — "N by M metre" phrasing with a supplier price list item
+// ---------------------------------------------------------------------------
+
+test("applyDeckingBillOptions: natural 'N by M metre' phrasing resolves to priced option", () => {
+  const quote = freshQuote()
+
+  const kwilaSupplierItem: ResolvableItem = {
+    source_item_id: "ki-kwila-supplier-1",
+    item_name: "90x19 Kwila Decking",
+    sell_price: 6.80,
+    unit: "lm",
+    source_system: "Supplier Price List",
+  }
+
+  applyDeckingBillOptions(
+    quote,
+    "Build a 4 by 5 metre Kwila deck.",
+    [kwilaSupplierItem],
+  )
+
+  const options = quote.quote_options ?? []
+  assert.equal(options.length, 1)
+  assert.equal(options[0].source, "trade_calculator")
+  assert.equal(options[0].category, "material")
+
+  const li = options[0].lineItems[0]
+  assert.equal(li.quantity, 20)
+  assert.equal(li.unitPrice, 6.80)
+  assert.equal(li.total, 136)
+  assert.equal(options[0].subtotal, 136)
+  assert.equal(li.sourceItemId, "ki-kwila-supplier-1")
+})
+
+// ---------------------------------------------------------------------------
 // Test 4 — Non-decking transcript: quote unchanged
 // ---------------------------------------------------------------------------
 

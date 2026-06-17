@@ -79,6 +79,7 @@ type KnowledgeItemContext = {
   aliases: string[]
   unit: string
   sell_price: number | null
+  cost_price: number | null
   account_code?: string
   sales_account_code?: string
   tax_code?: string
@@ -480,6 +481,66 @@ function itemLooksLikeChemicalTreatment(item: KnowledgeItemContext) {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Word-level match scoring
+//
+// The full-term check (transcriptText.includes(fullItemName)) misses items
+// whose name contains a specific word that appears in the transcript but not
+// the full string — e.g. "90x19 Kwila Decking" when the transcript says
+// "build a Kwila deck".
+//
+// This secondary scorer tokenises item_name and aliases into individual words
+// and awards +1 for each unique meaningful word that appears (word-bounded)
+// in the transcript. Noisy words (short words, address suffixes, common verbs,
+// and dimension units) are excluded to avoid false positives such as "pine"
+// scoring because the address is "Pine Street".
+// ---------------------------------------------------------------------------
+
+// NZ street address suffixes, common transcript verbs, and dimension units
+// that would produce false positive word matches.
+const WORD_MATCH_STOPWORDS = new Set([
+  // Address suffix words common in NZ addresses
+  "street", "avenue", "drive", "close", "place", "court", "grove",
+  "terrace", "crescent", "highway", "parade", "esplanade",
+  // Common verbs that appear in almost every transcript
+  "build", "quote", "install", "supply", "remove", "replace", "construct",
+  // Dimension unit words that appear in virtually every transcript
+  "metre", "metres", "meter", "meters",
+  // Overly generic nouns
+  "material", "materials",
+])
+
+/**
+ * Split a label into words that are meaningful enough to score:
+ * length >= 5, not digits-only, and not in the stopword list.
+ */
+function meaningfulWords(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length >= 5 && !/^\d+$/.test(w) && !WORD_MATCH_STOPWORDS.has(w))
+}
+
+/**
+ * Score +1 for each unique meaningful word from item_name / aliases that
+ * appears (word-bounded) in the transcript. This surfaces supplier/material
+ * items whose full item name is never literally spoken.
+ */
+function itemWordMatchScore(item: KnowledgeItemContext, transcriptText: string): number {
+  const seen = new Set<string>()
+  let score = 0
+  for (const source of [item.item_name, ...item.aliases]) {
+    for (const word of meaningfulWords(source)) {
+      if (seen.has(word)) continue
+      seen.add(word)
+      if (new RegExp(`\\b${word}\\b`).test(transcriptText)) {
+        score += 1
+      }
+    }
+  }
+  return score
+}
+
 function normalizePlantContextText(value: string) {
   return value
     .toLowerCase()
@@ -623,7 +684,7 @@ async function loadKnowledgeItemContext(transcript: string) {
 
   const { data, error } = await supabase
       .from("knowledge_items")
-      .select("id, source_system, item_code, item_name, item_type, category, description, aliases, unit, sell_price, account_code, sales_account_code, tax_code, tax_type, gst_rate, raw_import")
+      .select("id, source_system, item_code, item_name, item_type, category, description, aliases, unit, sell_price, cost_price, account_code, sales_account_code, tax_code, tax_type, gst_rate, raw_import")
     .eq("user_id", user.id)
     .limit(1000)
 
@@ -664,6 +725,10 @@ async function loadKnowledgeItemContext(transcript: string) {
           aliases: toStringArray(item.aliases, 12),
           unit: String(item.unit ?? ""),
           sell_price: sellPrice !== null && Number.isFinite(sellPrice) ? sellPrice : null,
+          cost_price: (() => {
+            const v = item.cost_price === null || item.cost_price === undefined ? null : Number(item.cost_price)
+            return v !== null && Number.isFinite(v) ? v : null
+          })(),
           account_code:
             String(item.account_code ?? "").trim() ||
             rawImportFirstValue(item.raw_import, ["account_code", "Account Code", "Sales Account Code", "SalesAccount"]),
@@ -706,6 +771,7 @@ async function loadKnowledgeItemContext(transcript: string) {
       const plantCategoryPenalty = hasPlantRequest && itemLooksLikeChemicalTreatment(item) ? -20 : 0
       const plantScore = hasPlantRequest ? plantContextScore(item, transcriptText, requestedPlantSizes) : 0
       const unitScore = item.unit && transcriptText.includes(item.unit.toLowerCase()) ? 1 : 0
+      const wordScore = itemWordMatchScore(item, transcriptText)
 
       return {
         item,
@@ -718,6 +784,7 @@ async function loadKnowledgeItemContext(transcript: string) {
           tradeLabourScore +
           plantCategoryPenalty +
           plantScore +
+          wordScore +
           unitScore,
       }
     })

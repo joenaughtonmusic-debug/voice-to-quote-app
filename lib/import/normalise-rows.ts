@@ -58,26 +58,40 @@ function isUrlHeavyColumn(header: string, rows: ParsedRow[]): boolean {
 // Row-level classification
 // ---------------------------------------------------------------------------
 
-function isBlankRow(row: ParsedRow): boolean {
-  return Object.values(row).every((v) => v == null || String(v).trim() === "")
+/**
+ * A row is blank when every clean (non-working) column is empty.
+ * Working columns (Qty, Total, etc.) may contain 0 or formula results
+ * even on visually empty rows, so they are excluded from the check.
+ */
+function isBlankRow(row: ParsedRow, cleanColumns: string[]): boolean {
+  return cleanColumns.every((col) => {
+    const v = row[col]
+    return v == null || String(v).trim() === ""
+  })
 }
 
 /**
- * A section heading row has exactly one non-empty cell, that cell is in one
- * of the first three columns, and the value contains no digits.
+ * A section heading row has exactly one non-empty cell among the clean
+ * (non-working) columns, that cell is in one of the first three clean
+ * columns, and the value contains no digits.
  *
- * Examples that match: "Posts", "RAILS", "Retaining Timber", "DECKING BOARDS"
- * Examples that do NOT match: "90x90x2.4m H4" (has digits), rows with multiple
- * populated cells (real item rows), or a heading in an unexpected column.
+ * Working columns (Qty, Total, etc.) are intentionally ignored here — they
+ * often contain 0 or formula results on heading rows, which would otherwise
+ * cause the "exactly one non-empty cell" check to fail.
+ *
+ * Examples that match:  "Posts", "RAILS", "Retaining Timber", "DECKING BOARDS"
+ * Examples that do NOT: "90x90x2.4m H4" (has digits), rows with multiple
+ * populated clean cells (real item rows).
  */
-function isSectionHeadingRow(row: ParsedRow): boolean {
-  const entries = Object.entries(row)
-  const nonEmpty = entries.filter(([, v]) => v != null && String(v).trim() !== "")
+function isSectionHeadingRow(row: ParsedRow, cleanColumns: string[]): boolean {
+  // Only inspect the columns that carry meaningful item data.
+  const relevantEntries = cleanColumns.map((col) => [col, row[col]] as [string, unknown])
+  const nonEmpty = relevantEntries.filter(([, v]) => v != null && String(v).trim() !== "")
 
   if (nonEmpty.length !== 1) return false
 
   const [nonEmptyKey, nonEmptyVal] = nonEmpty[0]
-  const columnIndex = entries.findIndex(([k]) => k === nonEmptyKey)
+  const columnIndex = cleanColumns.indexOf(nonEmptyKey)
   if (columnIndex > 2) return false
 
   const cellText = String(nonEmptyVal).trim()
@@ -115,14 +129,15 @@ export function normaliseSupplierRows(rows: ParsedRow[], headers: string[]): Nor
   const cleanRows: ParsedRow[] = []
 
   for (const row of rows) {
-    if (isBlankRow(row)) {
+    if (isBlankRow(row, cleanHeaders)) {
       droppedRowCount++
       continue
     }
-    if (isSectionHeadingRow(row)) {
-      const headingValue = Object.values(row).find(
-        (v) => v != null && String(v).trim() !== "",
-      )
+    if (isSectionHeadingRow(row, cleanHeaders)) {
+      // Use the clean-column value as the heading label for the UI notice.
+      const headingValue = cleanHeaders
+        .map((col) => row[col])
+        .find((v) => v != null && String(v).trim() !== "")
       sectionHeadingsFound.push(String(headingValue).trim())
       droppedRowCount++
       continue

@@ -48,6 +48,28 @@ function plantOption(id: string, title: string, areaLabel: string, quantity: num
   }
 }
 
+function tradeOption(id: string, areaLabel: string, itemName: string, quantity: number, unit: string, unitPrice: number): QuoteOption {
+  const subtotal = quantity * unitPrice
+  return {
+    id,
+    label: areaLabel,
+    title: areaLabel,
+    category: "material",
+    source: "trade_calculator",
+    areaLabel,
+    lineItems: [
+      {
+        itemName,
+        quantity,
+        unit,
+        unitPrice,
+        total: subtotal,
+      },
+    ],
+    subtotal,
+  }
+}
+
 function plantResult(areaLabel: string, lengthM: number, plantCount: number): PlantCalculatorResult {
   return {
     area_label: areaLabel,
@@ -127,6 +149,7 @@ test("builds Sarah customer preview with combined plant options and clean labour
       ["Hardfill / soil removal", "To confirm", ""],
     ],
   )
+  assert.deepEqual(preview.tradeOptions, [], "planting-only quote should have no trade options")
 })
 
 test("maintenance customer preview does not label labour as planting labour", () => {
@@ -433,6 +456,43 @@ test("decking customer preview remains unchanged when retaining preview support 
     "Total decking area approximately 32m².",
     "Remove old decking waste.",
   ])
+})
+
+test("trade calculator material option surfaces in tradeOptions, not in plantOptions", () => {
+  const quote: CustomerPreviewQuote = {
+    line_items: [],
+    quote_options: [
+      tradeOption("decking-bill-1-main-deck", "Main deck", "90x19 Kwila Decking", 20, "m2", 6.8),
+    ],
+  }
+
+  const preview = buildCustomerQuotePreview(quote)
+
+  assert.equal(preview.tradeOptions.length, 1, "one trade option group")
+  assert.equal(preview.tradeOptions[0].areaLabel, "Main deck")
+  assert.equal(preview.tradeOptions[0].options.length, 1)
+  assert.equal(preview.tradeOptions[0].options[0].title, "Main deck")
+  assert.equal(preview.tradeOptions[0].options[0].subtotalText, "$136.00")
+  assert.equal(preview.tradeOptions[0].options[0].quantityText, "20 m2")
+  assert.deepEqual(preview.plantOptions, [], "trade options must not appear in plantOptions")
+})
+
+test("mixed quote keeps planting and trade options on separate fields", () => {
+  const quote: CustomerPreviewQuote = {
+    line_items: [],
+    quote_options: [
+      plantOption("lower-25l", "Lower planting area - Ficus Tuffi 25L", "Lower planting area", 15, 1781.25),
+      tradeOption("decking-bill-1-main-deck", "Main deck", "90x19 Kwila Decking", 20, "m2", 6.8),
+    ],
+  }
+
+  const preview = buildCustomerQuotePreview(quote)
+
+  assert.equal(preview.plantOptions.length, 1, "one plant option")
+  assert.equal(preview.plantOptions[0].title, "Ficus Tuffi 25L")
+  assert.equal(preview.tradeOptions.length, 1, "one trade option group")
+  assert.equal(preview.tradeOptions[0].areaLabel, "Main deck")
+  assert.equal(preview.tradeOptions[0].options[0].subtotalText, "$136.00")
 })
 
 test("planting customer preview remains unchanged when retaining preview support is enabled", () => {

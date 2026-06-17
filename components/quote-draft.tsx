@@ -8,6 +8,8 @@ import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
 import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerDraftPreviewModel } from "@/lib/customer-preview-render"
 import { buildCustomerQuotePreview, type CustomerQuotePreview } from "@/lib/customer-quote-preview"
+import type { CustomerQuoteOptionGroup } from "@/lib/customer-quote-options"
+import { CustomerQuoteOptionsCard } from "@/components/customer-quote-options-card"
 import type { PricingFact } from "@/lib/core/pricing-extraction"
 import {
   processedQuoteToEditableSections,
@@ -203,6 +205,7 @@ export function QuoteDraft({
               assemblySections={previewModel.assembly?.sections ?? []}
               assemblyFailedForMaintenance={assemblyFailedForMaintenance}
               hideLegacyLabourPricing={maintenanceDraft}
+              tradeOptions={customerPreview.tradeOptions}
             />
           )}
 
@@ -271,6 +274,7 @@ function StandardCustomerPreview({
   assemblySections,
   assemblyFailedForMaintenance,
   hideLegacyLabourPricing,
+  tradeOptions,
 }: {
   scopeItems: string[]
   exclusions: string[]
@@ -278,6 +282,7 @@ function StandardCustomerPreview({
   assemblySections: Array<{ title: string; items: string[] }>
   assemblyFailedForMaintenance: boolean
   hideLegacyLabourPricing: boolean
+  tradeOptions: CustomerQuoteOptionGroup[]
 }) {
   if (assemblySections.length > 0) {
     return (
@@ -297,6 +302,12 @@ function StandardCustomerPreview({
             </section>
           ))}
         </div>
+
+        {tradeOptions.length > 0 && (
+          <div className="mt-5">
+            <CustomerQuoteOptionsCard groups={tradeOptions} />
+          </div>
+        )}
 
         <div className="mt-5 grid grid-cols-1 gap-4">
           <div>
@@ -348,6 +359,12 @@ function StandardCustomerPreview({
       )}
 
       <CustomerQuotePricingPreview preview={customerPreview} hideLabourLine={hideLegacyLabourPricing} />
+
+      {tradeOptions.length > 0 && (
+        <div className="mt-5">
+          <CustomerQuoteOptionsCard groups={tradeOptions} />
+        </div>
+      )}
 
       <div className="mt-5 grid grid-cols-1 gap-4">
         <div>

@@ -2,6 +2,7 @@ import type { PlantCalculatorResult } from "./calculators/planting"
 import type { PricingFact } from "./core/pricing-extraction"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { resolveServiceLineLabel } from "./core/service-line-labels"
+import { groupCustomerQuoteOptions, type CustomerQuoteOptionGroup } from "./customer-quote-options"
 import { renderDeckingCustomerScopeFromQuoteFacts } from "./trades/decking/customer-renderer"
 import { renderRetainingCustomerScopeFromQuoteFacts } from "./trades/retaining/customer-renderer"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote, type QuoteLineItem } from "./processed-quote"
@@ -72,6 +73,8 @@ export type CustomerQuotePreview = {
   labourLine?: CustomerPreviewMaterialLine
   plantOptions: CustomerPreviewPlantOption[]
   materialLines: CustomerPreviewMaterialLine[]
+  /** Priced material/labour bill options produced by trade calculators (decking, paving, retaining). */
+  tradeOptions: CustomerQuoteOptionGroup[]
 }
 
 export type CustomerPreviewPricingFact = {
@@ -399,6 +402,10 @@ export function buildCustomerQuotePreview(
     isBase: index === 0,
   }))
 
+  const tradeOptions = groupCustomerQuoteOptions(
+    (quote.quote_options ?? []).filter((o) => o.source === "trade_calculator"),
+  )
+
   const materialLines = findMaterialLines(quote)
   const rendered = renderQuoteTemplate(quote, quote.selected_template)
   const quoteFacts = options.includeDeckingScope || options.includeRetainingScope
@@ -417,5 +424,6 @@ export function buildCustomerQuotePreview(
     labourLine: findLabourLine(quote),
     plantOptions,
     materialLines,
+    tradeOptions,
   }
 }

@@ -11,7 +11,7 @@ function inferBoardType(text: string) {
 
 function dimensionAreas(text: string): DeckingAreaRequest[] {
   const matches = Array.from(
-    text.matchAll(/(?:(build|construct|replace|install|supply\s+and\s+install)[^.:\n]*?)?(\d+(?:\.\d+)?)\s*m\s*(?:x|×|by)\s*(\d+(?:\.\d+)?)\s*m?([^.:\n]*)/gi),
+    text.matchAll(/(?:(build|construct|replace|install|supply\s+and\s+install)[^.:\n]*?)?(\d+(?:\.\d+)?)\s*m?\s*(?:x|×|by)\s*(\d+(?:\.\d+)?)\s*(?:metres?|m)\b([^.:\n]*)/gi),
   )
 
   return matches.map((match, index) => {
