@@ -26,7 +26,26 @@ function unique(values: string[]) {
     })
 }
 
+function isGardenTidyQuote(quote: XeroPayloadQuote) {
+  const selectedTemplate = quote.selected_template
+  const text = [
+    quote.job_type,
+    quote.quote_title,
+    quote.primary_quote?.quote_title,
+    selectedTemplate?.category,
+    selectedTemplate?.job_type,
+    selectedTemplate?.template_name,
+    selectedTemplate?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  return /\bgarden[_\s-]?tidy|one[_\s-]?off[_\s-]?tidy|property[_\s-]?tidy\b/i.test(text)
+}
+
 function isMaintenanceQuote(quote: XeroPayloadQuote) {
+  if (isGardenTidyQuote(quote)) return false
+
   const selectedTemplate = quote.selected_template
   const primaryQuote = quote.primary_quote as (XeroPayloadQuote["primary_quote"] & { job_type?: string }) | undefined
   const text = [
@@ -100,11 +119,28 @@ function ongoingMaintenanceText(quote: XeroPayloadQuote) {
   )
 }
 
+function cadenceHeaderLine(quote: XeroPayloadQuote): string {
+  const text = [
+    quote.job_type,
+    quote.quote_title,
+    quote.primary_quote?.quote_title,
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  if (/\b(?:four[-\s]monthly|4[-\s]monthly|every\s+4\s+months?)\b/i.test(text)) return "4-Monthly Garden Maintenance"
+  if (/\b(?:three[-\s]monthly|3[-\s]monthly|every\s+3\s+months?|quarterly)\b/i.test(text)) return "3-Monthly Garden Maintenance"
+  if (/\b(?:two[-\s]monthly|2[-\s]monthly|every\s+2\s+months?)\b/i.test(text)) return "2-Monthly Garden Maintenance"
+  if (/\b(?:six[-\s]weekly|6[-\s]weekly|every\s+6\s+weeks?)\b/i.test(text)) return "6-Weekly Garden Maintenance"
+  return "Ongoing Garden Maintenance"
+}
+
 function maintenanceDescription(quote: XeroPayloadQuote) {
   const mainFocus = mainFocusItems(quote)
   const includes = serviceIncludes(quote)
   const ongoing = ongoingMaintenanceText(quote)
-  const lines = ["Ongoing Garden Maintenance"]
+  const header = cadenceHeaderLine(quote)
+  const lines = [header]
 
   if (mainFocus.length > 0) {
     lines.push("", "Main focus:", ...mainFocus.map((item) => `- ${item}`))
@@ -133,7 +169,7 @@ export function buildMaintenanceXeroExportLineItems(quote: XeroPayloadQuote): Xe
   return [
     {
       category: "labour",
-      description: "Ongoing Garden Maintenance",
+      description: cadenceHeaderLine(quote),
       xeroDescription: maintenanceDescription(quote),
       quantity: 1,
       unitAmount: price.amount,

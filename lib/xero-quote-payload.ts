@@ -8,6 +8,7 @@ import {
   makeXeroLineItem,
 } from "./export/xero/helpers"
 import { buildGenericXeroExportLineItems } from "./export/xero/generic-renderer"
+import { buildGardenTidyXeroExportLineItems } from "./export/xero/garden-tidy-renderer"
 import { buildMaintenanceXeroExportLineItems } from "./export/xero/maintenance-renderer"
 import type { MakeXeroQuoteLineItem, XeroExportLineItem, XeroPayloadQuote, XeroQuoteLineItem } from "./export/xero/types"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
@@ -15,6 +16,7 @@ import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote, type QuoteLineItem } from "
 import { buildPlantingXeroExportLineItems } from "./trades/planting/xero-renderer"
 import { buildDeckingXeroExportLineItemsFromQuoteFacts } from "./trades/decking/xero-renderer"
 import { buildRetainingXeroExportLineItemsFromQuoteFacts } from "./trades/retaining/xero-renderer"
+import { buildPavingXeroExportLineItemsFromQuoteOptions } from "./trades/paving/xero-renderer"
 import type { QuoteOption } from "./quote-options"
 
 export type { MakeXeroQuoteLineItem, XeroPayloadQuote, XeroQuoteLineItem }
@@ -167,18 +169,26 @@ export function buildXeroQuotePayload(
   const quoteFacts = quoteFactsForXero(quote)
   const deckingExportLineItems = buildDeckingXeroExportLineItemsFromQuoteFacts(quoteFacts)
   const retainingExportLineItems = buildRetainingXeroExportLineItemsFromQuoteFacts(quoteFacts)
+  // Garden tidy is evaluated before maintenance — a tidy template may carry trade:"maintenance"
+  // which would otherwise trigger the maintenance renderer with the wrong description.
+  const gardenTidyExportLineItems = buildGardenTidyXeroExportLineItems(quote)
   const maintenanceExportLineItems = buildMaintenanceXeroExportLineItems(quote)
+  const pavingExportLineItems = buildPavingXeroExportLineItemsFromQuoteOptions(quote.quote_options)
   const now = options.now ?? new Date()
   const renderedExportLineItems =
     deckingExportLineItems.length > 0
       ? deckingExportLineItems
       : retainingExportLineItems.length > 0
         ? retainingExportLineItems
-        : maintenanceExportLineItems.length > 0
-        ? maintenanceExportLineItems
-        : isPlantingQuote(quote)
-        ? buildPlantingXeroExportLineItems(quote, preview)
-        : buildGenericXeroExportLineItems(quote, preview)
+        : gardenTidyExportLineItems.length > 0
+          ? gardenTidyExportLineItems
+          : maintenanceExportLineItems.length > 0
+            ? maintenanceExportLineItems
+            : isPlantingQuote(quote)
+              ? buildPlantingXeroExportLineItems(quote, preview)
+              : pavingExportLineItems.length > 0
+                ? pavingExportLineItems
+                : buildGenericXeroExportLineItems(quote, preview)
   const exportWarnings: string[] = []
   const exportLineItems: XeroExportLineItem[] = []
   for (const item of renderedExportLineItems) {

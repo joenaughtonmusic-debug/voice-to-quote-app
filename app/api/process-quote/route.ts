@@ -17,6 +17,8 @@ import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
 import { hasPlantingCalculatorIntent } from "@/lib/trades/planting/intent"
 import { quoteOptionsFromPlantCalculatorResults } from "@/lib/trades/planting/quote-options"
 import { applyDeckingBillOptions } from "@/lib/trades/decking/apply-bill-options"
+import { applyRetainingBillOptions } from "@/lib/trades/retaining/apply-bill-options"
+import { applyPavingBillOptions } from "@/lib/trades/paving/apply-bill-options"
 import { type QuoteSpecialist, getSpecialistInstructions, getSharedUniversalExtractionInstructions } from "@/lib/quote-specialist-instructions"
 import {
   type QuoteClassification,
@@ -340,6 +342,10 @@ function getKnowledgeItemContext(value: unknown) {
         knowledgeItem.sell_price === null || knowledgeItem.sell_price === undefined
           ? null
           : Number(knowledgeItem.sell_price)
+      const costPrice =
+        knowledgeItem.cost_price === null || knowledgeItem.cost_price === undefined
+          ? null
+          : Number(knowledgeItem.cost_price)
 
       if (!itemName) return null
 
@@ -354,6 +360,7 @@ function getKnowledgeItemContext(value: unknown) {
         aliases: getStringArray(knowledgeItem.aliases, 12),
         unit: typeof knowledgeItem.unit === "string" ? knowledgeItem.unit.trim() : "",
         sell_price: sellPrice !== null && Number.isFinite(sellPrice) ? sellPrice : null,
+        cost_price: costPrice !== null && Number.isFinite(costPrice) ? costPrice : null,
         account_code: typeof knowledgeItem.account_code === "string" ? knowledgeItem.account_code.trim() : "",
         sales_account_code: typeof knowledgeItem.sales_account_code === "string" ? knowledgeItem.sales_account_code.trim() : "",
         tax_code: typeof knowledgeItem.tax_code === "string" ? knowledgeItem.tax_code.trim() : "",
@@ -2984,6 +2991,8 @@ export async function POST(request: Request) {
       quote.client_name = leadDetails.client_name ?? quote.client_name ?? "Not captured"
       quote.site_address = formatLeadSiteAddress(leadDetails) ?? quote.site_address ?? "Not captured"
       applyDeckingBillOptions(quote, transcript, knowledgeItemContext)
+      applyRetainingBillOptions(quote, transcript, knowledgeItemContext)
+      applyPavingBillOptions(quote, transcript, knowledgeItemContext)
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       quote.missing_information = Array.isArray(quote.missing_information) ? quote.missing_information : []
 

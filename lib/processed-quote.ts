@@ -1,5 +1,5 @@
 import type { PlantCalculatorResult } from "@/lib/calculators/planting"
-import type { QuoteOption } from "@/lib/quote-options"
+import type { QuoteOption, QuoteOptionLineItem } from "@/lib/quote-options"
 
 export type QuoteLineItem = {
   source_item_id?: string
@@ -77,6 +77,8 @@ export type SavedQuoteDraft = {
   raw_transcript: string | null
   quote_sections: unknown
   line_items: unknown
+  /** Structured quote options persisted separately from quote_sections text. */
+  quote_options?: unknown
 }
 
 export const EMPTY_PROCESSED_QUOTE: ProcessedQuote = {
@@ -122,6 +124,42 @@ function quoteIntentLines(option: QuoteIntent) {
     ...option.scope.map((item) => `Scope: ${item}`),
     ...option.notes.map((item) => `Note: ${item}`),
   ].filter(Boolean)
+}
+
+function parseQuoteIntentSection(content: string): QuoteIntent {
+  const scope: string[] = []
+  const notes: string[] = []
+  let quote_title = ""
+  let job_type = ""
+  let cadence = ""
+
+  for (const line of splitLines(content)) {
+    if (/^title:\s*/i.test(line)) {
+      quote_title = line.replace(/^title:\s*/i, "").trim()
+      continue
+    }
+    if (/^job type:\s*/i.test(line)) {
+      job_type = line.replace(/^job type:\s*/i, "").trim()
+      continue
+    }
+    if (/^cadence:\s*/i.test(line)) {
+      cadence = line.replace(/^cadence:\s*/i, "").trim()
+      continue
+    }
+    if (/^scope:\s*/i.test(line)) {
+      scope.push(line.replace(/^scope:\s*/i, "").trim())
+      continue
+    }
+    if (/^note:\s*/i.test(line)) {
+      notes.push(line.replace(/^note:\s*/i, "").trim())
+      continue
+    }
+    if (line.trim()) {
+      notes.push(line.trim())
+    }
+  }
+
+  return { quote_title, job_type, cadence, scope, notes }
 }
 
 function matchedLineItemLines(items: QuoteLineItem[]) {
@@ -505,6 +543,120 @@ function stringOrNull(value: unknown) {
   return text ? text : null
 }
 
+function numberOrNull(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function stringArrayOrEmpty(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item ?? "").trim()).filter(Boolean)
+}
+
+function quoteOptionLineItemFromSaved(value: unknown): QuoteOptionLineItem | null {
+  if (!value || typeof value !== "object") return null
+  const item = value as Record<string, unknown>
+  const quantity = numberOrNull(item.quantity)
+  const unitPrice = numberOrNull(item.unitPrice)
+  const total = numberOrNull(item.total)
+  const itemName = String(item.itemName ?? "").trim()
+
+  if (!itemName || quantity === null || unitPrice === null || total === null) return null
+
+  return {
+    itemName,
+    itemCode: stringOrNull(item.itemCode) ?? undefined,
+    sourceSystem: stringOrNull(item.sourceSystem) ?? undefined,
+    accountCode: stringOrNull(item.accountCode) ?? undefined,
+    salesAccountCode: stringOrNull(item.salesAccountCode) ?? undefined,
+    taxCode: stringOrNull(item.taxCode) ?? undefined,
+    taxType: stringOrNull(item.taxType) ?? undefined,
+    gstRate: numberOrNull(item.gstRate),
+    quantity,
+    unit: String(item.unit ?? ""),
+    unitPrice,
+    total,
+    supplier: stringOrNull(item.supplier) ?? undefined,
+    stockStatus: stringOrNull(item.stockStatus) ?? undefined,
+    sourceItemId: stringOrNull(item.sourceItemId) ?? undefined,
+  }
+}
+
+const QUOTE_OPTION_CATEGORIES = new Set(["planting", "material", "labour", "general"])
+const QUOTE_OPTION_SOURCES = new Set(["plant_calculator", "trade_calculator", "manual", "ai_extraction"])
+
+function quoteOptionFromSaved(value: unknown): QuoteOption | null {
+  if (!value || typeof value !== "object") return null
+  const option = value as Record<string, unknown>
+  const id = String(option.id ?? "").trim()
+  const label = String(option.label ?? "").trim()
+  const title = String(option.title ?? "").trim()
+  const category = String(option.category ?? "")
+  const source = String(option.source ?? "")
+  const subtotal = numberOrNull(option.subtotal)
+
+  if (!id || !label || !title || !QUOTE_OPTION_CATEGORIES.has(category) || !QUOTE_OPTION_SOURCES.has(source)) {
+    return null
+  }
+  if (subtotal === null) return null
+
+  const lineItems = Array.isArray(option.lineItems)
+    ? option.lineItems.map(quoteOptionLineItemFromSaved).filter((item): item is QuoteOptionLineItem => item !== null)
+    : []
+
+  if (lineItems.length === 0) return null
+
+  return {
+    id,
+    label,
+    title,
+    description: stringOrNull(option.description) ?? undefined,
+    category: category as QuoteOption["category"],
+    source: source as QuoteOption["source"],
+    areaLabel: stringOrNull(option.areaLabel) ?? undefined,
+    isPrimary: typeof option.isPrimary === "boolean" ? option.isPrimary : undefined,
+    lineItems,
+    subtotal,
+    notes: stringArrayOrEmpty(option.notes),
+    warnings: stringArrayOrEmpty(option.warnings),
+  }
+}
+
+/** Restores structured quote options from a saved draft JSON column. */
+export function quoteOptionsFromSaved(value: unknown): QuoteOption[] {
+  if (!Array.isArray(value)) return []
+  return value.map(quoteOptionFromSaved).filter((option): option is QuoteOption => option !== null)
+}
+
+/** Fields persisted to quote_drafts.quote_options — used on save and in acceptance tests. */
+export function quoteDraftQuoteOptions(processedQuote: ProcessedQuote): QuoteOption[] {
+  return processedQuote.quote_options ?? []
+}
+
+export function buildQuoteDraftPersistedFields(
+  rawTranscript: string,
+  processedQuote: ProcessedQuote,
+  quoteSections: EditableQuoteSection[],
+  userId: string,
+) {
+  return {
+    user_id: userId,
+    client_name: processedQuote.client_name || null,
+    site_address: processedQuote.site_address || null,
+    quote_title: processedQuote.quote_title || processedQuote.job_type || "Generated Quote",
+    job_type: processedQuote.job_type || null,
+    raw_transcript: rawTranscript,
+    quote_sections: quoteSections,
+    line_items: processedQuote.line_items,
+    quote_options: quoteDraftQuoteOptions(processedQuote),
+    status: "Needs Review",
+  }
+}
+
 export function savedDraftToEditableState(draft: SavedQuoteDraft) {
   const fallbackQuote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,
@@ -520,6 +672,7 @@ export function savedDraftToEditableState(draft: SavedQuoteDraft) {
       notes: [],
     },
     line_items: lineItemsFromSaved(draft.line_items),
+    quote_options: quoteOptionsFromSaved(draft.quote_options),
   }
   const sections = quoteSectionsFromSaved(draft.quote_sections, fallbackQuote)
   const processedQuote = editableSectionsToProcessedQuote(sections, fallbackQuote)
@@ -531,6 +684,74 @@ export function savedDraftToEditableState(draft: SavedQuoteDraft) {
   }
 }
 
+function uniqueNonEmptyLines(values: string[]) {
+  const seen = new Set<string>()
+  return values
+    .map((value) => value.trim())
+    .filter((value) => {
+      const key = value.toLowerCase()
+      if (!value || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+/**
+ * Builds the ProcessedQuote passed to QuoteDraft after "Preview Customer Quote Draft".
+ *
+ * The customer review UI can show scope from customerPreview.scopeItems (including the
+ * customer_scope card overlay) while the editable customer_scope section is still empty.
+ * This syncs the visible customer-facing scope into the handoff quote.
+ */
+export function buildQuoteHandoffForDraftPreview({
+  sections,
+  baseQuote,
+  customerScopeItems,
+  dirtyKeys,
+}: {
+  sections: EditableQuoteSection[]
+  baseQuote: ProcessedQuote
+  customerScopeItems: string[]
+  dirtyKeys: ReadonlySet<string>
+}): ProcessedQuote {
+  const usePreviewCustomerScope = !dirtyKeys.has("customer_scope") && customerScopeItems.length > 0
+
+  let handoffSections = usePreviewCustomerScope
+    ? sections.map((section) =>
+        section.key === "customer_scope"
+          ? { ...section, content: customerScopeItems.join("\n") }
+          : section,
+      )
+    : sections
+
+  if (!dirtyKeys.has("primary_quote")) {
+    const primarySection = handoffSections.find((section) => section.key === "primary_quote")
+    const parsedPrimary = parseQuoteIntentSection(primarySection?.content ?? "")
+    if (parsedPrimary.scope.length === 0 && parsedPrimary.notes.length === 0) {
+      const rebuiltPrimary = [
+        ...baseQuote.primary_quote.scope.map((item) => `Scope: ${item}`),
+        ...baseQuote.primary_quote.notes.map((item) => `Note: ${item}`),
+      ].join("\n")
+      if (rebuiltPrimary.trim()) {
+        handoffSections = handoffSections.map((section) =>
+          section.key === "primary_quote" ? { ...section, content: rebuiltPrimary } : section,
+        )
+      }
+    }
+  }
+
+  let quote = editableSectionsToProcessedQuote(handoffSections, baseQuote)
+
+  if (usePreviewCustomerScope) {
+    quote = {
+      ...quote,
+      customer_scope: uniqueNonEmptyLines([...quote.customer_scope, ...customerScopeItems]),
+    }
+  }
+
+  return quote
+}
+
 export function editableSectionsToProcessedQuote(
   sections: EditableQuoteSection[],
   baseQuote: ProcessedQuote,
@@ -538,18 +759,23 @@ export function editableSectionsToProcessedQuote(
   const byKey = new Map(sections.map((section) => [section.key, section.content]))
   const materialsAndGreenwaste = splitLines(byKey.get("materials_greenwaste") ?? "")
   const greenwasteLine = materialsAndGreenwaste.find((item) => item.toLowerCase().startsWith("greenwaste:"))
+  const parsedPrimary = parseQuoteIntentSection(byKey.get("primary_quote") ?? "")
+  const customerScope = splitLines(byKey.get("customer_scope") ?? "")
+  const labourAllowance = byKey.get("labour_allowance")?.trim()
 
   return {
     ...baseQuote,
-    client_name: byKey.get("client_name")?.trim() ?? "",
-    site_address: byKey.get("site_address")?.trim() ?? "",
-    job_type: byKey.get("job_type")?.trim() ?? "",
+    client_name: byKey.get("client_name")?.trim() || baseQuote.client_name,
+    site_address: byKey.get("site_address")?.trim() || baseQuote.site_address,
+    job_type: byKey.get("job_type")?.trim() || baseQuote.job_type || baseQuote.primary_quote.job_type,
     quote_title: baseQuote.quote_title || byKey.get("job_type")?.trim() || "Generated Quote",
     primary_quote: {
       ...baseQuote.primary_quote,
-      quote_title: baseQuote.primary_quote.quote_title || baseQuote.quote_title,
-      job_type: baseQuote.primary_quote.job_type || byKey.get("job_type")?.trim() || "",
-      notes: splitLines(byKey.get("primary_quote") ?? ""),
+      quote_title: parsedPrimary.quote_title || baseQuote.primary_quote.quote_title || baseQuote.quote_title,
+      job_type: parsedPrimary.job_type || baseQuote.primary_quote.job_type || byKey.get("job_type")?.trim() || "",
+      cadence: parsedPrimary.cadence || baseQuote.primary_quote.cadence,
+      scope: parsedPrimary.scope.length > 0 ? parsedPrimary.scope : baseQuote.primary_quote.scope,
+      notes: parsedPrimary.notes.length > 0 ? parsedPrimary.notes : baseQuote.primary_quote.notes,
     },
     optional_quotes:
       splitLines(byKey.get("optional_quotes") ?? "").length > 0
@@ -563,11 +789,14 @@ export function editableSectionsToProcessedQuote(
             },
           ]
         : baseQuote.optional_quotes,
-    customer_scope: splitLines(byKey.get("customer_scope") ?? ""),
+    customer_scope: customerScope.length > 0 ? customerScope : baseQuote.customer_scope,
     internal_notes: [...splitLines(byKey.get("internal_notes") ?? ""), ...splitLines(byKey.get("planting_calculator") ?? "")],
-    labour_allowance: byKey.get("labour_allowance")?.trim() ?? "",
-    materials: materialsAndGreenwaste.filter((item) => !item.toLowerCase().startsWith("greenwaste:")),
-    greenwaste: greenwasteLine?.replace(/^greenwaste:\s*/i, "").trim() ?? "",
+    labour_allowance: labourAllowance || baseQuote.labour_allowance,
+    materials:
+      materialsAndGreenwaste.filter((item) => !item.toLowerCase().startsWith("greenwaste:")).length > 0
+        ? materialsAndGreenwaste.filter((item) => !item.toLowerCase().startsWith("greenwaste:"))
+        : baseQuote.materials,
+    greenwaste: greenwasteLine?.replace(/^greenwaste:\s*/i, "").trim() || baseQuote.greenwaste,
     exclusions: splitLines(byKey.get("exclusions") ?? ""),
     follow_up_tasks: splitLines(byKey.get("follow_up_tasks") ?? ""),
     missing_information: splitLines(byKey.get("missing_information") ?? ""),

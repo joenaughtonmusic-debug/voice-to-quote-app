@@ -53,9 +53,12 @@ export function VoiceQuoteApp() {
     setDraftOpen(false)
   }, [signedIn])
 
-  function handleDraftSaved() {
+  function handleDraftSaved(savedDraftId?: string | null) {
     setDraftsRefreshKey((key) => key + 1)
     setCurrentQuoteSaved(true)
+    if (savedDraftId && !editingDraftId) {
+      setEditingDraftId(savedDraftId)
+    }
   }
 
   function resetQuoteFlow(resetRecord = false) {
@@ -135,7 +138,7 @@ export function VoiceQuoteApp() {
 
     const { data, error } = await supabase
       .from("quote_drafts")
-      .select("id, client_name, site_address, quote_title, job_type, raw_transcript, quote_sections, line_items")
+      .select("id, client_name, site_address, quote_title, job_type, raw_transcript, quote_sections, line_items, quote_options")
       .eq("id", draftId)
       .eq("user_id", user.id)
       .single()

@@ -262,12 +262,12 @@ Greenwaste to be removed from site.`
     assert.ok(assembly, `${jobType} should use garden tidy assembly`)
     assert.equal(assembly.title, "One-Off Garden Tidy")
     assert.deepEqual(assembly.sections.map((section) => section.title), [
-      "Main Scope",
+      "Scope of Work",
       "Service Includes",
       "Price",
       "Site Notes",
     ])
-    assert.deepEqual(sectionItems("Main Scope", assembly), [
+    assert.deepEqual(sectionItems("Scope of Work", assembly), [
       "Remove overgrowth around boundary",
       "Cut back shrubs",
       "Weed garden beds",
@@ -330,7 +330,7 @@ Greenwaste to be removed from site.`
 
   assert.ok(assembly)
   assert.equal(assembly.title, "One-Off Garden Tidy")
-  assert.deepEqual(sectionItems("Main Scope", assembly), [
+  assert.deepEqual(sectionItems("Scope of Work", assembly), [
     "Remove overgrowth around boundary",
     "Cut back shrubs",
     "Weed garden beds",
@@ -592,4 +592,380 @@ test("non-maintenance quotes keep existing preview behavior for now", () => {
   })
 
   assert.equal(assembly, null)
+})
+
+// ---------------------------------------------------------------------------
+// Extended maintenance cadence title tests
+// ---------------------------------------------------------------------------
+
+function maintenanceQuoteWithTranscript(transcript: string, jobType = "maintenance", quoteTitle = "maintenance"): ProcessedQuote {
+  const address = extractAddressDetails(transcript)
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: extractClientNameFromTranscript(transcript) ?? "",
+    site_address: address.cleaned_address ?? "",
+    quote_title: quoteTitle,
+    job_type: jobType,
+    primary_quote: {
+      quote_title: quoteTitle,
+      job_type: jobType,
+      cadence: "",
+      scope: [],
+      notes: [],
+    },
+  }
+}
+
+test("monthly maintenance title remains Monthly Maintenance", () => {
+  const transcript = "Monthly maintenance for Kim at 14 Oak Street. Price per visit $120."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "Monthly Maintenance")
+})
+
+test("2-monthly maintenance title is 2-Monthly Maintenance not Monthly Maintenance", () => {
+  const transcript = "2-monthly maintenance for Sarah at 12 Hill Road. Price per visit $240 including greenwaste removal."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "2-Monthly Maintenance")
+  assert.notEqual(assembly.title, "Monthly Maintenance")
+})
+
+test("two-monthly phrase produces 2-Monthly Maintenance title", () => {
+  const transcript = "Two-monthly maintenance for David at 5 Oak Avenue. Price per visit $240."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "2-Monthly Maintenance")
+})
+
+test("3-monthly maintenance title is 3-Monthly Maintenance", () => {
+  const transcript = "3-monthly maintenance for Jane at 8 Pine Street. Price per visit $360."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "3-Monthly Maintenance")
+  assert.notEqual(assembly.title, "Monthly Maintenance")
+})
+
+test("quarterly maps to 3-Monthly Maintenance title", () => {
+  const transcript = "Quarterly maintenance for Tom at 3 Elm Road. Price per visit $360 including greenwaste."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "3-Monthly Maintenance")
+})
+
+test("4-monthly maintenance title is 4-Monthly Maintenance", () => {
+  const transcript = "4-monthly maintenance for Pat at 22 River Lane. Price per visit $480."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "4-Monthly Maintenance")
+  assert.notEqual(assembly.title, "Monthly Maintenance")
+})
+
+test("6-weekly maintenance title is 6-Weekly Maintenance", () => {
+  const transcript = "6-weekly maintenance for Chris at 7 Beach Road. Price per visit $180 including greenwaste."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "6-Weekly Maintenance")
+})
+
+test("every 6 weeks phrase produces 6-Weekly Maintenance title", () => {
+  const transcript = "Maintenance every 6 weeks for Alex at 9 Bay Street. Price per visit $180."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  assert.equal(assembly.title, "6-Weekly Maintenance")
+})
+
+test("2-monthly price is preserved per-visit from spoken transcript", () => {
+  const transcript = "2-monthly maintenance for Sarah at 12 Hill Road. Price per visit $240 including greenwaste removal."
+  const assembly = assembleCustomerQuote({
+    quote: maintenanceQuoteWithTranscript(transcript),
+    rawTranscript: transcript,
+    pricingFacts: extractPricing(transcript).pricing,
+  })
+  assert.ok(assembly)
+  const priceItems = assembly.sections.find((s) => s.title === "Price")?.items ?? []
+  assert.equal(priceItems.some((item) => item.includes("240") && item.includes("per visit")), true)
+})
+
+// ---------------------------------------------------------------------------
+// Real-world Shirley quote — assembly quality regression (Pristine Gardens)
+// ---------------------------------------------------------------------------
+
+const shirleyTranscript = `Just went to see Shirley at 6 Percival Parade, Freemans Bay. The quote is a one-off tidy, mostly hedge trimming and tree pruning. We need to prune back the Mexican elder trees on the right-hand boundary. That job will take two people one and a quarter days with two trailer loads of green waste. And we also need to trim the side back and then also trim the top back. Form her property on a sharp angle so it's defined. That's probably going to be three quarters of a trailer load for six days green waste, along with the usual blowdown and tidy of things that we want to do.`
+
+function shirleyQuote(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Shirley",
+    site_address: "6 Percival Parade, Freemans Bay",
+    quote_title: "One-Off Garden Tidy",
+    job_type: "one_off_tidy",
+    labour_allowance: "Two people for approximately one and a quarter days",
+    greenwaste: "Approximately two trailer loads for tree pruning and three quarters of a trailer load for hedge trimming",
+    customer_scope: [
+      "Prune back Mexican elder trees along the right-hand boundary",
+      "Trim hedge sides and top to a defined sharp angle",
+      "Blowdown and tidy on completion",
+    ],
+    primary_quote: {
+      quote_title: "One-Off Garden Tidy",
+      job_type: "one_off_tidy",
+      cadence: "",
+      scope: [
+        "Prune back Mexican elder trees along the right-hand boundary",
+        "Trim hedge sides and top to a defined sharp angle",
+        "Blowdown and tidy on completion",
+      ],
+      notes: [],
+    },
+  }
+}
+
+test("Shirley one-off tidy activates garden tidy workflow", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly, "garden tidy assembly should activate for one_off_tidy")
+  assert.equal(assembly.title, "One-Off Garden Tidy")
+})
+
+test("Shirley one-off tidy renders Scope of Work with all three work items", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  const scope = sectionItems("Scope of Work", assembly)
+  assert.ok(scope.length > 0, "Scope of Work section must exist")
+  assert.ok(
+    scope.some((item) => /mexican\s+elder/i.test(item)),
+    `Mexican elder pruning must appear in Scope of Work. Got: ${scope.join(", ")}`,
+  )
+  assert.ok(
+    scope.some((item) => /trim/i.test(item)),
+    `Hedge trimming must appear in Scope of Work. Got: ${scope.join(", ")}`,
+  )
+  assert.ok(
+    scope.some((item) => /blowdown|blow\s+down/i.test(item)),
+    `Blowdown and tidy must appear in Scope of Work. Got: ${scope.join(", ")}`,
+  )
+  assert.ok(
+    !scope.some((item) => /two\s+people|one\s+and\s+a\s+quarter\s+days/i.test(item)),
+    `Labour lines must not appear in Scope of Work. Got: ${scope.join(", ")}`,
+  )
+  assert.ok(
+    !scope.some((item) => /trailer\s+load/i.test(item)),
+    `Greenwaste quantity lines must not appear in Scope of Work. Got: ${scope.join(", ")}`,
+  )
+})
+
+test("Shirley one-off tidy renders Labour Allowance section", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  const labour = sectionItems("Labour Allowance", assembly)
+  assert.ok(labour.length > 0, "Labour Allowance section must exist")
+  assert.ok(
+    labour.some((item) => /two\s+people|2\s+people/i.test(item)),
+    `Labour allowance must mention crew size. Got: ${labour.join(", ")}`,
+  )
+  assert.ok(
+    labour.some((item) => /one\s+and\s+a\s+quarter|1\.25/i.test(item)),
+    `Labour allowance must mention duration. Got: ${labour.join(", ")}`,
+  )
+})
+
+test("Shirley one-off tidy renders Green Waste section with trailer-load quantities", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  const greenwaste = sectionItems("Green Waste", assembly)
+  assert.ok(greenwaste.length > 0, "Green Waste section must exist when trailer load data is captured")
+  assert.ok(
+    greenwaste.some((item) => /two\s+trailer|2\s+trailer/i.test(item)),
+    `Green Waste must mention two trailer loads. Got: ${greenwaste.join(", ")}`,
+  )
+  assert.ok(
+    greenwaste.some((item) => /quarter|three\s+quarters/i.test(item)),
+    `Green Waste must mention three quarters of a trailer load. Got: ${greenwaste.join(", ")}`,
+  )
+})
+
+test("Shirley one-off tidy renders Service Includes with Greenwaste removal", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  const includes = sectionItems("Service Includes", assembly)
+  assert.ok(
+    includes.some((item) => /greenwaste\s+removal/i.test(item)),
+    `Service Includes must contain Greenwaste removal. Got: ${includes.join(", ")}`,
+  )
+})
+
+test("Shirley one-off tidy is not limited to only Service Includes Greenwaste removal", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  const rendered = renderedAssembly(assembly)
+
+  assert.ok(
+    assembly.sections.length >= 3,
+    `Quote must have at least 3 sections (Scope of Work, Labour Allowance, Service Includes). Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
+  )
+  assert.ok(
+    assembly.sections.some((s) => s.title === "Scope of Work"),
+    "Scope of Work section must be present",
+  )
+  assert.ok(
+    /mexican\s+elder/i.test(rendered),
+    "Mexican elder pruning must appear in rendered quote",
+  )
+  assert.ok(
+    /two\s+people|labour\s+allowance/i.test(rendered),
+    "Labour allowance must appear in rendered quote",
+  )
+  assert.ok(
+    /trailer/i.test(rendered),
+    "Greenwaste trailer-load quantities must appear in rendered quote",
+  )
+})
+
+function shirleyHedgeTrimmingQuote(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Shirley",
+    site_address: "6 Percival Parade, Freemans Bay",
+    quote_title: "One-Off Garden Tidy",
+    job_type: "hedge_trimming",
+    selected_template_name: "One-Off Garden Tidy",
+    customer_scope: [],
+    labour_allowance: "",
+    greenwaste: "",
+    primary_quote: {
+      quote_title: "One-Off Garden Tidy",
+      job_type: "hedge_trimming",
+      cadence: "",
+      scope: [
+        "Prune back Mexican elder trees on right boundary",
+        "Trim back side and top",
+        "Blowdown and tidy",
+        "labour note",
+        "greenwaste note",
+      ],
+      notes: [],
+    },
+  }
+}
+
+test("hedge_trimming job type activates garden tidy assembly via subtype routing", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyHedgeTrimmingQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "One-Off Garden Tidy")
+  assert.ok(
+    assembly.sections.length > 1,
+    `hedge_trimming must produce more than 1 section. Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
+  )
+})
+
+test("hedge_trimming + One-Off Garden Tidy selectedTemplate object activates garden tidy assembly", () => {
+  const assembly = assembleCustomerQuote({
+    quote: shirleyHedgeTrimmingQuote(),
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+    selectedTemplate: {
+      template_name: "One-Off Garden Tidy",
+      category: "garden_tidy",
+      job_type: "garden_tidy",
+      trade: "maintenance",
+    },
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "One-Off Garden Tidy")
+  assert.ok(sectionItems("Scope of Work", assembly).some((item) => /mexican\s+elder/i.test(item)))
+  assert.ok(sectionItems("Labour Allowance", assembly).some((item) => /two\s+people/i.test(item)))
+  assert.ok(sectionItems("Green Waste", assembly).some((item) => /trailer/i.test(item)))
+  assert.ok(sectionItems("Service Includes", assembly).some((item) => /greenwaste\s+removal/i.test(item)))
+})
+
+test("hedge_trimming + selected_template_name only (no template object) still activates garden tidy assembly", () => {
+  const assembly = assembleCustomerQuote({
+    quote: {
+      ...shirleyHedgeTrimmingQuote(),
+      selected_template_name: "One-Off Garden Tidy",
+    },
+    rawTranscript: shirleyTranscript,
+    pricingFacts: [],
+  })
+
+  assert.ok(assembly)
+  assert.equal(assembly.title, "One-Off Garden Tidy")
+  assert.ok(
+    assembly.sections.length > 1,
+    `selected_template_name fallback must produce more than 1 section. Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
+  )
+  assert.ok(sectionItems("Scope of Work", assembly).some((item) => /blowdown/i.test(item)))
+  assert.equal(
+    sectionItems("Scope of Work", assembly).some((item) => /^labour note$/i.test(item)),
+    false,
+    "Bare labour note placeholder must not appear in Scope of Work",
+  )
 })

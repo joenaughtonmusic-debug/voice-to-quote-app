@@ -54,6 +54,9 @@
     "../paving/calculator.ts",
     "../paving/detector.ts",
     "../paving/quote-facts.ts",
+    "../paving/xero-renderer.ts",
+    "../../export/xero/garden-tidy-renderer.ts",
+    "../../export/xero/maintenance-renderer.ts",
     "../../../lib/calculators/planting/index.ts"
   ]
 }

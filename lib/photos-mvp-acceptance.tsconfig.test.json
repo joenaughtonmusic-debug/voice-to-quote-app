@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/photos-mvp-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "photos-mvp-acceptance.test.ts",
+    "draft-photos.ts",
+    "save-quote-draft.ts",
+    "processed-quote.ts"
+  ]
+}

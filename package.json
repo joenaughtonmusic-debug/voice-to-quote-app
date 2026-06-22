@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "NEXT_PUBLIC_GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) NEXT_PUBLIC_GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo unknown) NEXT_PUBLIC_SHIRLEY_DEBUG_MARKER=SHIRLEY_DEBUG_2026_06_22_A next dev --port 3000",
     "build": "next build --webpack",
     "test:measurements": "tsc --project lib/core/measurement-extraction/tsconfig.test.json && node --test .tmp/measurement-tests/lib/core/measurement-extraction/index.test.js",
     "test:review-notices": "tsc --project lib/core/review-notices/tsconfig.test.json && node --test .tmp/review-notice-tests/lib/core/review-notices/index.test.js",
@@ -23,9 +23,11 @@
     "test:template-recommendation": "tsc --project lib/template-recommendation.tsconfig.test.json && node --test .tmp/template-recommendation-tests/lib/template-recommendation.test.js",
     "test:site-fixtures": "tsc --project lib/test-fixtures/site-visit-transcripts/tsconfig.test.json && node --test .tmp/site-visit-fixture-tests/lib/test-fixtures/site-visit-transcripts/index.test.js",
     "test:decking": "tsc --project lib/trades/decking/tsconfig.test.json && node --test .tmp/decking-tests/lib/trades/decking/index.test.js .tmp/decking-tests/lib/trades/decking/e2e.test.js .tmp/decking-tests/lib/trades/decking/review.test.js .tmp/decking-tests/lib/trades/decking/to-bill.test.js .tmp/decking-tests/lib/trades/decking/apply-bill-options.test.js .tmp/decking-tests/lib/core/quote-facts.test.js .tmp/decking-tests/lib/customer-quote-preview.test.js .tmp/decking-tests/lib/xero-quote-payload.test.js",
-    "test:retaining": "tsc --project lib/trades/retaining/tsconfig.test.json && node --test .tmp/retaining-tests/lib/trades/retaining/index.test.js .tmp/retaining-tests/lib/trades/retaining/e2e.test.js .tmp/retaining-tests/lib/trades/retaining/review.test.js .tmp/retaining-tests/lib/trades/retaining/to-bill.test.js",
-    "test:paving": "tsc --project lib/trades/paving/tsconfig.test.json && node --test .tmp/paving-tests/lib/trades/paving/index.test.js .tmp/paving-tests/lib/trades/paving/e2e.test.js",
-    "test:trades": "npm run test:decking && npm run test:retaining",
+    "test:retaining": "tsc --project lib/trades/retaining/tsconfig.test.json && node --test .tmp/retaining-tests/lib/trades/retaining/index.test.js .tmp/retaining-tests/lib/trades/retaining/e2e.test.js .tmp/retaining-tests/lib/trades/retaining/review.test.js .tmp/retaining-tests/lib/trades/retaining/to-bill.test.js .tmp/retaining-tests/lib/trades/retaining/apply-bill-options.test.js",
+    "test:paving": "tsc --project lib/trades/paving/tsconfig.test.json && node --test .tmp/paving-tests/lib/trades/paving/index.test.js .tmp/paving-tests/lib/trades/paving/e2e.test.js .tmp/paving-tests/lib/trades/paving/to-bill.test.js .tmp/paving-tests/lib/trades/paving/apply-bill-options.test.js .tmp/paving-tests/lib/customer-quote-options.test.js",
+    "test:trades": "npm run test:decking && npm run test:retaining && npm run test:paving",
+    "test:photos-mvp": "tsc --project lib/photos-mvp-acceptance.tsconfig.test.json && node --test .tmp/photos-mvp-tests/lib/photos-mvp-acceptance.test.js",
+    "test:quote-draft-options": "tsc --project lib/quote-draft-options.tsconfig.test.json && node --test .tmp/quote-draft-options-tests/lib/quote-draft-options.test.js",
     "start": "next start",
     "lint": "eslint ."
   },

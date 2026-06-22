@@ -942,3 +942,529 @@ test("retaining export account codes come from mappings, not hardcoded retaining
   assert.equal(waste?.AccountCode, "952")
   assert.equal(payload.quote.exportWarnings.some((warning) => warning.includes("No export mapping set")), false)
 })
+
+// ---------------------------------------------------------------------------
+// Task 1: Garden Tidy Xero export tests
+// ---------------------------------------------------------------------------
+
+test("garden tidy with spoken price exports as One-Off Garden Tidy not Ongoing Garden Maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Sarah",
+      site_address: "44 Amy Street",
+      quote_title: "One-Off Garden Tidy",
+      job_type: "garden_tidy",
+      line_items: [],
+      customer_scope: [
+        "Cut back shrubs",
+        "Weed garden beds",
+        "Remove self-seeded plants",
+      ],
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        scope: ["Cut back shrubs", "Weed garden beds", "Remove self-seeded plants"],
+        notes: ["Greenwaste removed from site"],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 1440,
+          currency: "NZD",
+          cadence: null,
+          inclusions: ["greenwaste removal"],
+          source_text: "Price $1,440 including greenwaste removal.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems.length, 1)
+  assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
+  assert.equal(payload.quote.lineItems[0].unitAmount, 1440)
+  // xeroLineItemsArray.Description uses xeroDescription (full multiline text) when present
+  assert.ok(payload.quote.xeroLineItemsArray[0].Description.startsWith("One-Off Garden Tidy"))
+  assert.equal(payload.quote.xeroLineItemsArray[0].UnitAmount, 1440)
+  assert.equal(payload.quote.xeroLineItemsArray[0].Quantity, 1)
+  assert.equal(/ongoing\s+garden\s+maintenance/i.test(JSON.stringify(payload.quote.lineItems)), false)
+})
+
+test("garden tidy xeroDescription includes scope items", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Sarah",
+      site_address: "44 Amy Street",
+      quote_title: "One-Off Garden Tidy",
+      job_type: "garden_tidy",
+      line_items: [],
+      customer_scope: ["Cut back shrubs", "Weed garden beds"],
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        scope: ["Cut back shrubs", "Weed garden beds"],
+        notes: ["Greenwaste removed from site"],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 800,
+          currency: "NZD",
+          cadence: null,
+          inclusions: ["greenwaste removal"],
+          source_text: "Price $800 including greenwaste removal.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  const xeroDesc = payload.quote.xeroLineItemsArray[0]?.Description ?? ""
+  assert.ok(xeroDesc.startsWith("One-Off Garden Tidy"), xeroDesc)
+  assert.ok(/shrubs|weed/i.test(xeroDesc), xeroDesc)
+  assert.ok(/greenwaste removal/i.test(xeroDesc), xeroDesc)
+  assert.ok(/removed from site/i.test(xeroDesc), xeroDesc)
+})
+
+test("garden tidy template with trade maintenance still exports as garden tidy not maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Sarah",
+      site_address: "44 Amy Street",
+      quote_title: "One-Off Garden Tidy",
+      job_type: "garden_tidy",
+      line_items: [],
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        scope: ["Weed garden beds"],
+        notes: [],
+      },
+      selected_template: {
+        name: "One-Off Garden Tidy",
+        template_name: "One-Off Garden Tidy",
+        category: "garden_tidy",
+        job_type: "garden_tidy",
+        trade: "maintenance",
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 900,
+          currency: "NZD",
+          cadence: null,
+          inclusions: [],
+          source_text: "Price $900.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
+  assert.equal(/ongoing\s+garden\s+maintenance/i.test(JSON.stringify(payload.quote.lineItems)), false)
+})
+
+test("garden tidy without spoken price falls through to generic renderer", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Sarah",
+      site_address: "44 Amy Street",
+      quote_title: "One-Off Garden Tidy",
+      job_type: "garden_tidy",
+      line_items: [
+        {
+          item_name: "Garden Labour",
+          item_type: "labour",
+          total: "1440.00",
+          final_rate_used: "80",
+          quantity: "18",
+        },
+      ],
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        scope: [],
+        notes: [],
+      },
+      pricing_facts: [],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  // Falls through to generic — description is "Labour", not "One-Off Garden Tidy"
+  assert.equal(payload.quote.lineItems[0].description, "Labour")
+})
+
+// ---------------------------------------------------------------------------
+// Task 2: Paving Xero export tests
+// ---------------------------------------------------------------------------
+
+function pavingOption(
+  id: string,
+  areaLabel: string,
+  labourHours: number,
+  labourRate: number,
+  materialTotal: number,
+  warnings: string[] = [],
+): QuoteOption {
+  const labourTotal = labourHours * labourRate
+  const paverTotal = materialTotal * 0.7
+  const basecourseTotal = materialTotal * 0.3
+  return {
+    id,
+    label: areaLabel,
+    title: areaLabel,
+    category: "material",
+    source: "trade_calculator",
+    areaLabel,
+    lineItems: [
+      {
+        itemName: "Paving labour",
+        quantity: labourHours,
+        unit: "hours",
+        unitPrice: labourRate,
+        total: labourTotal,
+      },
+      {
+        itemName: "450x450 concrete pavers",
+        quantity: 115,
+        unit: "each",
+        unitPrice: paverTotal / 115,
+        total: paverTotal,
+      },
+      {
+        itemName: "Base course aggregate",
+        quantity: 0.315,
+        unit: "m3",
+        unitPrice: basecourseTotal / 0.315,
+        total: basecourseTotal,
+      },
+    ],
+    subtotal: labourTotal + materialTotal,
+    warnings,
+  }
+}
+
+function unpricedPavingOption(id: string, areaLabel: string): QuoteOption {
+  return {
+    id,
+    label: areaLabel,
+    title: areaLabel,
+    category: "material",
+    source: "trade_calculator",
+    areaLabel,
+    lineItems: [
+      { itemName: "Paving labour", quantity: 7.88, unit: "hours", unitPrice: 0, total: 0 },
+      { itemName: "Base course aggregate", quantity: 0.315, unit: "m3", unitPrice: 0, total: 0 },
+    ],
+    subtotal: 0,
+    warnings: ["Base course aggregate (m3) — not found in item library", "Paving labour (hours) — not found in item library"],
+  }
+}
+
+test("paving with priced quote_options exports labour and materials lines", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Lisa",
+      site_address: "5 Garden Lane",
+      quote_title: "Paving Quote",
+      job_type: "paving",
+      line_items: [],
+      primary_quote: {
+        quote_title: "Paving Quote",
+        scope: ["Replace old pavers in courtyard area"],
+        notes: [],
+      },
+      quote_options: [pavingOption("paving-bill-1-paving-area-1", "Paving area 1", 7.88, 85, 650)],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  const labour = payload.quote.xeroLineItemsArray.find((item) => /paving labour/i.test(item.Description))
+  const materials = payload.quote.xeroLineItemsArray.find((item) => /paving materials/i.test(item.Description))
+
+  assert.ok(labour, "Expected a paving labour line item")
+  assert.ok(materials, "Expected a paving materials line item")
+  assert.ok((labour?.UnitAmount ?? 0) > 0, "Labour unit amount should be priced")
+  assert.ok((materials?.UnitAmount ?? 0) > 0, "Materials unit amount should be priced")
+  assert.equal(/ongoing\s+garden\s+maintenance|labour^/i.test(labour?.Description ?? ""), false)
+})
+
+test("paving materials xeroDescription lists individual material names", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Lisa",
+      site_address: "5 Garden Lane",
+      quote_title: "Paving Quote",
+      job_type: "paving",
+      line_items: [],
+      primary_quote: { scope: [], notes: [] },
+      quote_options: [pavingOption("paving-bill-1-paving-area-1", "Paving area 1", 7.88, 85, 650)],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  const materials = payload.quote.xeroLineItemsArray.find((item) => /paving materials/i.test(item.Description))
+  assert.ok(materials)
+  // xeroDescription includes individual material names
+  assert.ok(/pavers|aggregate|basecourse/i.test(materials?.Description ?? ""), materials?.Description)
+})
+
+test("paving with unpriced options emits review-required placeholder not empty export", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Lisa",
+      site_address: "5 Garden Lane",
+      quote_title: "Paving Quote",
+      job_type: "paving",
+      line_items: [],
+      primary_quote: { scope: [], notes: [] },
+      quote_options: [unpricedPavingOption("paving-bill-1-paving-area-1", "Paving area 1")],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.ok(payload.quote.lineItems.length > 0, "Export should not be empty for unpriced paving")
+  // lineItems.description uses the short description; xeroLineItemsArray.Description uses xeroDescription
+  const reviewLine = payload.quote.lineItems.find((item) => /review required/i.test(item.description ?? ""))
+  assert.ok(reviewLine, "Expected a review-required placeholder line")
+})
+
+test("paving without quote_options falls through to generic renderer", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Lisa",
+      site_address: "5 Garden Lane",
+      quote_title: "Paving Quote",
+      job_type: "paving",
+      line_items: [
+        {
+          item_name: "Paving Labour",
+          item_type: "labour",
+          total: "670.00",
+          final_rate_used: "85",
+          quantity: "7.88",
+        },
+      ],
+      primary_quote: { scope: [], notes: [] },
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "Labour")
+})
+
+test("non-paving quote_options do not trigger paving renderer", () => {
+  const payload = buildXeroQuotePayload(sarahQuote, { now: new Date("2026-06-07T00:00:00.000Z") })
+
+  // sarahQuote is a planting quote — should use planting renderer, not paving
+  assert.equal(
+    payload.quote.xeroLineItemsArray.some((item) => /paving/i.test(item.Description)),
+    false,
+  )
+})
+
+// ---------------------------------------------------------------------------
+// Task 3: Maintenance cadence Xero export tests
+// ---------------------------------------------------------------------------
+
+test("monthly maintenance Xero export description remains Ongoing Garden Maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Stella",
+      site_address: "6 Tarawera Terrace",
+      quote_title: "Monthly Maintenance",
+      job_type: "maintenance",
+      line_items: [],
+      primary_quote: {
+        quote_title: "Monthly Maintenance",
+        scope: ["Monthly maintenance visits"],
+        notes: [],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 405,
+          currency: "NZD",
+          cadence: "per_visit",
+          inclusions: ["greenwaste removal"],
+          source_text: "Price per visit $405 including greenwaste removal.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "Ongoing Garden Maintenance")
+  assert.ok(payload.quote.xeroLineItemsArray[0].Description.startsWith("Ongoing Garden Maintenance"))
+})
+
+test("2-monthly maintenance Xero export description uses 2-Monthly Garden Maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Sarah",
+      site_address: "12 Hill Road",
+      quote_title: "2-Monthly Maintenance",
+      job_type: "maintenance",
+      line_items: [],
+      primary_quote: {
+        quote_title: "2-Monthly Maintenance",
+        scope: ["2-monthly maintenance visits"],
+        notes: [],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 240,
+          currency: "NZD",
+          cadence: "per_visit",
+          inclusions: ["greenwaste removal"],
+          source_text: "Price per visit $240 including greenwaste removal.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "2-Monthly Garden Maintenance")
+  assert.ok(payload.quote.xeroLineItemsArray[0].Description.startsWith("2-Monthly Garden Maintenance"))
+  assert.equal(payload.quote.lineItems[0].unitAmount, 240)
+})
+
+test("3-monthly maintenance Xero export description uses 3-Monthly Garden Maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Jane",
+      site_address: "8 Pine Street",
+      quote_title: "3-Monthly Maintenance",
+      job_type: "maintenance",
+      line_items: [],
+      primary_quote: {
+        quote_title: "3-Monthly Maintenance",
+        scope: ["3-monthly maintenance visits"],
+        notes: [],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 360,
+          currency: "NZD",
+          cadence: "per_visit",
+          inclusions: [],
+          source_text: "Price per visit $360.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "3-Monthly Garden Maintenance")
+  assert.equal(payload.quote.lineItems[0].unitAmount, 360)
+})
+
+test("6-weekly maintenance Xero export description uses 6-Weekly Garden Maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Chris",
+      site_address: "7 Beach Road",
+      quote_title: "6-Weekly Maintenance",
+      job_type: "maintenance",
+      line_items: [],
+      primary_quote: {
+        quote_title: "6-Weekly Maintenance",
+        scope: ["6-weekly maintenance visits"],
+        notes: [],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 180,
+          currency: "NZD",
+          cadence: "per_visit",
+          inclusions: ["greenwaste removal"],
+          source_text: "Price per visit $180 including greenwaste removal.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "6-Weekly Garden Maintenance")
+  assert.ok(payload.quote.xeroLineItemsArray[0].Description.startsWith("6-Weekly Garden Maintenance"))
+  assert.equal(payload.quote.lineItems[0].unitAmount, 180)
+})
+
+test("4-monthly maintenance Xero export description uses 4-Monthly Garden Maintenance", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Pat",
+      site_address: "22 River Lane",
+      quote_title: "4-Monthly Maintenance",
+      job_type: "maintenance",
+      line_items: [],
+      primary_quote: {
+        quote_title: "4-Monthly Maintenance",
+        scope: ["4-monthly maintenance visits"],
+        notes: [],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 480,
+          currency: "NZD",
+          cadence: "per_visit",
+          inclusions: [],
+          source_text: "Price per visit $480.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems[0].description, "4-Monthly Garden Maintenance")
+  assert.equal(payload.quote.lineItems[0].unitAmount, 480)
+})
+
+test("2-monthly Xero description preserves per-visit price not a monthly-equivalent calculation", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Sarah",
+      site_address: "12 Hill Road",
+      quote_title: "2-Monthly Maintenance",
+      job_type: "maintenance",
+      line_items: [],
+      primary_quote: { quote_title: "2-Monthly Maintenance", scope: [], notes: [] },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 240,
+          currency: "NZD",
+          cadence: "per_visit",
+          inclusions: [],
+          source_text: "Price per visit $240.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  // Must use 240 (spoken per-visit price). Must NOT invent 120 (half of 240 as a monthly equivalent).
+  assert.equal(payload.quote.lineItems[0].unitAmount, 240)
+  assert.equal(payload.quote.lineItems[0].unitAmount, 240)
+  assert.notEqual(payload.quote.lineItems[0].unitAmount, 120)
+})

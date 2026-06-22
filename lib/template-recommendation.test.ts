@@ -466,3 +466,67 @@ test("existing planting selection is allowed when strong planting evidence exist
 
   assert.deepEqual(selection, { templateId: plantingTemplate.id, source: "existing_quote" })
 })
+
+const shirleyHedgeTrimmingFacts = [
+  fact("job_scope", "Prune back Mexican elder trees on right boundary"),
+  fact("job_scope", "Trim back side and top"),
+  fact("job_scope", "Blowdown and tidy"),
+  fact("labour", "Two people for one and a quarter days"),
+  fact("waste", "Two trailer loads of green waste and three quarters of a trailer load"),
+]
+
+test("hedge_trimming Shirley transcript recommends One-Off Garden Tidy not Decking", () => {
+  const templates = [maintenanceTemplate, plantingTemplate, deckingTemplate, gardenTidyTemplate]
+  const recommendation = recommendTemplateForQuote({
+    facts: shirleyHedgeTrimmingFacts,
+    templates,
+    sectionsByTemplateId: {},
+    jobType: "hedge_trimming",
+    trade: "hedge_trimming",
+  })
+  const scores = scoreTemplatesForQuote({
+    facts: shirleyHedgeTrimmingFacts,
+    templates,
+    sectionsByTemplateId: {},
+    jobType: "hedge_trimming",
+    trade: "hedge_trimming",
+  })
+
+  assert.equal(recommendation?.template.id, gardenTidyTemplate.id)
+  assert.notEqual(recommendation?.template.id, deckingTemplate.id)
+  const deckingScore = scores.find((score) => score.template.id === deckingTemplate.id)?.score ?? 0
+  const gardenTidyScore = scores.find((score) => score.template.id === gardenTidyTemplate.id)?.score ?? 0
+  assert.ok(gardenTidyScore > deckingScore)
+})
+
+test("hedge_trimming deterministic selection prefers One-Off Garden Tidy", () => {
+  const templates = [maintenanceTemplate, deckingTemplate, gardenTidyTemplate]
+  const recommendation = recommendTemplateForQuote({
+    facts: shirleyHedgeTrimmingFacts,
+    templates,
+    sectionsByTemplateId: {},
+    jobType: "hedge_trimming",
+    trade: "hedge_trimming",
+  })
+  const selection = resolveTemplateSelection({
+    templates,
+    recommendation,
+    facts: shirleyHedgeTrimmingFacts,
+    jobType: "hedge_trimming",
+    trade: "hedge_trimming",
+  })
+
+  assert.deepEqual(selection, { templateId: gardenTidyTemplate.id, source: "deterministic" })
+})
+
+test("stale AI-selected Decking template is ignored for hedge_trimming one-off tidy", () => {
+  const selection = resolveTemplateSelection({
+    templates: [deckingTemplate, gardenTidyTemplate],
+    selectedTemplateName: "Decking Template",
+    facts: shirleyHedgeTrimmingFacts,
+    jobType: "hedge_trimming",
+    trade: "hedge_trimming",
+  })
+
+  assert.deepEqual(selection, { templateId: "", source: "stale_ai" })
+})

@@ -6,6 +6,10 @@ export type CustomerQuoteOption = {
   title: string
   quantityText: string
   subtotalText: string
+  /** True when source is trade_calculator and subtotal is 0 — pilot must not send without reviewing. */
+  isUnpriced: boolean
+  /** Resolver warnings for unmatched line items, if any. */
+  warnings: string[]
 }
 
 export type CustomerQuoteOptionGroup = {
@@ -50,6 +54,8 @@ function customerOption(option: QuoteOption): CustomerQuoteOption | null {
     title: cleanTitleForArea(option.title, option.areaLabel),
     quantityText: quantityText(option),
     subtotalText: money(option.subtotal),
+    isUnpriced: option.source === "trade_calculator" && option.subtotal === 0,
+    warnings: option.warnings ?? [],
   }
 }
 

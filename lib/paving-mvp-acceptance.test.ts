@@ -52,6 +52,31 @@ function currentDeterministicPavingQuote(transcript: string): ProcessedQuote {
     ...EMPTY_PROCESSED_QUOTE,
     client_name: extractClientNameFromTranscript(transcript) ?? "",
     site_address: address.cleaned_address ?? "",
+    quote_title: "Paving Quote",
+    job_type: "paving",
+    primary_quote: {
+      quote_title: "Paving Quote",
+      job_type: "paving",
+      cadence: "",
+      scope: [
+        "Replace old pavers in courtyard area.",
+        "Area is 1.5 metres by 3.5 metres.",
+        "Remove existing pavers and timber border.",
+        "Install new timber border.",
+        "Top up basecourse and compact.",
+        "Screed paving sand and lay pavers.",
+      ],
+      notes: ["Access is tight."],
+    },
+    customer_scope: [
+      "Replace old pavers in courtyard area.",
+      "Remove existing pavers and timber border.",
+      "Install new timber border.",
+      "Top up basecourse and compact.",
+      "Screed paving sand and lay pavers.",
+    ],
+    materials: ["450 by 450 concrete pavers", "Timber border", "Basecourse", "Paving sand"],
+    exclusions: ["Greenwaste not required"],
   }
 }
 

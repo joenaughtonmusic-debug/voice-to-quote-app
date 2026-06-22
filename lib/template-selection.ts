@@ -117,12 +117,25 @@ function isStaleAiSelection({
   jobType?: string | null
   trade?: string | null
 }) {
-  const quoteDomain = domainFromText([jobType, trade, ...facts.map((fact) => fact.description)].join(" "))
+  const quoteText = [jobType, trade, ...facts.map((fact) => fact.description)].join(" ")
+  const quoteDomain = domainFromText(quoteText)
   const templateDomain = domainFromText(
     [template.category, template.trade, template.job_type, template.template_name, template.name].join(" "),
   )
 
-  return quoteDomain === "maintenance" && templateDomain === "planting" && !hasStrongPlantingEvidence(facts)
+  if (quoteDomain === "maintenance" && templateDomain === "planting" && !hasStrongPlantingEvidence(facts)) {
+    return true
+  }
+
+  if (quoteDomain === "garden_tidy" && templateDomain !== "garden_tidy" && templateDomain !== "maintenance") {
+    return true
+  }
+
+  if (quoteDomain === "garden_tidy" && templateDomain === "decking") {
+    return true
+  }
+
+  return false
 }
 
 function hasStrongPlantingEvidence(facts: QuoteFact[]) {
@@ -134,7 +147,14 @@ function hasStrongPlantingEvidence(facts: QuoteFact[]) {
 
 function domainFromText(value: string) {
   const text = value.toLowerCase().replace(/[^a-z0-9]+/g, " ")
-  if (/\bmaintenance|garden maintenance|garden tidy|weeding|pruning|greenwaste|green waste|plant health|self seeded\b/.test(text)) {
+  if (
+    /\b(one off tidy|one off garden tidy|garden tidy|property tidy|hedge trimming|tree pruning|hedge reduction)\b/.test(
+      text,
+    )
+  ) {
+    return "garden_tidy"
+  }
+  if (/\bmaintenance|garden maintenance|garden tidy|weeding|greenwaste|green waste|plant health|self seeded\b/.test(text)) {
     return "maintenance"
   }
   if (/\bplanting|plant supply|supply plants|install plants|hedge planting|plant options|ficus|griselinia|lomandra\b/.test(text)) {

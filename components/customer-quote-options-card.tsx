@@ -24,6 +24,24 @@ export function CustomerQuoteOptionsCard({ groups }: { groups: CustomerQuoteOpti
                     </div>
                     <p className="shrink-0 text-sm font-semibold text-foreground">{option.subtotalText}</p>
                   </div>
+                  {(option.isUnpriced || option.warnings.length > 0) && (
+                    <div className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2.5 py-1.5">
+                      {option.isUnpriced && (
+                        <p className="text-xs font-medium text-destructive">
+                          Pricing not configured — review required.
+                        </p>
+                      )}
+                      {option.warnings.length > 0 && (
+                        <ul className="flex flex-col gap-0.5 mt-0.5">
+                          {option.warnings.map((warning, i) => (
+                            <li key={i} className="text-xs text-destructive/70">
+                              {warning}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

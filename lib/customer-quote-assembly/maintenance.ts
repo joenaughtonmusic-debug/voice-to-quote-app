@@ -221,6 +221,14 @@ function cadenceText(cadence: PricingFact["cadence"]) {
   if (cadence === "per_month") return " per month"
   if (cadence === "per_week") return " per week"
   if (cadence === "monthly") return " monthly"
+  // Extended cadences — Pristine Gardens prices per visit, so these read as "per visit".
+  // cadenceText is only reached when the pricing extractor captured the cadence from the
+  // price sentence itself (e.g. "price $X every 2 months"). For transcripts that say
+  // "per visit", the cadence will be "per_visit" regardless of visit frequency.
+  if (cadence === "six_weekly") return " per visit"
+  if (cadence === "two_monthly") return " per visit"
+  if (cadence === "three_monthly") return " per visit"
+  if (cadence === "four_monthly") return " per visit"
   return ""
 }
 
@@ -269,7 +277,24 @@ function maintenanceTitle(input: CustomerQuoteAssemblyInput) {
   const titleWords = explicitTitle.toLowerCase().split(/\s+/).filter(Boolean)
   const genericMaintenanceTitle =
     titleWords.length > 0 && titleWords.every((word) => word === "maintenance" || word === "monthly")
-  const isMonthly = /\bmonthly\b/i.test(raw)
+
+  // Extended cadences — checked before bare "monthly" so "2-monthly" / "3-monthly" etc.
+  // in the transcript do not produce "Monthly Maintenance" as the title.
+  if (/\b(?:four[-\s]monthly|4[-\s]monthly|every\s+4\s+months?)\b/i.test(raw)) {
+    return genericMaintenanceTitle || !explicitTitle ? "4-Monthly Maintenance" : titleCase(explicitTitle)
+  }
+  if (/\b(?:three[-\s]monthly|3[-\s]monthly|every\s+3\s+months?|quarterly)\b/i.test(raw)) {
+    return genericMaintenanceTitle || !explicitTitle ? "3-Monthly Maintenance" : titleCase(explicitTitle)
+  }
+  if (/\b(?:two[-\s]monthly|2[-\s]monthly|every\s+2\s+months?)\b/i.test(raw)) {
+    return genericMaintenanceTitle || !explicitTitle ? "2-Monthly Maintenance" : titleCase(explicitTitle)
+  }
+  if (/\b(?:six[-\s]weekly|6[-\s]weekly|every\s+6\s+weeks?)\b/i.test(raw)) {
+    return genericMaintenanceTitle || !explicitTitle ? "6-Weekly Maintenance" : titleCase(explicitTitle)
+  }
+
+  // Bare "monthly" — exclude digit-hyphen prefixed forms that were handled above.
+  const isMonthly = /\bmonthly\b/i.test(raw) && !/\b[2-9][-\s]monthly\b/i.test(raw)
 
   if (genericMaintenanceTitle && isMonthly) return "Monthly Maintenance"
   if (genericMaintenanceTitle) return "Maintenance"

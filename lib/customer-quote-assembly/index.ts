@@ -3,6 +3,7 @@ export { assembleDeckingCustomerQuote } from "./decking"
 export { assembleFencingCustomerQuote } from "./fencing"
 export { assembleGardenTidyCustomerQuote } from "./garden-tidy"
 export { assembleMaintenanceCustomerQuote } from "./maintenance"
+export { assemblePavingCustomerQuote } from "./paving"
 export { assemblePlantingCustomerQuote } from "./planting"
 export { assembleRetainingCustomerQuote } from "./retaining"
 export type {

@@ -1,0 +1,34 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/quote-draft-options-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "quote-draft-options.test.ts",
+    "processed-quote.ts",
+    "customer-quote-options.ts",
+    "quote-options.ts",
+    "items/resolve-bill.ts",
+    "trades/material-bill.ts",
+    "trades/decking/apply-bill-options.ts",
+    "trades/decking/calculator.ts",
+    "trades/decking/detector.ts",
+    "trades/decking/to-bill.ts",
+    "trades/decking/types.ts",
+    "trades/paving/apply-bill-options.ts",
+    "trades/paving/calculator.ts",
+    "trades/paving/detector.ts",
+    "trades/paving/to-bill.ts",
+    "trades/paving/types.ts",
+    "trades/retaining/apply-bill-options.ts",
+    "trades/retaining/calculator.ts",
+    "trades/retaining/detector.ts",
+    "trades/retaining/to-bill.ts",
+    "trades/retaining/types.ts"
+  ]
+}

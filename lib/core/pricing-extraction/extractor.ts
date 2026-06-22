@@ -36,8 +36,13 @@ function moneyAmounts(value: string) {
 function cadenceFromText(value: string): PricingCadence | null {
   if (/\bper\s+visit\b/i.test(value)) return "per_visit"
   if (/\bper\s+month\b/i.test(value)) return "per_month"
-  if (/\bmonthly\b/i.test(value)) return "monthly"
   if (/\bper\s+week\b/i.test(value)) return "per_week"
+  // Extended cadences — checked before bare "monthly" to prevent e.g. "2-monthly" matching monthly.
+  if (/\b(?:four[-\s]monthly|4[-\s]monthly|every\s+4\s+months?)\b/i.test(value)) return "four_monthly"
+  if (/\b(?:three[-\s]monthly|3[-\s]monthly|every\s+3\s+months?|quarterly)\b/i.test(value)) return "three_monthly"
+  if (/\b(?:two[-\s]monthly|2[-\s]monthly|every\s+2\s+months?)\b/i.test(value)) return "two_monthly"
+  if (/\b(?:six[-\s]weekly|6[-\s]weekly|every\s+6\s+weeks?)\b/i.test(value)) return "six_weekly"
+  if (/\bmonthly\b/i.test(value)) return "monthly"
   return null
 }
 

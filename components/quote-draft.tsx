@@ -1,12 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
 import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerDraftPreviewModel } from "@/lib/customer-preview-render"
+import {
+  GARDEN_TIDY_RUNTIME_MARKER,
+  GARDEN_TIDY_SOURCE_VERSION,
+} from "@/lib/customer-quote-assembly/garden-tidy"
 import { buildCustomerQuotePreview, type CustomerQuotePreview } from "@/lib/customer-quote-preview"
 import type { CustomerQuoteOptionGroup } from "@/lib/customer-quote-options"
 import { CustomerQuoteOptionsCard } from "@/components/customer-quote-options-card"
@@ -86,6 +90,14 @@ export function QuoteDraft({
   const primaryQuoteJobType = processedQuote.primary_quote?.job_type || "not captured"
   const maintenanceDraft = isMaintenanceDraft(processedQuote, rawTranscript)
   const assemblyFailedForMaintenance = maintenanceDraft && !useAssemblyPreview
+  const runtimeDebugMarker = process.env.NEXT_PUBLIC_SHIRLEY_DEBUG_MARKER ?? GARDEN_TIDY_RUNTIME_MARKER
+  const gitBranch = process.env.NEXT_PUBLIC_GIT_BRANCH ?? "unavailable (restart dev server)"
+  const gitCommit = process.env.NEXT_PUBLIC_GIT_SHA ?? "unavailable (restart dev server)"
+  const [browserLocation, setBrowserLocation] = useState("pending hydration")
+
+  useEffect(() => {
+    setBrowserLocation(`${window.location.origin} (port ${window.location.port || "default"})`)
+  }, [])
 
   async function handleSaveDraft() {
     setSaveState("saving")
@@ -159,6 +171,12 @@ export function QuoteDraft({
           <div className="mt-4 rounded-xl border border-dashed border-border bg-secondary/30 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dev diagnostics</p>
             <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground">Runtime marker: {runtimeDebugMarker}</p>
+              <p>Git branch: {gitBranch}</p>
+              <p>Git commit: {gitCommit}</p>
+              <p>Garden tidy source: {GARDEN_TIDY_SOURCE_VERSION}</p>
+              <p>Browser location: {browserLocation}</p>
+              <p>Expected repo: voice-to-quote-app (port 3000)</p>
               <p>Renderer path: {rendererPath}</p>
               <p>quote.job_type: {quoteJobType}</p>
               <p>primary_quote.job_type: {primaryQuoteJobType}</p>
@@ -167,6 +185,17 @@ export function QuoteDraft({
               <p>Selected template source: {selectedTemplateSource}</p>
               <p>Pricing facts count: {customerPreview.pricingFacts.length}</p>
               <p>Assembly sections count: {previewModel.assembly?.sections.length ?? 0}</p>
+              {previewModel.assemblyInputDebug && (
+                <>
+                  <p>Assembly input customer_scope count: {previewModel.assemblyInputDebug.customer_scope.length}</p>
+                  <p>Assembly input primary_quote.scope count: {previewModel.assemblyInputDebug.primary_quote_scope.length}</p>
+                  <p>Assembly input primary_quote.notes count: {previewModel.assemblyInputDebug.primary_quote_notes.length}</p>
+                  <p>Assembly input labour_allowance: {previewModel.assemblyInputDebug.labour_allowance || "empty"}</p>
+                  <p>Assembly input greenwaste: {previewModel.assemblyInputDebug.greenwaste || "empty"}</p>
+                  <p>Assembly input rawTranscript present: {previewModel.assemblyInputDebug.rawTranscriptPresent ? "yes" : "no"}</p>
+                  <p>Assembly input selectedTemplate: {previewModel.assemblyInputDebug.selectedTemplateText || "none"}</p>
+                </>
+              )}
             </div>
           </div>
 

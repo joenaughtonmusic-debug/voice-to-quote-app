@@ -29,6 +29,17 @@ export type CustomerDraftPreviewModel = {
   exclusions: string[]
   templateSections: SandboxRenderedTemplateSection[]
   assembly: CustomerQuoteAssembly | null
+  assemblyInputDebug: GardenTidyAssemblyInputDebug | null
+}
+
+export type GardenTidyAssemblyInputDebug = {
+  customer_scope: string[]
+  primary_quote_scope: string[]
+  primary_quote_notes: string[]
+  labour_allowance: string
+  greenwaste: string
+  rawTranscriptPresent: boolean
+  selectedTemplateText: string
 }
 
 export function buildCustomerDraftPreviewModel({
@@ -46,11 +57,29 @@ export function buildCustomerDraftPreviewModel({
     : [...processedQuote.customer_scope, ...processedQuote.primary_quote.scope, ...processedQuote.primary_quote.notes]
         .map((item) => item.trim())
         .filter(Boolean)
+  const assemblyQuote = {
+    ...processedQuote,
+    customer_scope: scopeItems,
+  }
+  const assemblyInputDebug: GardenTidyAssemblyInputDebug = {
+    customer_scope: assemblyQuote.customer_scope,
+    primary_quote_scope: assemblyQuote.primary_quote.scope,
+    primary_quote_notes: assemblyQuote.primary_quote.notes,
+    labour_allowance: assemblyQuote.labour_allowance,
+    greenwaste: assemblyQuote.greenwaste,
+    rawTranscriptPresent: Boolean(rawTranscript?.trim()),
+    selectedTemplateText: [
+      selectedTemplate?.template_name,
+      selectedTemplate?.name,
+      selectedTemplate?.category,
+      selectedTemplate?.job_type,
+      processedQuote.selected_template_name,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  }
   const assembly = assembleCustomerQuote({
-    quote: {
-      ...processedQuote,
-      customer_scope: scopeItems,
-    },
+    quote: assemblyQuote,
     rawTranscript,
     selectedTemplate,
     pricingFacts: customerPreview.pricingFacts.map((fact) => ({
@@ -94,6 +123,7 @@ export function buildCustomerDraftPreviewModel({
     exclusions: processedQuote.exclusions.map((item) => item.trim()).filter(Boolean),
     templateSections,
     assembly,
+    assemblyInputDebug,
   }
 }
 

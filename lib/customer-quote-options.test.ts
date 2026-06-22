@@ -3,6 +3,33 @@ import test from "node:test"
 import { groupCustomerQuoteOptions } from "./customer-quote-options"
 import type { QuoteOption } from "./quote-options"
 
+function tradeOption(
+  id: string,
+  subtotal: number,
+  warnings?: string[],
+  areaLabel?: string,
+): QuoteOption {
+  return {
+    id,
+    label: "Paving area 1",
+    title: areaLabel ?? "Paving area 1",
+    category: "material",
+    source: "trade_calculator",
+    areaLabel: areaLabel ?? "Paving area 1",
+    lineItems: [
+      {
+        itemName: "450x450 concrete pavers",
+        quantity: 115,
+        unit: "each",
+        unitPrice: subtotal > 0 ? subtotal / 115 : 0,
+        total: subtotal,
+      },
+    ],
+    subtotal,
+    warnings,
+  }
+}
+
 function plantingOption(
   id: string,
   label: string,
@@ -73,4 +100,63 @@ test("groups Amy hedge options under default Planting options heading", () => {
       ["Option C", "Ficus Tuffi 25L", "15 plants", "$1,781.25"],
     ],
   )
+})
+
+// ---------------------------------------------------------------------------
+// Unpriced / warning tests
+// ---------------------------------------------------------------------------
+
+test("priced trade option has isUnpriced false and no warnings", () => {
+  const groups = groupCustomerQuoteOptions([tradeOption("paving-bill-1-patio", 517.5)])
+  const option = groups[0]?.options[0]
+  assert.ok(option, "expected a customer option")
+  assert.equal(option.subtotalText, "$517.50")
+  assert.equal(option.isUnpriced, false)
+  assert.deepEqual(option.warnings, [])
+})
+
+test("zero-priced trade calculator option flags isUnpriced", () => {
+  const groups = groupCustomerQuoteOptions([tradeOption("paving-bill-1-patio", 0)])
+  const option = groups[0]?.options[0]
+  assert.ok(option, "expected a customer option for a zero-priced trade option")
+  assert.equal(option.subtotalText, "$0.00")
+  assert.equal(option.isUnpriced, true)
+})
+
+test("resolver warnings are propagated to CustomerQuoteOption", () => {
+  const warnings = ["No match found for Base course aggregate", "No match found for Paving labour"]
+  const groups = groupCustomerQuoteOptions([tradeOption("paving-bill-1-patio", 0, warnings)])
+  const option = groups[0]?.options[0]
+  assert.ok(option, "expected a customer option with warnings")
+  assert.deepEqual(option.warnings, warnings)
+})
+
+test("zero-priced plant_calculator option does not flag isUnpriced", () => {
+  // Plant options from the plant calculator are not trade_calculator — must not be flagged.
+  const groups = groupCustomerQuoteOptions([plantingOption("plant-1", "Option A", "Ficus Tuffi 25L", 1, 0)])
+  const option = groups[0]?.options[0]
+  assert.ok(option, "expected a customer option for zero-cost planting")
+  assert.equal(option.isUnpriced, false)
+})
+
+test("partially priced trade option is not flagged as unpriced", () => {
+  // subtotal > 0 means at least some items matched — isUnpriced must stay false.
+  const warnings = ["No match found for Paving labour"]
+  const groups = groupCustomerQuoteOptions([tradeOption("paving-bill-1-patio", 517.5, warnings)])
+  const option = groups[0]?.options[0]
+  assert.ok(option)
+  assert.equal(option.isUnpriced, false)
+  assert.deepEqual(option.warnings, warnings)
+})
+
+test("existing planting group shape is unchanged after adding warnings fields", () => {
+  // Regression: existing planting option tests still hold; new fields default safely.
+  const groups = groupCustomerQuoteOptions([
+    plantingOption("lower-25l", "Option A", "Lower planting area - Ficus Tuffi 25L", 15, 1781.25, "Lower planting area"),
+  ])
+  const option = groups[0]?.options[0]
+  assert.ok(option)
+  assert.equal(option.subtotalText, "$1,781.25")
+  assert.equal(option.isUnpriced, false)
+  assert.deepEqual(option.warnings, [])
 })

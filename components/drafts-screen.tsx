@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, ChevronRight, Loader2, MapPin } from "lucide-react"
+import { AlertCircle, ChevronRight, ImageIcon, Loader2, MapPin } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
+import { loadDraftPhotoCountsForDrafts } from "@/lib/draft-photos"
 
 const filters = [
   { id: "all", label: "All" },
@@ -52,6 +53,7 @@ export function DraftsScreen({
 }) {
   const [filter, setFilter] = useState<Filter>("all")
   const [drafts, setDrafts] = useState<QuoteDraftRow[]>([])
+  const [photoCounts, setPhotoCounts] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
 
@@ -88,7 +90,13 @@ export function DraftsScreen({
         setDrafts([])
         setErrorMessage(error.message)
       } else {
-        setDrafts(data ?? [])
+        const rows = data ?? []
+        setDrafts(rows)
+
+        if (rows.length > 0) {
+          const counts = await loadDraftPhotoCountsForDrafts(rows.map((r) => r.id))
+          if (active) setPhotoCounts(counts)
+        }
       }
 
       setLoading(false)
@@ -187,6 +195,12 @@ export function DraftsScreen({
                   <p className="truncate">{row.job_type || "No job type"}</p>
                   <p className="truncate">Created {formatDate(row.created_at)}</p>
                   <p className="truncate">Updated {formatDate(row.updated_at)}</p>
+                  {(photoCounts[row.id] ?? 0) > 0 && (
+                    <p className="flex items-center gap-1">
+                      <ImageIcon className="h-3 w-3 shrink-0" />
+                      {photoCounts[row.id]} photo{photoCounts[row.id] === 1 ? "" : "s"}
+                    </p>
+                  )}
                 </div>
               </div>
               <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />

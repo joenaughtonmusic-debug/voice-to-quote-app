@@ -117,7 +117,7 @@ export function resolveBillToQuoteOption(
     .map((entry) => `${entry.label} (${entry.unit}) — not found in item library`)
 
   return {
-    id: `decking-bill-${optionIndex + 1}-${slugify(bill.area_label)}`,
+    id: `${bill.trade}-bill-${optionIndex + 1}-${slugify(bill.area_label)}`,
     label: bill.area_label,
     title: bill.area_label,
     category: "material",

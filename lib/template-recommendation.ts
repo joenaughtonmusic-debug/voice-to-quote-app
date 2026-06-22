@@ -27,6 +27,10 @@ const HIGH_CONFIDENCE_SCORE = 14
 const MEDIUM_CONFIDENCE_SCORE = 8
 const STRONG_CATEGORY_ALIGNMENT_SCORE = 12
 const PLANTING_MAINTENANCE_MISMATCH_PENALTY = 80
+const CROSS_DOMAIN_MISMATCH_PENALTY = 80
+
+/** Temporary runtime marker — remove after Shirley live-path verification. */
+export const TEMPLATE_RECOMMENDATION_RUNTIME_MARKER = "SHIRLEY_DEBUG_2026_06_22_A"
 
 type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | "fencing" | null
 
@@ -75,6 +79,24 @@ export function recommendTemplateForQuote({
   jobType?: string | null
 }): TemplateRecommendation | null {
   const scores = scoreTemplatesForQuote({ facts, templates, sectionsByTemplateId, trade, jobType })
+  const quoteDomain = quoteDomainFromContext(trade, jobType, facts)
+
+  if (typeof console !== "undefined") {
+    console.log("[SHIRLEY_DEBUG_TEMPLATE_RECOMMENDATION]", {
+      marker: TEMPLATE_RECOMMENDATION_RUNTIME_MARKER,
+      quote_domain: quoteDomain,
+      trade,
+      jobType,
+      top_template_scores: scores.slice(0, 5).map((item) => ({
+        name: item.templateName,
+        score: item.score,
+        confidence: item.confidence,
+      })),
+      selected_template: scores[0]?.templateName ?? null,
+      selected_source: "recommendation",
+    })
+  }
+
   const best = scores[0]
 
   if (!best || best.score < RECOMMENDATION_MIN_SCORE || best.confidence === "low") return null
@@ -119,7 +141,7 @@ export function scoreTemplatesForQuote({
   const quoteText = quoteSearchText(facts, trade, jobType)
   const quoteKeywords = keywordSet(quoteText)
   const quoteCategories = new Set(facts.map((fact) => fact.category))
-  const quoteDomain = quoteDomainFromContext(trade, jobType)
+  const quoteDomain = quoteDomainFromContext(trade, jobType, facts)
   const maintenanceContext = quoteDomain === "maintenance" || hasMaintenanceSignals(quoteText)
   const strongPlantingSignals = hasStrongPlantingSignals(facts, quoteText)
 
@@ -147,7 +169,9 @@ export function scoreTemplatesForQuote({
       const nameKeywordMatches = keywordMatches.filter((keyword) => templateNameKeywords.has(keyword))
       const categoryMatches = [...templateCategories].filter((category) => quoteCategories.has(category))
       const metadataScore = metadataMatchScore(template, trade, jobType)
-      const guardPenalty = plantingMaintenanceMismatchPenalty(templateDomain, maintenanceContext, strongPlantingSignals)
+      const guardPenalty =
+        plantingMaintenanceMismatchPenalty(templateDomain, maintenanceContext, strongPlantingSignals) +
+        crossDomainMismatchPenalty(templateDomain, quoteDomain)
       const score = metadataScore + categoryMatches.length * 2 + keywordMatches.length + nameKeywordMatches.length * 4 - guardPenalty
       const confidence = confidenceForScore(score, categoryMatches.length, keywordMatches.length, metadataScore, nameKeywordMatches.length)
       const detected = detectedReasons({ facts, categoryMatches, keywordMatches })
@@ -221,6 +245,27 @@ function metadataMatchScore(template: QuoteTemplateLibraryItem, trade?: string |
 function plantingMaintenanceMismatchPenalty(templateDomain: TemplateDomain, maintenanceContext: boolean, hasStrongPlantingSignals: boolean) {
   if (templateDomain === "planting" && maintenanceContext && !hasStrongPlantingSignals) {
     return PLANTING_MAINTENANCE_MISMATCH_PENALTY
+  }
+
+  return 0
+}
+
+function crossDomainMismatchPenalty(templateDomain: TemplateDomain, quoteDomain: TemplateDomain) {
+  if (!templateDomain || !quoteDomain || templateDomain === quoteDomain) return 0
+
+  if (
+    quoteDomain === "garden_tidy" &&
+    (templateDomain === "decking" || templateDomain === "retaining" || templateDomain === "planting" || templateDomain === "fencing")
+  ) {
+    return CROSS_DOMAIN_MISMATCH_PENALTY
+  }
+
+  if (
+    templateDomain === "decking" &&
+    quoteDomain !== "decking" &&
+    quoteDomain !== null
+  ) {
+    return CROSS_DOMAIN_MISMATCH_PENALTY
   }
 
   return 0
@@ -341,7 +386,7 @@ function weakSignalsForScore({
   }
 
   if (guardPenalty > 0) {
-    weakSignals.add("Planting-specific intent was not detected for this maintenance quote.")
+    weakSignals.add("Template domain does not match the detected quote domain.")
   }
 
   return [...weakSignals].slice(0, 5)
@@ -487,8 +532,18 @@ function normalize(value: string | null | undefined) {
     .trim()
 }
 
-function quoteDomainFromContext(trade?: string | null, jobType?: string | null): TemplateDomain {
-  return canonicalDomain(jobType) ?? canonicalDomain(trade)
+function quoteDomainFromContext(trade?: string | null, jobType?: string | null, facts: QuoteFact[] = []): TemplateDomain {
+  return canonicalDomain(jobType) ?? canonicalDomain(trade) ?? quoteDomainFromFacts(facts)
+}
+
+function quoteDomainFromFacts(facts: QuoteFact[]) {
+  const text = facts
+    .filter((fact) =>
+      ["job_scope", "labour", "plants", "materials", "waste", "equipment", "optional_works"].includes(fact.category),
+    )
+    .map((fact) => fact.description)
+    .join(" ")
+  return canonicalDomain(text)
 }
 
 function templateDomainFromMetadata(template: QuoteTemplateLibraryItem): TemplateDomain {
@@ -511,8 +566,17 @@ function templateDomainFromMetadata(template: QuoteTemplateLibraryItem): Templat
 function canonicalDomain(value: string | null | undefined): TemplateDomain {
   const text = normalize(value)
   if (!text) return null
-  if (/\b(garden tidy|one off garden tidy|one off tidy|property tidy|tidy up)\b/.test(text)) return "garden_tidy"
-  if (/\b(maintenance|maintain|ongoing garden|garden service|groundskeeping|weeding|pruning)\b/.test(text)) return "maintenance"
+  // Garden tidy and one-off garden subtypes must be checked before maintenance,
+  // because maintenance patterns include standalone "pruning".
+  if (
+    /\b(garden tidy|one off garden tidy|one off tidy|property tidy|tidy up|hedge trimming|tree pruning|hedge reduction)\b/.test(
+      text,
+    )
+  ) {
+    return "garden_tidy"
+  }
+  if (/\b(maintenance|maintain|ongoing garden|garden service|groundskeeping|weeding)\b/.test(text)) return "maintenance"
+  if (/\bpruning\b/.test(text)) return "maintenance"
   if (/\b(decking|deck)\b/.test(text)) return "decking"
   if (/\b(retaining|retainer)\b/.test(text)) return "retaining"
   if (/\b(fencing|fence|paling fence)\b/.test(text)) return "fencing"

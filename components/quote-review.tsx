@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   X,
   AlertTriangle,
@@ -10,11 +10,15 @@ import {
   Check,
   FileText,
   Loader2,
+  Camera,
+  ImageIcon,
+  Trash2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerQuotePreview } from "@/lib/customer-quote-preview"
 import {
+  buildQuoteHandoffForDraftPreview,
   editableSectionsToProcessedQuote,
   processedQuoteToEditableSections,
   type EditableQuoteSection,
@@ -23,6 +27,7 @@ import {
 import { groupCustomerQuoteOptions } from "@/lib/customer-quote-options"
 import { CustomerQuoteOptionsCard } from "@/components/customer-quote-options-card"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
+import { uploadDraftPhoto, loadDraftPhotos, deleteDraftPhoto, type DraftPhoto } from "@/lib/draft-photos"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/hooks/use-auth"
 import type { ExportCategoryMapping } from "@/lib/export-mappings"
@@ -75,7 +80,7 @@ export function QuoteReview({
     processedQuote: ProcessedQuote
     pricingFacts: PricingFact[]
   }) => void
-  onSaved: () => void
+  onSaved: (draftId?: string | null) => void
   rawTranscript: string
   originalTranscript: string
   processedQuote: ProcessedQuote
@@ -103,6 +108,7 @@ export function QuoteReview({
     initialSections ?? processedQuoteToEditableSections(processedQuote),
   )
   const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(new Set())
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(draftId ?? null)
 
   const editedQuoteForReview = editableSectionsToProcessedQuote(sections, processedQuote)
   const selectedTemplate = reviewedTemplates.find((template) => template.id === selectedTemplateId) ?? null
@@ -349,14 +355,16 @@ export function QuoteReview({
     setSaveMessage("")
 
     const editedQuote = editableSectionsToProcessedQuote(sections, processedQuote)
-    const result = await saveGeneratedQuoteDraft(originalTranscript, editedQuote, sections, draftId)
+    const result = await saveGeneratedQuoteDraft(originalTranscript, editedQuote, sections, activeDraftId)
 
     setSaveState(result.ok ? "success" : "error")
     setSaveMessage(result.message)
 
     if (result.ok) {
+      const savedId = result.draftId ?? activeDraftId
+      setActiveDraftId(savedId)
       setDirtyKeys(new Set())
-      onSaved()
+      onSaved(savedId)
     }
   }
 
@@ -378,7 +386,7 @@ export function QuoteReview({
             selectedTemplate,
             pricingFacts,
           }),
-          draft_id: draftId ?? null,
+          draft_id: activeDraftId ?? null,
           export_mappings: exportMappings,
         }),
       })
@@ -527,17 +535,25 @@ export function QuoteReview({
             <CustomerQuoteOptionsCard groups={customerQuoteOptionGroups} />
           )}
 
+          <SitePhotosCard draftId={activeDraftId} />
+
           <button
             type="button"
             onClick={() => {
               const mode =
                 customerPreviewMode === "template" && selectedTemplateSections.length > 0 ? "template" : "standard"
+              const quoteForDraftPreview = buildQuoteHandoffForDraftPreview({
+                sections,
+                baseQuote: editedQuoteForReview,
+                customerScopeItems: customerPreview.scopeItems,
+                dirtyKeys,
+              })
               onPreviewDraft({
                 mode,
                 templateSections: mode === "template" ? selectedTemplateSections : [],
                 selectedTemplate,
                 selectedTemplateSource,
-                processedQuote: editedQuoteForReview,
+                processedQuote: quoteForDraftPreview,
                 pricingFacts,
               })
             }}
@@ -1343,5 +1359,200 @@ function SectionBody({ section }: { section: EditableQuoteSection }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Site Photos — upload and view site-visit photos against a quote draft.
+// Photo data never enters the estimating pipeline.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SitePhotosCard({ draftId }: { draftId: string | null }) {
+  const [photos, setPhotos] = useState<DraftPhoto[]>([])
+  const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!draftId) return
+
+    let active = true
+    setLoading(true)
+
+    loadDraftPhotos(draftId).then((result) => {
+      if (!active) return
+      setPhotos(result)
+      setLoading(false)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [draftId])
+
+  async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    if (files.length === 0 || !draftId) return
+
+    event.target.value = ""
+    setUploading(true)
+    setErrorMessage("")
+
+    for (const file of files) {
+      const result = await uploadDraftPhoto(draftId, file)
+      if (!result.ok) {
+        setErrorMessage(result.message)
+        break
+      }
+      if (result.photo) {
+        setPhotos((current) => [...current, result.photo!])
+      }
+    }
+
+    setUploading(false)
+  }
+
+  async function handleDelete(photo: DraftPhoto) {
+    const result = await deleteDraftPhoto(photo.id, photo.storage_path)
+    if (result.ok) {
+      setPhotos((current) => current.filter((p) => p.id !== photo.id))
+    } else {
+      setErrorMessage(result.message)
+    }
+  }
+
+  return (
+    <>
+      <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <ImageIcon className="h-4 w-4 text-muted-foreground" />
+              Site Photos
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Attach photos from the site visit. Internal only — not included in customer quotes.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">
+            Internal
+          </span>
+        </div>
+
+        {!draftId ? (
+          <p className="rounded-xl bg-secondary/40 px-3 py-2.5 text-xs text-muted-foreground">
+            Save the draft first to attach site photos.
+          </p>
+        ) : (
+          <>
+            {loading && (
+              <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Loading photos...
+              </div>
+            )}
+
+            {!loading && photos.length > 0 && (
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                {photos.map((photo) => (
+                  <div key={photo.id} className="group relative aspect-square overflow-hidden rounded-xl bg-secondary">
+                    {photo.signedUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setLightboxUrl(photo.signedUrl!)}
+                        className="h-full w-full"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={photo.signedUrl}
+                          alt="Site photo"
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </button>
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <ImageIcon className="h-6 w-6 text-muted-foreground/50" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(photo)}
+                      aria-label="Remove photo"
+                      className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 active:opacity-100"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!loading && photos.length === 0 && (
+              <p className="mb-3 rounded-xl bg-secondary/40 px-3 py-2.5 text-xs text-muted-foreground">
+                No photos attached yet.
+              </p>
+            )}
+
+            {errorMessage && (
+              <p className="mb-3 rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">{errorMessage}</p>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              className="sr-only"
+              onChange={handleFilesSelected}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-secondary/40 py-3 text-sm font-medium text-muted-foreground transition-colors active:bg-secondary disabled:opacity-50"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Camera className="h-4 w-4" />
+                  Add Photo
+                </>
+              )}
+            </button>
+          </>
+        )}
+      </section>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            aria-label="Close photo"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white active:scale-95"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Site photo full size"
+            className="max-h-full max-w-full rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
   )
 }
