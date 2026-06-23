@@ -21,6 +21,8 @@ import type { QuoteTemplateLibraryItem } from "./template-import-learning"
 import { recommendTemplateForQuote, scoreTemplatesForQuote } from "./template-recommendation"
 import { resolveTemplateSelection } from "./template-selection"
 import { hasPlantingCalculatorIntent } from "./trades/planting/intent"
+import { buildXeroQuotePayload } from "./xero-quote-payload"
+import type { CustomerPreviewQuote } from "./customer-quote-preview"
 
 const ACCEPTANCE_DOC = "docs/GARDEN_TIDY_MVP_ACCEPTANCE.md"
 
@@ -161,7 +163,88 @@ function simulateReviewToDraftHandoff(
     rawTranscript,
     selectedTemplate: previewInput.selected_template,
   })
-  return { handoffQuote, model, customerPreview }
+  return { handoffQuote, model, customerPreview, previewInput }
+}
+
+/** Mirrors Quote Review → Push to JMS: buildCustomerPreviewQuoteInput → buildXeroQuotePayload. */
+function quoteReviewExportPayload(
+  processedQuote: ProcessedQuote,
+  rawTranscript: string,
+  selectedTemplate: QuoteTemplateLibraryItem | null = gardenTidyTemplate,
+) {
+  const pricing = extractPricing(rawTranscript)
+  const previewInput = buildCustomerPreviewQuoteInput({
+    processedQuote,
+    rawTranscript,
+    pricingFacts: pricing.pricing,
+    selectedTemplate,
+  })
+  return {
+    previewInput,
+    payload: buildXeroQuotePayload(previewInput),
+    customerPreview: buildCustomerQuotePreview(previewInput),
+    draftModel: buildCustomerDraftPreviewModel({
+      processedQuote,
+      customerPreview: buildCustomerQuotePreview(previewInput),
+      rawTranscript,
+      selectedTemplate: previewInput.selected_template,
+    }),
+  }
+}
+
+function assertShirleyGardenTidyXeroParity(
+  draftModel: ReturnType<typeof buildCustomerDraftPreviewModel>,
+  payload: ReturnType<typeof buildXeroQuotePayload>,
+) {
+  assert.ok(draftModel.assembly, "Customer assembly must activate for Shirley parity")
+  assert.equal(draftModel.assembly?.title, "One-Off Garden Tidy")
+
+  const scopeItems = assemblySectionItems("Scope of Work", draftModel)
+  const greenWasteItems = assemblySectionItems("Green Waste", draftModel)
+  assert.ok(scopeItems.length >= 3, `Expected scope items, got: ${scopeItems.join(" | ")}`)
+  assert.ok(greenWasteItems.length > 0, `Expected green waste items, got: ${greenWasteItems.join(" | ")}`)
+
+  assert.equal(payload.quote.lineItems.length, 2, "Pristine-style export expects labour + greenwaste lines")
+  assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
+  assert.equal(payload.quote.lineItems[1].description, "Greenwaste")
+
+  const labourDesc = payload.quote.xeroLineItemsArray[0]?.Description ?? ""
+  const greenwasteDesc = payload.quote.xeroLineItemsArray[1]?.Description ?? ""
+
+  assert.ok(includesText(labourDesc, "Mexican elder"), labourDesc)
+  assert.ok(includesText(labourDesc, "Trim hedge") || includesText(labourDesc, "sharp angle"), labourDesc)
+  assert.ok(includesText(labourDesc, "Blowdown"), labourDesc)
+  assert.equal(/Labour Allowance:/i.test(labourDesc), false, labourDesc)
+  assert.equal(/\btwo people\b/i.test(labourDesc), false, labourDesc)
+  assert.equal(/\bone and a quarter\b/i.test(labourDesc), false, labourDesc)
+
+  assert.ok(includesText(greenwasteDesc, "trailer"), greenwasteDesc)
+  // Parity: Xero greenwaste text comes from the same assembly Green Waste section as the customer draft.
+  const assemblyGreenWasteText = greenWasteItems.join(" ").toLowerCase()
+  assert.ok(
+    greenWasteItems.some((item) => includesText(greenwasteDesc, item.split(/\s+/).slice(0, 3).join(" "))),
+    `Xero greenwaste must reflect assembly items. Assembly: ${assemblyGreenWasteText}. Xero: ${greenwasteDesc}`,
+  )
+
+  assert.equal(
+    payload.quote.exportWarnings.some((warning) => warning.includes("Customer price not captured")),
+    payload.quote.xeroLineItemsArray.some((line) => line.UnitAmount === 0),
+    "Unpriced export lines must surface customer price review warning",
+  )
+}
+
+function assertShirleyStructuredLabourPricing(
+  previewInput: CustomerPreviewQuote,
+  payload: ReturnType<typeof buildXeroQuotePayload>,
+  expectedHours: number,
+  hourlyRate: number,
+) {
+  const expectedTotal = expectedHours * hourlyRate
+  assert.equal(payload.quote.xeroLineItemsArray[0]?.UnitAmount, expectedTotal)
+  assert.equal(
+    payload.quote.exportWarnings.some((warning) => warning.includes('Price missing for "One-Off Garden Tidy"')),
+    false,
+  )
 }
 
 test("garden tidy MVP: Shirley live handoff — visible review scope reaches assembleGardenTidyCustomerQuote", () => {
@@ -617,6 +700,79 @@ test("Shirley Use-Template-As-Quote — Labour Allowance and Green Waste appear 
 })
 
 // ---------------------------------------------------------------------------
+// Shirley Xero live-path parity — same pipeline as Quote Review → Push to JMS
+// ---------------------------------------------------------------------------
+
+test("Shirley live path — Xero export scope parallels customer assembly (Use Template As Quote)", () => {
+  const quote = shirleyProcessedQuote()
+  const { draftModel, payload } = quoteReviewExportPayload(quote, shirleyRawTranscript, gardenTidyTemplate)
+
+  assertShirleyGardenTidyXeroParity(draftModel, payload)
+  assert.equal(includesText(renderCustomerDraftPreviewText(draftModel), "Labour Allowance"), true)
+  assert.equal(includesText(renderCustomerDraftPreviewText(draftModel), "Green Waste"), true)
+})
+
+test("Shirley live handoff — Xero export uses same assembly scope as QuoteDraft preview", () => {
+  const baseQuote = shirleyHedgeTrimmingProcessedQuote()
+  const customerScopeItems = [
+    "Prune back the Mexican elder trees on the right-hand boundary.",
+    "Trim the side back and trim the top back from the property on a sharp angle to define it.",
+    "Complete the usual blowdown and tidy.",
+  ]
+  const primaryQuoteSectionContent = [
+    "Scope: Prune back the Mexican elder trees on the right-hand boundary.",
+    "Scope: Trim the side back and trim the top back from the property on a sharp angle to define it.",
+    "Scope: Complete the usual blowdown and tidy.",
+    "Note: Job will take two people one and a quarter days.",
+    "Note: Two trailer loads of greenwaste expected.",
+    "Note: Three quarters of a trailer load of greenwaste for six days.",
+  ].join("\n")
+
+  const { handoffQuote, model } = simulateReviewToDraftHandoff(
+    baseQuote,
+    customerScopeItems,
+    primaryQuoteSectionContent,
+  )
+  const { payload } = quoteReviewExportPayload(handoffQuote, shirleyRawTranscript, gardenTidyTemplate)
+
+  assertShirleyGardenTidyXeroParity(model, payload)
+})
+
+test("Shirley live path — structured labour pricing from allowance and KB hourly rate", () => {
+  const quote: ProcessedQuote = {
+    ...shirleyProcessedQuote(),
+    line_items: [
+      {
+        item_code: "10010",
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        description: "Landscaping labour",
+        quantity: "20",
+        unit: "hours",
+        rate: "80",
+        knowledge_base_rate: "80",
+        override_rate: null,
+        final_rate_used: "80",
+        total: "1600.00",
+        account_code: "4100",
+        tax_type: "OUTPUT2",
+        match_confidence: "high",
+        match_reason: "KB labour match",
+        needs_review: false,
+        warning: "",
+      },
+    ],
+  }
+
+  const { previewInput, payload } = quoteReviewExportPayload(quote, shirleyRawTranscript, gardenTidyTemplate)
+
+  // Two people × 1.25 days × 8 hours × $80/hr
+  assertShirleyStructuredLabourPricing(previewInput, payload, 20, 80)
+  assert.equal(payload.quote.xeroLineItemsArray[0]?.AccountCode, "4100")
+  assert.equal(payload.quote.xeroLineItemsArray[0]?.TaxType, "OUTPUT2")
+})
+
+// ---------------------------------------------------------------------------
 // Shirley thin-extraction path — scope only in primary_quote.scope
 // This simulates what the live AI extraction produces when it does NOT populate
 // customer_scope, labour_allowance, or greenwaste as structured fields, but puts
@@ -1009,4 +1165,91 @@ test("stale AI Decking selection is ignored for Shirley hedge_trimming quote", (
   })
 
   assert.deepEqual(selection, { templateId: "", source: "stale_ai" })
+})
+
+// ---------------------------------------------------------------------------
+// Monash hedge trimming — real-world one-off garden tidy acceptance
+// ---------------------------------------------------------------------------
+
+const monashRawTranscript =
+  "Okay, just went and saw Monash at 19A Moore Avenue, Te Atatū Peninsula. He wants some hedge trimming done as a one-off job. So there's a front Pittosporum. We need to reduce the top by 50 centimetres and push the sides back by approximately 30 centimetres. And that job is probably four hours with one person. And then there's a large side hedge, Griselinia. We need to reduce the tops by 1.5 metres, which is probably one person one day. And then we also need the other person working to do the side and the end and also the neighbour's face. So for the labour all up, it's two people for a full day and the green waste is two trailer loads. And we need an internal note, which is to make sure we bring the pole chainsaws, the silkies, and the loppers, etc. with us for the job."
+
+function monashHedgeTrimmingProcessedQuote(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Monash",
+    site_address: "19A Moore Avenue, Te Atatū Peninsula",
+    quote_title: "One-Off Garden Tidy",
+    job_type: "hedge_trimming",
+    selected_template_name: "One-Off Garden Tidy",
+    internal_notes: [
+      "Internal note: make sure we bring the pole chainsaws, the silkies, and the loppers for the job.",
+      "Planting Calculator\nselected plant option: Pittosporum Green Pillar 2.5L | unit price: $24.00 | plant count: Not captured\nselected plant option: Griselinia Broadway 3L | unit price: $88.00 | plant count: Not captured",
+    ],
+    confidence_warnings: [],
+    customer_scope: [
+      "Reduce front Pittosporum top by 50cm",
+      "Push Pittosporum sides back by approximately 30cm",
+      "Reduce Griselinia side hedge tops by 1.5m",
+      "Trim side, end, and neighbour-facing side",
+      "Bring pole chainsaws, silkies, and loppers for the job",
+      "[]",
+      "Reduce front Pittosporum top by 50cm",
+      "$24",
+      "$88",
+    ],
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "One-Off Garden Tidy",
+      job_type: "hedge_trimming",
+      scope: [
+        "Reduce front Pittosporum top by 50cm",
+        "Push Pittosporum sides back by approximately 30cm",
+        "Reduce Griselinia side hedge tops by 1.5m",
+        "Trim side, end, and neighbour-facing side",
+      ],
+      notes: [],
+    },
+  }
+}
+
+test("Monash hedge trimming — planting calculator intent is suppressed", () => {
+  assert.equal(hasPlantingCalculatorIntent(monashRawTranscript), false)
+})
+
+test("Monash hedge trimming — client name extracts as Monash", () => {
+  assert.equal(extractClientNameFromTranscript(monashRawTranscript), "Monash")
+})
+
+test("Monash hedge trimming — live path is One-Off Garden Tidy without fake prices or planting warnings", () => {
+  const quote = monashHedgeTrimmingProcessedQuote()
+  const model = currentDraftPreviewModel(monashRawTranscript, quote, gardenTidyTemplate)
+  const renderedText = renderCustomerDraftPreviewText(model)
+
+  assert.equal(model.rendererPath, "assembly")
+  assert.ok(model.assembly, renderedText)
+  assert.equal(model.assembly?.title, "One-Off Garden Tidy")
+  assert.equal(includesText(renderedText, "Missing planting length or plant quantity"), false, renderedText)
+  assert.equal(includesText(renderedText, "Planting Options"), false, renderedText)
+  assert.equal(includesText(renderedText, "$24"), false, renderedText)
+  assert.equal(includesText(renderedText, "$88"), false, renderedText)
+  assert.equal(includesText(renderedText, "Price"), false, renderedText)
+  assert.equal(includesText(renderedText, "pole chainsaw"), false, renderedText)
+  assert.equal(includesText(renderedText, "silkies"), false, renderedText)
+  assert.equal(includesText(renderedText, "loppers"), false, renderedText)
+  assert.equal(includesText(renderedText, "[]"), false, renderedText)
+  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Pittosporum"), true, renderedText)
+  assert.equal(includesText(renderedText, "Griselinia"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "two people"), true, renderedText)
+  assert.equal(includesText(renderedText, "Green Waste"), true, renderedText)
+  assert.equal(includesText(renderedText, "two trailer"), true, renderedText)
+
+  const scopeItems = assemblySectionItems("Scope of Work", model)
+  assert.equal(scopeItems.filter((item) => /Pittosporum top by 50cm/i.test(item)).length, 1)
+  assert.equal(scopeItems.some((item) => /chainsaw|silkies|loppers/i.test(item)), false)
+  assert.equal(scopeItems.some((item) => item === "[]"), false)
+
+  assert.equal(quote.internal_notes.some((note) => /pole chainsaw|silkies|loppers/i.test(note)), true)
 })

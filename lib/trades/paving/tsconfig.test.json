@@ -55,6 +55,10 @@
     "../retaining/xero-renderer.ts",
     "../planting/customer-renderer.ts",
     "../planting/xero-renderer.ts",
+    "../../export/paving-export-lines.ts",
+    "../../export/planting-export-lines.ts",
+    "../../export/map-to-xero.ts",
+    "../../export/exportable-line.ts",
     "../../../lib/calculators/planting/index.ts"
   ]
 }

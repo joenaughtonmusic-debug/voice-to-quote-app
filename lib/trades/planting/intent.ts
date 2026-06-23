@@ -17,8 +17,17 @@ export function hasPlantingCalculatorIntent(transcript: string) {
   }
 
   if (
-    /\b(?:remove|removal|cut\s+back|trim|trimming|prune|pruning|weed|weeding)\b/.test(text) &&
-    /\b(?:self[-\s]?seeded\s+plants?|shrubs?)\b/.test(text) &&
+    /\b(?:one[-\s]?off|one\s+off)\s+(?:job|tidy|garden\s+tidy|hedge\s+work)\b|\bhedge\s+trimming\b|\bhedge[_\s-]?reduction\b|\btree[_\s-]?pruning\b/i.test(
+      transcript,
+    ) &&
+    !explicitPlantingIntent
+  ) {
+    return false
+  }
+
+  if (
+    /\b(?:remove|removal|cut\s+back|trim|trimming|prune|pruning|reduce|reduction|weed|weeding)\b/.test(text) &&
+    /\b(?:self[-\s]?seeded\s+plants?|shrubs?|hedge|hedges?|pittosporum|griselinia)\b/.test(text) &&
     !explicitPlantingIntent
   ) {
     return false

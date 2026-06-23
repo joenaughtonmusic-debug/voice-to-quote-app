@@ -150,7 +150,10 @@ function fixedPriceForSentence(sentence: string): PricingDraft | null {
   if (/\b(optional\s+extra|add[- ]?on|additional|between|to\s+\$?\s*\d|in\s+the\s+region\s+of|allow(?:ance)?)\b/i.test(sentence)) {
     return null
   }
-  if (!/\$\s*\d|\b(?:price|quoted\s+price|cost)\b/i.test(sentence)) {
+  if (/\b(?:unit\s+price|plant\s+library|selected\s+plant\s+option|sell\s+price|plants?\s+x\s+\$)\b/i.test(sentence)) {
+    return null
+  }
+  if (!/\b(?:price|quoted\s+price|cost)\b/i.test(sentence)) {
     return null
   }
 

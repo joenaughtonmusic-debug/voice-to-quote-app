@@ -16,8 +16,17 @@ function cleanClientName(value: string | undefined) {
   return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
 }
 
+function stripVisitPhrasePrefix(value: string) {
+  return value
+    .replace(/^(?:just\s+)?went\s+(?:and\s+)?(?:saw|to\s+see)\s+/i, "")
+    .replace(/^went\s+to\s+see\s+/i, "")
+    .trim()
+}
+
 export function extractClientNameFromTranscript(transcript: string) {
   const patterns = [
+    new RegExp(String.raw`\b(?:just\s+)?went\s+(?:and\s+)?saw\s+${nameGroup}\s+at\s+`, "i"),
+    new RegExp(String.raw`\bwent\s+to\s+see\s+${nameGroup}\s+at\s+`, "i"),
     new RegExp(String.raw`\bquote\s+for\s+${nameGroup}\s*(?:[.!?:,\n]|$)`, "i"),
     new RegExp(String.raw`\bfor\s+${nameGroup}\s+at\s+\d`, "i"),
     new RegExp(String.raw`\b(?:client|customer)\s+${nameGroup}\s*(?:[.!?:,\n]|$)`, "i"),
@@ -25,7 +34,7 @@ export function extractClientNameFromTranscript(transcript: string) {
 
   for (const pattern of patterns) {
     const match = transcript.match(pattern)
-    const clientName = cleanClientName(match?.[1])
+    const clientName = cleanClientName(stripVisitPhrasePrefix(match?.[1] ?? ""))
     if (clientName) return clientName
   }
 

@@ -405,7 +405,9 @@ function cleanExtractedName(value: string | undefined) {
   if (!value) return null
 
   const cleaned = value
-    .replace(/\b(this|that|quote|job|small|big|new|quick|planting|maintenance|tidy|landscaping|decking|hedge|garden|service|one)\b/gi, " ")
+    .replace(/^(?:just\s+)?went\s+(?:and\s+)?(?:saw|to\s+see)\s+/i, "")
+    .replace(/^went\s+to\s+see\s+/i, "")
+    .replace(/\b(this|that|quote|job|small|big|new|quick|planting|maintenance|tidy|landscaping|decking|hedge|garden|service|one|just|went|and|saw)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/'s$/i, "")
@@ -512,10 +514,11 @@ function extractLeadDetails(transcript: string): LeadDetails {
   const addressGroup = `(${streetAddressPattern})`
   const nameGroup = `([A-Za-zāēīōūĀĒĪŌŪ'’.-]+(?:\\s+[A-Za-zāēīōūĀĒĪŌŪ'’.-]+){0,3})`
   const patterns = [
+    new RegExp(String.raw`\b(?:just\s+)?went\s+(?:and\s+)?saw\s+${nameGroup}\s+at\s+${addressGroup}`, "i"),
+    new RegExp(String.raw`\bwent\s+to\s+see\s+${nameGroup}\s+at\s+${addressGroup}`, "i"),
     new RegExp(String.raw`\b(?:quote\s+)?for\s+${nameGroup}\s+at\s+${addressGroup}`, "i"),
     new RegExp(String.raw`\bwent\s+to\s+${nameGroup}'?s?\s+place\s+at\s+${addressGroup}`, "i"),
     new RegExp(String.raw`\bI\s+went\s+and\s+saw\s+${nameGroup}\s+at\s+${addressGroup}`, "i"),
-    new RegExp(String.raw`\b${nameGroup}\s+at\s+${addressGroup}`, "i"),
   ]
 
   let clientName: string | null = null

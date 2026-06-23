@@ -100,7 +100,6 @@ function quoteTextForPricing(quote: ProcessedQuote) {
     ...(quote.materials ?? []),
     quote.greenwaste,
     ...(quote.exclusions ?? []),
-    ...(quote.internal_notes ?? []),
     ...(quote.missing_information ?? []),
     ...(quote.confidence_warnings ?? []),
   ].join("\n")

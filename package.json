@@ -15,7 +15,7 @@
     "test:maintenance-mvp": "tsc --project lib/maintenance-mvp-acceptance.tsconfig.test.json && node --test .tmp/maintenance-mvp-tests/lib/maintenance-mvp-acceptance.test.js .tmp/maintenance-mvp-tests/lib/client-name-extraction.test.js",
     "test:garden-tidy-mvp": "tsc --project lib/garden-tidy-mvp-acceptance.tsconfig.test.json && node --test .tmp/garden-tidy-mvp-tests/lib/garden-tidy-mvp-acceptance.test.js .tmp/garden-tidy-mvp-tests/lib/client-name-extraction.test.js",
     "test:planting-mvp": "tsc --project lib/planting-mvp-acceptance.tsconfig.test.json && node --test .tmp/planting-mvp-tests/lib/planting-mvp-acceptance.test.js .tmp/planting-mvp-tests/lib/client-name-extraction.test.js",
-    "test:quote-presentation": "tsc --project lib/quote-presentation/tsconfig.test.json && node --test .tmp/quote-presentation-tests/lib/quote-presentation/planting-parity.test.js .tmp/quote-presentation-tests/lib/quote-presentation/quote-draft-shadow.test.js .tmp/quote-presentation-tests/lib/quote-presentation/stephanie-live-transcript.test.js .tmp/quote-presentation-tests/lib/quote-presentation/planting-cutover.test.js .tmp/quote-presentation-tests/lib/calculators/planting/index.test.js",
+    "test:quote-presentation": "tsc --project lib/quote-presentation/tsconfig.test.json && node --test .tmp/quote-presentation-tests/lib/quote-presentation/planting-parity.test.js .tmp/quote-presentation-tests/lib/quote-presentation/quote-draft-shadow.test.js .tmp/quote-presentation-tests/lib/quote-presentation/stephanie-live-transcript.test.js .tmp/quote-presentation-tests/lib/quote-presentation/planting-cutover.test.js .tmp/quote-presentation-tests/lib/quote-presentation/workflow-presentation.test.js .tmp/quote-presentation-tests/lib/calculators/planting/index.test.js",
     "test:planting-materials": "tsc --project lib/trades/planting/tsconfig.test.json && node --test .tmp/planting-material-tests/lib/trades/planting/to-material-bill.test.js .tmp/planting-material-tests/lib/trades/planting/apply-material-options.test.js",
     "test:decking-mvp": "tsc --project lib/decking-mvp-acceptance.tsconfig.test.json && node --test .tmp/decking-mvp-tests/lib/decking-mvp-acceptance.test.js .tmp/decking-mvp-tests/lib/client-name-extraction.test.js",
     "test:retaining-mvp": "tsc --project lib/retaining-mvp-acceptance.tsconfig.test.json && node --test .tmp/retaining-mvp-tests/lib/retaining-mvp-acceptance.test.js .tmp/retaining-mvp-tests/lib/client-name-extraction.test.js",
@@ -30,6 +30,7 @@
     "test:trades": "npm run test:decking && npm run test:retaining && npm run test:paving",
     "test:photos-mvp": "tsc --project lib/photos-mvp-acceptance.tsconfig.test.json && node --test .tmp/photos-mvp-tests/lib/photos-mvp-acceptance.test.js",
     "test:quote-draft-options": "tsc --project lib/quote-draft-options.tsconfig.test.json && node --test .tmp/quote-draft-options-tests/lib/quote-draft-options.test.js",
+    "test:export-mapper": "tsc --project lib/export/tsconfig.test.json && node --test .tmp/export-mapper-tests/lib/export/map-to-xero.test.js",
     "start": "next start",
     "lint": "eslint ."
   },

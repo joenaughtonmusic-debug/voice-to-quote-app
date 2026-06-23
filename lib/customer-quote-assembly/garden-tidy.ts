@@ -45,6 +45,30 @@ function isGreenwasteQuantityLine(value: string) {
   )
 }
 
+function isInternalNoteLine(value: string) {
+  const cleaned = cleanLine(value).toLowerCase()
+  return (
+    /\binternal\s+note\b/i.test(cleaned) ||
+    /\b(?:make\s+sure\s+(?:we|to)\s+bring|bring\s+(?:the\s+)?(?:pole\s+)?(?:chainsaw|silkies|loppers)|pole\s+chainsaw|silkies|loppers)\b/i.test(
+      cleaned,
+    ) ||
+    /\btools?\s+(?:to\s+)?bring\b/i.test(cleaned)
+  )
+}
+
+function isEmptyOrPlaceholderScopeItem(value: string) {
+  const cleaned = cleanLine(value)
+  return !cleaned || cleaned === "[]" || /^\[\s*\]$/.test(cleaned)
+}
+
+function isPlantLibraryPricingLine(value: string) {
+  const cleaned = cleanLine(value)
+  return (
+    /^\$[\d,]+(?:\.\d{1,2})?$/.test(cleaned) ||
+    /\b(?:unit\s+price|sell\s+price|plant\s+library|selected\s+plant\s+option)\b/i.test(cleaned)
+  )
+}
+
 function isServiceIncludeBoilerplate(value: string) {
   const cleaned = cleanLine(value).toLowerCase()
   return (
@@ -153,10 +177,13 @@ function scopeOfWorkItems(input: CustomerQuoteAssemblyInput): string[] {
     ...input.quote.customer_scope,
     ...input.quote.primary_quote.scope,
   ])
+    .filter((item) => !isEmptyOrPlaceholderScopeItem(item))
     .filter((item) => !/^(?:title|job\s+type|cadence)\s*:/i.test(item))
     .filter((item) => !/^\$[\d,]+\b|^price\s+\$[\d,]+/i.test(item))
+    .filter((item) => !isPlantLibraryPricingLine(item))
     .filter((item) => !/\bremoved?\s+from\s+site\b/i.test(item))
     .filter((item) => !/^(?:labour|greenwaste|green\s*waste|materials?|pricing)\s+note$/i.test(item))
+    .filter((item) => !isInternalNoteLine(item))
     .filter((item) => !isLabourAllowanceLine(item))
     .filter((item) => !isGreenwasteQuantityLine(item))
     .filter((item) => !isServiceIncludeBoilerplate(item))

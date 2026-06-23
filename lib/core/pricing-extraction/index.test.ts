@@ -63,6 +63,20 @@ test("ordinary quote text with no pricing returns empty", () => {
   assert.deepEqual(result.pricing, [])
 })
 
+test("bare dollar amounts without spoken price intent are not extracted", () => {
+  assert.deepEqual(extractPricing("$24").pricing, [])
+  assert.deepEqual(extractPricing("$88").pricing, [])
+  assert.deepEqual(extractPricing("$24\n$88").pricing, [])
+})
+
+test("plant library unit price lines are not treated as spoken customer prices", () => {
+  const result = extractPricing(
+    "selected plant option: Pittosporum 2.5L | unit price: $24.00 | plant count: Not captured",
+  )
+
+  assert.deepEqual(result.pricing, [])
+})
+
 test("creates review notice when spoken fixed price differs from matched labour total", () => {
   const pricing = extractPricing(
     "Price per visit $405 including greenwaste removal, herbicide spraying, and standard maintenance materials.",

@@ -37,6 +37,8 @@ export type XeroPayloadQuote = CustomerPreviewQuote & {
   site_address?: string
   quote_title?: string
   job_type?: string
+  labour_allowance?: string
+  selected_template_name?: string
   customer_scope?: string[]
   primary_quote?: {
     quote_title?: string

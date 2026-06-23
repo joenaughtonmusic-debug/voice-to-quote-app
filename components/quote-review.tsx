@@ -124,7 +124,6 @@ export function QuoteReview({
     ...(editedQuoteForReview.materials ?? []),
     editedQuoteForReview.greenwaste,
     ...(editedQuoteForReview.exclusions ?? []),
-    ...(editedQuoteForReview.internal_notes ?? []),
     ...(editedQuoteForReview.missing_information ?? []),
     ...(editedQuoteForReview.confidence_warnings ?? []),
   ]

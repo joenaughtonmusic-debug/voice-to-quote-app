@@ -745,6 +745,58 @@ test("multiple decking areas export total area and waste when present", () => {
   )
 })
 
+test("decking with priced quote_options exports resolver pricing instead of QuoteFacts stubs", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Steve",
+      site_address: "12 Oak Road",
+      quote_title: "Decking Quote",
+      job_type: "Decking",
+      line_items: [],
+      quote_options: [
+        {
+          id: "decking-bill-1-main-deck",
+          label: "Main deck",
+          title: "Main deck",
+          category: "material",
+          source: "trade_calculator",
+          areaLabel: "Main deck",
+          lineItems: [
+            {
+              itemName: "90x19 Kwila Decking",
+              itemCode: "KWILA-DECK-M2",
+              quantity: 20,
+              unit: "m2",
+              unitPrice: 6.8,
+              total: 136,
+              accountCode: "310",
+              taxType: "OUTPUT2",
+            },
+          ],
+          subtotal: 136,
+          warnings: [],
+        },
+      ],
+      primary_quote: {
+        quote_title: "Decking Quote",
+        scope: ["Construct a 4m x 5m pine deck."],
+        notes: [],
+      },
+    },
+    {
+      now: new Date("2026-06-07T00:00:00.000Z"),
+      exportMappings: [
+        { category: "materials", account_code: "901", tax_type: "OUTPUT2", is_user_confirmed: true },
+      ],
+    },
+  )
+
+  assert.deepEqual(
+    payload.quote.xeroLineItemsArray.map((item) => [item.Description, item.Quantity, item.UnitAmount, item.AccountCode, item.TaxType]),
+    [["Decking materials - Main deck: 90x19 Kwila Decking", 1, 136, "310", "OUTPUT2"]],
+  )
+})
+
 test("decking waste export line is omitted when no waste fact exists", () => {
   const payload = buildXeroQuotePayload(
     {
@@ -984,8 +1036,7 @@ test("garden tidy with spoken price exports as One-Off Garden Tidy not Ongoing G
   assert.equal(payload.quote.lineItems.length, 1)
   assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
   assert.equal(payload.quote.lineItems[0].unitAmount, 1440)
-  // xeroLineItemsArray.Description uses xeroDescription (full multiline text) when present
-  assert.ok(payload.quote.xeroLineItemsArray[0].Description.startsWith("One-Off Garden Tidy"))
+  assert.ok(/Cut back shrubs/i.test(payload.quote.xeroLineItemsArray[0].Description))
   assert.equal(payload.quote.xeroLineItemsArray[0].UnitAmount, 1440)
   assert.equal(payload.quote.xeroLineItemsArray[0].Quantity, 1)
   assert.equal(/ongoing\s+garden\s+maintenance/i.test(JSON.stringify(payload.quote.lineItems)), false)
@@ -1022,10 +1073,10 @@ test("garden tidy xeroDescription includes scope items", () => {
   )
 
   const xeroDesc = payload.quote.xeroLineItemsArray[0]?.Description ?? ""
-  assert.ok(xeroDesc.startsWith("One-Off Garden Tidy"), xeroDesc)
-  assert.ok(/shrubs|weed/i.test(xeroDesc), xeroDesc)
+  assert.ok(/Cut back shrubs/i.test(xeroDesc), xeroDesc)
+  assert.ok(/Weed garden beds/i.test(xeroDesc), xeroDesc)
   assert.ok(/greenwaste removal/i.test(xeroDesc), xeroDesc)
-  assert.ok(/removed from site/i.test(xeroDesc), xeroDesc)
+  assert.equal(/removed from site/i.test(xeroDesc), false, xeroDesc)
 })
 
 test("garden tidy template with trade maintenance still exports as garden tidy not maintenance", () => {
@@ -1068,7 +1119,7 @@ test("garden tidy template with trade maintenance still exports as garden tidy n
   assert.equal(/ongoing\s+garden\s+maintenance/i.test(JSON.stringify(payload.quote.lineItems)), false)
 })
 
-test("garden tidy without spoken price falls through to generic renderer", () => {
+test("garden tidy without spoken price exports structured One-Off Garden Tidy draft with zero amount", () => {
   const payload = buildXeroQuotePayload(
     {
       client_name: "Sarah",
@@ -1084,9 +1135,10 @@ test("garden tidy without spoken price falls through to generic renderer", () =>
           quantity: "18",
         },
       ],
+      customer_scope: ["Cut back shrubs", "Weed garden beds"],
       primary_quote: {
         quote_title: "One-Off Garden Tidy",
-        scope: [],
+        scope: ["Cut back shrubs", "Weed garden beds"],
         notes: [],
       },
       pricing_facts: [],
@@ -1094,8 +1146,150 @@ test("garden tidy without spoken price falls through to generic renderer", () =>
     { now: new Date("2026-06-07T00:00:00.000Z") },
   )
 
-  // Falls through to generic — description is "Labour", not "One-Off Garden Tidy"
-  assert.equal(payload.quote.lineItems[0].description, "Labour")
+  assert.equal(payload.quote.title, "One-Off Garden Tidy")
+  assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
+  assert.equal(payload.quote.lineItems[0].unitAmount, 0)
+  assert.equal(payload.quote.xeroLineItemsArray[0].UnitAmount, 0)
+  assert.ok(/Cut back shrubs/i.test(payload.quote.xeroLineItemsArray[0].Description))
+  assert.equal(payload.quote.exportWarnings.some((warning) => warning.includes("Customer price not captured")), true)
+  assert.equal(payload.quote.exportWarnings.some((warning) => warning.includes("Price missing for")), true)
+})
+
+test("Monash hedge_trimming exports scope-only labour line and separate greenwaste line", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Monash",
+      site_address: "19A Moore Avenue, Te Atatū Peninsula",
+      quote_title: "One-Off Garden Tidy",
+      job_type: "hedge_trimming",
+      line_items: [
+        {
+          item_name: "Landscaping Labour",
+          item_type: "labour",
+          total: "160.00",
+          final_rate_used: "80",
+          quantity: "2",
+        },
+      ],
+      customer_scope: [
+        "Reduce front Pittosporum top by 50cm",
+        "Push Pittosporum sides back by approximately 30cm",
+        "Reduce Griselinia side hedge tops by 1.5m",
+        "Trim side, end, and neighbour-facing side",
+      ],
+      labour_allowance: "Two people for a full day",
+      greenwaste: "Two trailer loads",
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        scope: [
+          "Reduce front Pittosporum top by 50cm",
+          "Push Pittosporum sides back by approximately 30cm",
+          "Reduce Griselinia side hedge tops by 1.5m",
+          "Trim side, end, and neighbour-facing side",
+        ],
+        notes: [],
+      },
+      selected_template: {
+        name: "One-Off Garden Tidy",
+        template_name: "One-Off Garden Tidy",
+        category: "garden_tidy",
+        job_type: "garden_tidy",
+        trade: "maintenance",
+      },
+      pricing_facts: [],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems.length, 2)
+  const labourDesc = payload.quote.xeroLineItemsArray[0]?.Description ?? ""
+  const greenwasteDesc = payload.quote.xeroLineItemsArray[1]?.Description ?? ""
+
+  assert.equal(payload.quote.title, "One-Off Garden Tidy")
+  assert.notEqual(payload.quote.title, "hedge_trimming")
+  assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
+  assert.equal(payload.quote.lineItems[1].description, "Greenwaste")
+  assert.notEqual(payload.quote.lineItems[0].description, "Labour")
+  assert.equal(payload.quote.lineItems[0].unitAmount, 1280)
+  assert.equal(payload.quote.xeroLineItemsArray[0].UnitAmount, 1280)
+  assert.notEqual(payload.quote.xeroLineItemsArray[0].UnitAmount, 160)
+  assert.ok(/Pittosporum/i.test(labourDesc), labourDesc)
+  assert.ok(/Griselinia/i.test(labourDesc), labourDesc)
+  assert.equal(/Labour Allowance:/i.test(labourDesc), false, labourDesc)
+  assert.equal(/two people/i.test(labourDesc), false, labourDesc)
+  assert.equal(/Green Waste:/i.test(labourDesc), false, labourDesc)
+  assert.equal(/two trailer loads/i.test(labourDesc), false, labourDesc)
+  assert.ok(/two trailer loads/i.test(greenwasteDesc), greenwasteDesc)
+  assert.equal(payload.quote.xeroLineItemsArray[1].UnitAmount, 0)
+  assert.equal(payload.quote.exportWarnings.some((warning) => warning.includes("Customer price not captured")), true)
+  assert.equal(payload.quote.exportWarnings.some((warning) => warning.includes('Price missing for "Greenwaste"')), true)
+})
+
+test("QU-0558 Pristine hedge reduction exports separate labour and greenwaste lines", () => {
+  const payload = buildXeroQuotePayload(
+    {
+      client_name: "Customer",
+      site_address: "Example Street",
+      quote_title: "One-Off Garden Tidy",
+      job_type: "hedge_trimming",
+      line_items: [
+        {
+          item_name: "Greenwaste",
+          item_type: "waste",
+          description: "Greenwaste (tip fee, off loading time and vehicle servicing)",
+          total: "132.50",
+          account_code: "10011",
+          tax_type: "OUTPUT2",
+        },
+      ],
+      customer_scope: [
+        "Hedge reduction of front hedge overhanging footpath",
+        "Fairly hard reduction to bring top down roughly 1 to 1.5m and push face back 30 to 40cm",
+        "Trim all sides",
+        "All branches, clippings removed",
+      ],
+      primary_quote: {
+        quote_title: "One-Off Garden Tidy",
+        scope: [
+          "Hedge reduction of front hedge overhanging footpath",
+          "Fairly hard reduction to bring top down roughly 1 to 1.5m and push face back 30 to 40cm",
+          "Trim all sides",
+          "All branches, clippings removed",
+        ],
+        notes: [],
+      },
+      pricing_facts: [
+        {
+          id: "price-1",
+          type: "fixed_price",
+          amount: 450,
+          currency: "NZD",
+          cadence: null,
+          inclusions: [],
+          source_text: "Price $450 for the hedge work.",
+          confidence: "high",
+        },
+      ],
+    },
+    { now: new Date("2026-06-07T00:00:00.000Z") },
+  )
+
+  assert.equal(payload.quote.lineItems.length, 2)
+
+  const labourLine = payload.quote.xeroLineItemsArray[0]
+  const greenwasteLine = payload.quote.xeroLineItemsArray[1]
+
+  assert.equal(payload.quote.lineItems[0].description, "One-Off Garden Tidy")
+  assert.equal(payload.quote.lineItems[1].description, "Greenwaste")
+  assert.ok(/hedge reduction/i.test(labourLine.Description), labourLine.Description)
+  assert.ok(/footpath/i.test(labourLine.Description), labourLine.Description)
+  assert.ok(/All branches, clippings removed/i.test(labourLine.Description), labourLine.Description)
+  assert.equal(labourLine.UnitAmount, 450)
+  assert.equal(/labour allowance|two people|full day|\bcrew\b/i.test(labourLine.Description), false, labourLine.Description)
+
+  assert.equal(greenwasteLine.UnitAmount, 132.5)
+  assert.ok(/tip fee/i.test(greenwasteLine.Description), greenwasteLine.Description)
+  assert.equal(greenwasteLine.AccountCode, "10011")
 })
 
 // ---------------------------------------------------------------------------

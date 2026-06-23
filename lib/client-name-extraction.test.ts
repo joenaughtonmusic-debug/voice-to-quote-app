@@ -29,3 +29,17 @@ test("does not treat plant names as client names", () => {
 
   assert.equal(clientName, null)
 })
+
+test("extracts client name from went and saw Name at address phrasing", () => {
+  const clientName = extractClientNameFromTranscript(
+    "Okay, just went and saw Monash at 19A Moore Avenue, Te Atatū Peninsula.",
+  )
+
+  assert.equal(clientName, "Monash")
+})
+
+test("extracts client name from went to see Name at address phrasing", () => {
+  const clientName = extractClientNameFromTranscript("Just went to see Shirley at 6 Percival Parade, Freemans Bay.")
+
+  assert.equal(clientName, "Shirley")
+})

@@ -2,9 +2,11 @@ import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { resolveExportMapping, type ExportCategoryMapping } from "./export-mappings"
 import {
   accountCodeFallback,
+  CUSTOMER_PRICE_NOT_CAPTURED_WARNING,
   defaultAccountCode,
   defaultTaxType,
   genericLineItem,
+  hasSpokenCustomerFixedPrice,
   makeXeroLineItem,
 } from "./export/xero/helpers"
 import { buildGenericXeroExportLineItems } from "./export/xero/generic-renderer"
@@ -14,8 +16,8 @@ import type { MakeXeroQuoteLineItem, XeroExportLineItem, XeroPayloadQuote, XeroQ
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote, type QuoteLineItem } from "./processed-quote"
 import { buildPlantingXeroExportLineItems } from "./trades/planting/xero-renderer"
-import { buildDeckingXeroExportLineItemsFromQuoteFacts } from "./trades/decking/xero-renderer"
-import { buildRetainingXeroExportLineItemsFromQuoteFacts } from "./trades/retaining/xero-renderer"
+import { buildDeckingXeroExportLineItems } from "./trades/decking/xero-renderer"
+import { buildRetainingXeroExportLineItems } from "./trades/retaining/xero-renderer"
 import { buildPavingXeroExportLineItemsFromQuoteOptions } from "./trades/paving/xero-renderer"
 import type { QuoteOption } from "./quote-options"
 
@@ -167,8 +169,8 @@ export function buildXeroQuotePayload(
 ): XeroQuotePayload {
   const preview = buildCustomerQuotePreview(quote)
   const quoteFacts = quoteFactsForXero(quote)
-  const deckingExportLineItems = buildDeckingXeroExportLineItemsFromQuoteFacts(quoteFacts)
-  const retainingExportLineItems = buildRetainingXeroExportLineItemsFromQuoteFacts(quoteFacts)
+  const deckingExportLineItems = buildDeckingXeroExportLineItems(quote.quote_options, quoteFacts)
+  const retainingExportLineItems = buildRetainingXeroExportLineItems(quote.quote_options, quoteFacts)
   // Garden tidy is evaluated before maintenance — a tidy template may carry trade:"maintenance"
   // which would otherwise trigger the maintenance renderer with the wrong description.
   const gardenTidyExportLineItems = buildGardenTidyXeroExportLineItems(quote)
@@ -232,6 +234,18 @@ export function buildXeroQuotePayload(
     if (item.unitAmountWasDefaulted) exportWarnings.push(`Price missing for "${item.description}". Defaulted Xero unit amount to 0.`)
   }
 
+  if (
+    gardenTidyExportLineItems.some((item) => item.unitAmountWasDefaulted) &&
+    !hasSpokenCustomerFixedPrice(quote)
+  ) {
+    exportWarnings.push(CUSTOMER_PRICE_NOT_CAPTURED_WARNING)
+  }
+
+  const quoteTitle =
+    gardenTidyExportLineItems.length > 0
+      ? gardenTidyExportLineItems[0].description
+      : quote.quote_title || quote.primary_quote?.quote_title || quote.job_type || "Quote"
+
   return {
     provider: "xero",
     action: "create_draft_quote",
@@ -250,7 +264,7 @@ export function buildXeroQuotePayload(
         ]
       : [],
     quote: {
-      title: quote.quote_title || quote.primary_quote?.quote_title || quote.job_type || "Quote",
+      title: quoteTitle,
       reference: `Quotecord ${isoDate(now)}`,
       date: isoDate(now),
       expiryDate: isoDate(addDays(now, 30)),

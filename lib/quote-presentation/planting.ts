@@ -747,6 +747,14 @@ export function isPlantingWorkflow(quote: ProcessedQuote) {
     ...(quote.primary_quote.scope ?? []),
   ].join(" ")
 
+  if (
+    /\b(?:garden[_\s-]?tidy|one[_\s-]?off[_\s-]?tidy|property[_\s-]?tidy|hedge[_\s-]?trimming|tree[_\s-]?pruning|hedge[_\s-]?reduction)\b/i.test(
+      text,
+    )
+  ) {
+    return false
+  }
+
   const hasPlantCalculator = (quote.plant_calculator_results ?? []).some(
     (result) => result.plant_name || result.plant_count || result.length_m,
   )

@@ -56,7 +56,23 @@
     "../paving/quote-facts.ts",
     "../paving/xero-renderer.ts",
     "../../export/xero/garden-tidy-renderer.ts",
+    "../../export/garden-tidy-export-lines.ts",
+    "../../export/exportable-line.ts",
+    "../../export/labour-line-builder.ts",
+    "../../export/waste-line-builder.ts",
+    "../../export/paving-export-lines.ts",
+    "../../export/trade-calculator-export-lines.ts",
+    "../../export/decking-export-lines.ts",
+    "../../export/retaining-export-lines.ts",
+    "../../export/planting-export-lines.ts",
+    "../../export/map-to-xero.ts",
+    "../../core/material-price-association.ts",
     "../../export/xero/maintenance-renderer.ts",
+    "../../customer-quote-assembly/index.ts",
+    "../../customer-quote-assembly/assembler.ts",
+    "../../customer-quote-assembly/garden-tidy.ts",
+    "../../customer-quote-assembly/types.ts",
+    "../../core/pricing-extraction/types.ts",
     "../../../lib/calculators/planting/index.ts"
   ]
 }
