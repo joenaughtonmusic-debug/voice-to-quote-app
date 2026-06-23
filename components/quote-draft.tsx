@@ -175,7 +175,7 @@ export function QuoteDraft({
             plantingCustomerQuote={previewModel.plantingCustomerQuote}
             assemblyFailedForMaintenance={assemblyFailedForMaintenance}
             hideLegacyLabourPricing={maintenanceDraft}
-            tradeOptions={customerPreview.tradeOptions}
+            tradeOptions={previewModel.plantingCustomerTradeOptions}
           />
 
           <details className="mt-5 rounded-xl border border-dashed border-border bg-secondary/30 p-3">

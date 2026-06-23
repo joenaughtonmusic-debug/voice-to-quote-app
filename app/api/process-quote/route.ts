@@ -20,6 +20,7 @@ import { quoteOptionsFromPlantCalculatorResults } from "@/lib/trades/planting/qu
 import { applyDeckingBillOptions } from "@/lib/trades/decking/apply-bill-options"
 import { applyRetainingBillOptions } from "@/lib/trades/retaining/apply-bill-options"
 import { applyPavingBillOptions } from "@/lib/trades/paving/apply-bill-options"
+import { applyPlantingMaterialOptions } from "@/lib/trades/planting/apply-material-options"
 import { type QuoteSpecialist, getSpecialistInstructions, getSharedUniversalExtractionInstructions } from "@/lib/quote-specialist-instructions"
 import {
   type QuoteClassification,
@@ -2989,6 +2990,7 @@ export async function POST(request: Request) {
       applyDeckingBillOptions(quote, transcript, knowledgeItemContext)
       applyRetainingBillOptions(quote, transcript, knowledgeItemContext)
       applyPavingBillOptions(quote, transcript, knowledgeItemContext)
+      applyPlantingMaterialOptions(quote, transcript, knowledgeItemContext)
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       quote.missing_information = Array.isArray(quote.missing_information) ? quote.missing_information : []
 

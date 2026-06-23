@@ -1,3 +1,4 @@
+import type { ProcessedQuote } from "../processed-quote"
 import { customerViewLines, exportViewLines, type QuotePresentationLine, type QuotePresentationModel } from "./index"
 import { materialLineIsPriced } from "./planting"
 
@@ -124,19 +125,50 @@ function labourItems(model: QuotePresentationModel): PresentationPreviewItem[] {
   return [{ title: "Planting labour included as described above." }]
 }
 
-function optionalWorkItems(model: QuotePresentationModel): PresentationPreviewItem[] {
-  const seen = new Set<string>()
-  const items: PresentationPreviewItem[] = []
+function optionalWorkSpecificityScore(title: string) {
+  let score = 0
+  if (/\b\d+\s*x\s*\d+\b/i.test(title)) score += 10
+  if (/\b\d+\s*(?:by|x)\s*\d+\b/i.test(title)) score += 8
+  if (/\btimber\b/i.test(title)) score += 2
+  if (/\bborder\b/i.test(title)) score += 2
+  if (/\binstallation\b/i.test(title)) score -= 2
+  if (/\blater\b/i.test(title)) score -= 1
+  return score
+}
 
-  for (const line of linesForSection(model, "optional_works")) {
-    const title = polishOptionalWork(line.customerTitle)
-    const key = normalizeReviewKey(title.replace(/, if required$/i, ""))
-    if (seen.has(key)) continue
-    seen.add(key)
-    items.push({ title })
+function optionalWorkGroupKey(title: string) {
+  const normalized = title
+    .toLowerCase()
+    .replace(/, if required$/i, "")
+    .replace(/\boptional note for (?:a|an)\s+/i, "")
+    .replace(/\bto do later\b/gi, "")
+    .replace(/\b(\d+)\s*(?:by|x)\s*(\d+)\b/g, "$1x$2")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+
+  if (/\btimber\b/.test(normalized) && /\bborder\b/.test(normalized)) return "timber-border"
+  return normalized
+}
+
+export function dedupeOptionalWorkTitles(titles: string[]): string[] {
+  const bestByGroup = new Map<string, { title: string; score: number }>()
+
+  for (const rawTitle of titles) {
+    const title = polishOptionalWork(rawTitle)
+    const group = optionalWorkGroupKey(title)
+    const score = optionalWorkSpecificityScore(title)
+    const existing = bestByGroup.get(group)
+    if (!existing || score > existing.score) {
+      bestByGroup.set(group, { title, score })
+    }
   }
 
-  return items
+  return Array.from(bestByGroup.values()).map((entry) => entry.title)
+}
+
+function optionalWorkItems(model: QuotePresentationModel): PresentationPreviewItem[] {
+  const titles = linesForSection(model, "optional_works").map((line) => line.customerTitle)
+  return dedupeOptionalWorkTitles(titles).map((title) => ({ title }))
 }
 
 function polishOptionalWork(value: string) {
@@ -187,6 +219,51 @@ function hasDeliveryCaptured(model: QuotePresentationModel): boolean {
     .toLowerCase()
 
   return /\b(?:plant\s+)?delivery\b|\bfreight\b|\btransport\b|\bcartage\b|\bdelivery\s+fee\b/.test(text)
+}
+
+export function plantingMaterialOptionReviewNotes(quote: Pick<ProcessedQuote, "quote_options">): string[] {
+  const notes: string[] = []
+  const seen = new Set<string>()
+
+  for (const option of quote.quote_options ?? []) {
+    if (option.source !== "trade_calculator" || option.category !== "material") continue
+    if (option.areaLabel !== "Planting materials") continue
+
+    if (option.subtotal === 0) {
+      const message = "Pricing not configured — review required."
+      if (!seen.has(message)) {
+        seen.add(message)
+        notes.push(message)
+      }
+    }
+
+    for (const warning of option.warnings ?? []) {
+      const cleaned = warning.replace(/\s+/g, " ").trim()
+      if (!cleaned || seen.has(cleaned)) continue
+      seen.add(cleaned)
+      notes.push(cleaned)
+    }
+  }
+
+  return notes
+}
+
+export function mergePlantingInternalReviewNotes(
+  presentationNotes: string[],
+  quote: Pick<ProcessedQuote, "quote_options">,
+): string[] {
+  const seen = new Set<string>()
+  const merged: string[] = []
+
+  for (const note of [...presentationNotes, ...plantingMaterialOptionReviewNotes(quote)]) {
+    const cleaned = note.replace(/\s+/g, " ").trim()
+    const key = cleaned.toLowerCase()
+    if (!cleaned || seen.has(key)) continue
+    seen.add(key)
+    merged.push(cleaned)
+  }
+
+  return merged
 }
 
 export function collectPresentationReviewNotes(model: QuotePresentationModel): string[] {

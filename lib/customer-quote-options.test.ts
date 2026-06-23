@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { groupCustomerQuoteOptions } from "./customer-quote-options"
+import { filterPlantingCustomerTradeOptions, groupCustomerQuoteOptions } from "./customer-quote-options"
 import type { QuoteOption } from "./quote-options"
 
 function tradeOption(
@@ -159,4 +159,25 @@ test("existing planting group shape is unchanged after adding warnings fields", 
   assert.equal(option.subtotalText, "$1,781.25")
   assert.equal(option.isUnpriced, false)
   assert.deepEqual(option.warnings, [])
+})
+
+test("filterPlantingCustomerTradeOptions hides unpriced planting material groups", () => {
+  const groups = groupCustomerQuoteOptions([
+    tradeOption("planting-materials", 0, ["Garden mix (bags) — not found in item library"], "Planting materials"),
+    tradeOption("patio-priced", 136, [], "Main deck"),
+  ])
+
+  const filtered = filterPlantingCustomerTradeOptions(groups)
+  assert.equal(filtered.length, 1)
+  assert.equal(filtered[0]?.areaLabel, "Main deck")
+})
+
+test("filterPlantingCustomerTradeOptions keeps priced planting material groups", () => {
+  const groups = groupCustomerQuoteOptions([
+    tradeOption("planting-materials", 90, [], "Planting materials"),
+  ])
+
+  const filtered = filterPlantingCustomerTradeOptions(groups)
+  assert.equal(filtered.length, 1)
+  assert.equal(filtered[0]?.options[0]?.subtotalText, "$90.00")
 })

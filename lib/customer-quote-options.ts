@@ -59,6 +59,19 @@ function customerOption(option: QuoteOption): CustomerQuoteOption | null {
   }
 }
 
+export function filterPlantingCustomerTradeOptions(groups: CustomerQuoteOptionGroup[]): CustomerQuoteOptionGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      options: group.options.filter((option) => {
+        if (!option.isUnpriced) return true
+        if (/^planting materials$/i.test(group.areaLabel)) return false
+        return true
+      }),
+    }))
+    .filter((group) => group.options.length > 0)
+}
+
 export function groupCustomerQuoteOptions(options: QuoteOption[] | undefined): CustomerQuoteOptionGroup[] {
   if (!Array.isArray(options) || options.length === 0) return []
 

@@ -19,6 +19,10 @@
     "./types.ts",
     "./render-customer-preview.ts",
     "../calculators/planting/index.test.ts",
-    "../customer-preview-render.ts"
+    "../customer-preview-render.ts",
+    "../customer-quote-options.ts",
+    "../customer-quote-preview.ts",
+    "../trades/planting/apply-material-options.ts",
+    "../trades/planting/to-material-bill.ts"
   ]
 }

@@ -18,11 +18,13 @@ import {
   buildPresentationInternalReviewNotes,
   buildQuotePresentationModel,
   collectPresentationReviewNotes,
+  dedupeOptionalWorkTitles,
   exportViewLines,
   isUsablePlantingCustomerQuote,
   presentationModelRetainsExportMetadata,
   presentationModelRetainsInternalPlantingCalculations,
 } from "./index"
+import { applyPlantingMaterialOptions } from "../trades/planting/apply-material-options"
 import { quoteOptionsFromPlantCalculatorResults } from "../trades/planting/quote-options"
 import type { QuoteTemplateLibraryItem } from "../template-import-learning"
 import { stephanieLiveTranscript } from "./stephanie-live-transcript"
@@ -475,4 +477,74 @@ test("customer quote hides plant delivery review note", () => {
     internalReviewNotes.some((note) => /plant delivery fee not captured/i.test(note)),
     true,
   )
+})
+
+test("optional works dedupe prefers specific timber border line", () => {
+  assert.deepEqual(
+    dedupeOptionalWorkTitles([
+      "Timber board border installation later",
+      "150 by 50 timber board border to do later",
+    ]),
+    ["150x50 timber board border, if required"],
+  )
+
+  const quote = buildStephanieQuote()
+  quote.follow_up_tasks = [
+    "150 by 50 timber board border to do later",
+    "Timber board border installation later",
+  ]
+
+  const { presentationSections } = quoteDraftRendered(stephanieLiveTranscript, quote)
+  const optionalWorks = presentationSections.find((section) => section.title === "Optional Works")
+  assert.ok(optionalWorks)
+  assert.equal(optionalWorks!.items.length, 1)
+  assert.equal(optionalWorks!.items[0]?.title, "150x50 timber board border, if required")
+})
+
+test("Stephanie customer quote hides unpriced planting material trade option cards", () => {
+  const quote = buildStephanieQuote()
+  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [])
+
+  const previewInput = buildCustomerPreviewQuoteInput({
+    processedQuote: quote,
+    rawTranscript: stephanieLiveTranscript,
+    selectedTemplate: plantingTemplate,
+  })
+  const customerPreview = buildCustomerQuotePreview(previewInput)
+  const previewModel = buildCustomerDraftPreviewModel({
+    processedQuote: quote,
+    customerPreview,
+    rawTranscript: stephanieLiveTranscript,
+    selectedTemplate: previewInput.selected_template,
+  })
+  const rendered = renderCustomerDraftPreviewText(previewModel)
+
+  assert.equal(previewModel.plantingCustomerTradeOptions.length, 0)
+  assert.equal(includesText(rendered, "Garden mix to be allowed for separately"), true, rendered)
+  assert.equal(/pricing not configured/i.test(rendered), false, rendered)
+  assert.equal(/not found in item library/i.test(rendered), false, rendered)
+  assert.equal(/\$0\.00/.test(rendered), false, rendered)
+  assert.equal(
+    previewModel.plantingInternalReviewNotes.some((note) => /garden mix rate missing/i.test(note)),
+    true,
+  )
+  assert.equal(
+    previewModel.plantingInternalReviewNotes.some((note) => /not found in item library/i.test(note)),
+    true,
+  )
+  assert.equal(
+    previewModel.plantingInternalReviewNotes.some((note) => /pricing not configured/i.test(note)),
+    true,
+  )
+})
+
+test("Stephanie priced plant option still appears after material resolver runs", () => {
+  const quote = buildStephanieQuote()
+  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [])
+
+  const { rendered, presentationSections } = quoteDraftRendered(stephanieLiveTranscript, quote)
+  const plantingOptions = presentationSections.find((section) => section.title === "Planting Options")
+  assert.ok(plantingOptions)
+  assert.equal(plantingOptions!.items.some((item) => /Michelia gracipes 4L — \$/i.test(item.title)), true)
+  assert.equal(includesText(rendered, "Michelia gracipes 4L — $"), true, rendered)
 })

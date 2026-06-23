@@ -7,9 +7,12 @@ import {
   collectPresentationReviewNotes,
   isPlantingWorkflow,
   isUsablePlantingCustomerQuote,
+  mergePlantingInternalReviewNotes,
   renderPlantingCustomerQuoteText,
   type PresentationPreviewSection,
 } from "./quote-presentation"
+import type { CustomerQuoteOptionGroup } from "./customer-quote-options"
+import { filterPlantingCustomerTradeOptions } from "./customer-quote-options"
 import type { SandboxRenderedTemplateSection } from "./template-preview-sandbox"
 import type { SelectedQuoteTemplate } from "./template-renderer"
 
@@ -41,6 +44,7 @@ export type CustomerDraftPreviewModel = {
   assemblyInputDebug: GardenTidyAssemblyInputDebug | null
   plantingCustomerQuote: PresentationPreviewSection[] | null
   plantingInternalReviewNotes: string[]
+  plantingCustomerTradeOptions: CustomerQuoteOptionGroup[]
   rendererPath: "planting-presentation" | "assembly" | "legacy"
 }
 
@@ -119,7 +123,12 @@ export function buildCustomerDraftPreviewModel({
   const plantingPreviewSections = presentationModel ? buildPresentationCustomerPreview(presentationModel) : []
   const plantingCustomerQuote = isUsablePlantingCustomerQuote(plantingPreviewSections) ? plantingPreviewSections : null
   const plantingInternalReviewNotes =
-    presentationModel && plantingCustomerQuote ? collectPresentationReviewNotes(presentationModel) : []
+    presentationModel && plantingCustomerQuote
+      ? mergePlantingInternalReviewNotes(collectPresentationReviewNotes(presentationModel), processedQuote)
+      : []
+  const plantingCustomerTradeOptions = plantingCustomerQuote
+    ? filterPlantingCustomerTradeOptions(customerPreview.tradeOptions)
+    : customerPreview.tradeOptions
   const rendererPath = plantingCustomerQuote ? "planting-presentation" : assembly ? "assembly" : "legacy"
 
   return {
@@ -151,6 +160,7 @@ export function buildCustomerDraftPreviewModel({
     assemblyInputDebug,
     plantingCustomerQuote,
     plantingInternalReviewNotes,
+    plantingCustomerTradeOptions,
     rendererPath,
   }
 }

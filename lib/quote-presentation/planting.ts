@@ -281,6 +281,9 @@ const GARDEN_MIX_PATTERN =
 function normalizeMaterialLabel(text: string): string | null {
   if (GARDEN_MIX_PATTERN.test(text)) return "Garden mix"
   if (/\bmulch\b/i.test(text)) return "Mulch"
+  if (/\bcompost\b/i.test(text)) return "Compost"
+  if (/\btop\s*soil\b/i.test(text)) return "Topsoil"
+  if (/\bfertil(?:iser|izer)\b/i.test(text)) return "Fertiliser"
   return null
 }
 

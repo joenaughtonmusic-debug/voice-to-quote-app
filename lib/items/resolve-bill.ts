@@ -28,12 +28,19 @@ export type ResolvableItem = {
   source_system?: string | null
   supplier?: string | null
   stock_status?: string | null
+  aliases?: string[] | null
 }
 
 // ---------------------------------------------------------------------------
 // Name-substring match — no item_role column, no dimensional scoring.
 // entry.label is checked against item_name case-insensitively (both directions).
 // ---------------------------------------------------------------------------
+
+function namesMatchNeedle(needle: string, candidate: string) {
+  const haystack = candidate.toLowerCase().trim()
+  if (!haystack) return false
+  return haystack.includes(needle) || needle.includes(haystack)
+}
 
 function findMatchForEntry(entry: MaterialBillEntry, items: ResolvableItem[]): ResolvableItem | null {
   const needle = entry.label.toLowerCase().trim()
@@ -42,7 +49,14 @@ function findMatchForEntry(entry: MaterialBillEntry, items: ResolvableItem[]): R
   return (
     items.find((item) => {
       const name = (item.item_name ?? "").toLowerCase().trim()
-      return name.includes(needle) || needle.includes(name)
+      if (namesMatchNeedle(needle, name)) return true
+
+      for (const alias of item.aliases ?? []) {
+        if (typeof alias !== "string") continue
+        if (namesMatchNeedle(needle, alias)) return true
+      }
+
+      return false
     }) ?? null
   )
 }
