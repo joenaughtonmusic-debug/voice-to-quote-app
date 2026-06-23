@@ -471,6 +471,29 @@ Provide options for:
 })
 
 
+test("Michaelia gracipes fuzzy-matches Michelia gracipes with review warning", () => {
+  const rows: KnowledgePlantRow[] = [
+    {
+      item_code: "PLANT-101",
+      item_name: "Michelia gracipes 2L",
+      aliases: ["Michelia gracipes"],
+      item_type: "plant",
+      sell_price: 18.5,
+      raw_import: {
+        plant_name: "Michelia gracipes",
+        plant_size: "2L",
+        pot_size: "2L",
+        spacing_mm: 600,
+        is_true_plant: true,
+      },
+    },
+  ]
+
+  const match = matchPlantRowsFromLibrary(rows, "Michaelia gracipes")
+  assert.notEqual(match.match_confidence, "none")
+  assert.equal(match.plant_name, "Michelia gracipes")
+})
+
 test("generates quote-ready planting option groups with totals", () => {
   const match = matchPlantRowsFromLibrary(plantRows, "Ficus Tuffi")
   const result = calculatePlantingQuote({

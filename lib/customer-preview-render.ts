@@ -1,6 +1,15 @@
 import { assembleCustomerQuote, type CustomerQuoteAssembly } from "./customer-quote-assembly"
 import type { CustomerQuotePreview } from "./customer-quote-preview"
 import type { ProcessedQuote } from "./processed-quote"
+import {
+  buildPresentationCustomerPreview,
+  buildQuotePresentationModel,
+  collectPresentationReviewNotes,
+  isPlantingWorkflow,
+  isUsablePlantingCustomerQuote,
+  renderPlantingCustomerQuoteText,
+  type PresentationPreviewSection,
+} from "./quote-presentation"
 import type { SandboxRenderedTemplateSection } from "./template-preview-sandbox"
 import type { SelectedQuoteTemplate } from "./template-renderer"
 
@@ -30,6 +39,9 @@ export type CustomerDraftPreviewModel = {
   templateSections: SandboxRenderedTemplateSection[]
   assembly: CustomerQuoteAssembly | null
   assemblyInputDebug: GardenTidyAssemblyInputDebug | null
+  plantingCustomerQuote: PresentationPreviewSection[] | null
+  plantingInternalReviewNotes: string[]
+  rendererPath: "planting-presentation" | "assembly" | "legacy"
 }
 
 export type GardenTidyAssemblyInputDebug = {
@@ -97,6 +109,19 @@ export function buildCustomerDraftPreviewModel({
     })),
   })
 
+  const presentationModel =
+    isPlantingWorkflow(processedQuote) &&
+    buildQuotePresentationModel({
+      quote: processedQuote,
+      rawTranscript,
+      customerPreview,
+    })
+  const plantingPreviewSections = presentationModel ? buildPresentationCustomerPreview(presentationModel) : []
+  const plantingCustomerQuote = isUsablePlantingCustomerQuote(plantingPreviewSections) ? plantingPreviewSections : null
+  const plantingInternalReviewNotes =
+    presentationModel && plantingCustomerQuote ? collectPresentationReviewNotes(presentationModel) : []
+  const rendererPath = plantingCustomerQuote ? "planting-presentation" : assembly ? "assembly" : "legacy"
+
   return {
     mode,
     clientName: processedQuote.client_name || "Not captured",
@@ -124,10 +149,26 @@ export function buildCustomerDraftPreviewModel({
     templateSections,
     assembly,
     assemblyInputDebug,
+    plantingCustomerQuote,
+    plantingInternalReviewNotes,
+    rendererPath,
   }
 }
 
 export function renderCustomerDraftPreviewText(model: CustomerDraftPreviewModel) {
+  if (model.plantingCustomerQuote) {
+    return [
+      "Prepared for",
+      model.clientName,
+      model.siteAddress,
+      "Quote",
+      model.quoteTitle,
+      ...renderPlantingCustomerQuoteText(model.plantingCustomerQuote).split("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n")
+  }
+
   const body =
     model.assembly
       ? model.assembly.sections.flatMap((section) => [section.title, ...section.items])

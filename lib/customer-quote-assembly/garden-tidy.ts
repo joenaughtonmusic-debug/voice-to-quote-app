@@ -1,10 +1,6 @@
 import type { PricingFact } from "../core/pricing-extraction"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
 
-/** Temporary runtime marker — remove after Shirley live-path verification. */
-export const GARDEN_TIDY_RUNTIME_MARKER = "SHIRLEY_DEBUG_2026_06_22_A"
-export const GARDEN_TIDY_SOURCE_VERSION = "lib/customer-quote-assembly/garden-tidy.ts@v2026-06-22-shirley-debug"
-
 function cleanLine(value: string) {
   return value
     .replace(/^\s*(?:scope|note|site\s+note)\s*:\s*/i, "")
@@ -60,11 +56,75 @@ function isServiceIncludeBoilerplate(value: string) {
 }
 
 function dedupeGreenwasteLines(items: string[]) {
-  const cleaned = unique(items.map(normalizeScopeItem))
-  return cleaned.filter((item, _, all) => {
-    const key = item.toLowerCase()
-    return !all.some((other) => other !== item && other.toLowerCase().includes(key) && other.length > item.length)
-  })
+  const expanded = items.flatMap(splitCompoundGreenwasteLine)
+  const byKey = new Map<string, string>()
+
+  for (const raw of expanded) {
+    const item = normalizeScopeItem(raw)
+    if (!item) continue
+    const key = greenwasteQuantityKey(item)
+    const existing = byKey.get(key)
+    if (!existing || preferGreenwasteLine(item, existing) === item) {
+      byKey.set(key, item)
+    }
+  }
+
+  return [...byKey.values()]
+}
+
+function splitCompoundGreenwasteLine(value: string): string[] {
+  const cleaned = cleanLine(value)
+  if (!/\band\b/i.test(cleaned)) return [cleaned]
+
+  const parts = cleaned
+    .split(/\s*,?\s+and\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (parts.length > 1 && parts.every((part) => isGreenwasteQuantityLine(part))) {
+    return parts
+  }
+
+  return [cleaned]
+}
+
+function greenwasteQuantityKey(value: string): string {
+  const cleaned = cleanLine(value)
+    .toLowerCase()
+    .replace(/\bgreen\s*waste\b/g, "greenwaste")
+    .replace(/\b(?:approximately|about|around|expected)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+
+  const fractionTrailer = cleaned.match(
+    /\b(?:one|two|three|four|five|\d+|half|quarter|third|three quarters|one quarter)(?:\s+\w+){0,8}?\s+trailer/i,
+  )
+  if (fractionTrailer) return fractionTrailer[0].replace(/\s+/g, " ").trim()
+
+  const loads = cleaned.match(/\b(?:one|two|three|four|five|\d+)\s+trailer\s+loads?\b/i)
+  if (loads) return loads[0].replace(/\s+/g, " ").trim()
+
+  return cleaned
+}
+
+function preferGreenwasteLine(candidate: string, incumbent: string) {
+  const score = (line: string) => {
+    const cleaned = cleanLine(line).toLowerCase()
+    let value = 0
+    if (/\bgreenwaste\b/i.test(cleaned)) value += 4
+    if (/\bfor\b/i.test(cleaned)) value += 2
+    if (/\b(?:tree|hedge|pruning|trimming)\b/i.test(cleaned)) value += 1
+    if (/\bapproximately\b/i.test(cleaned)) value -= 1
+    return value
+  }
+
+  const candidateScore = score(candidate)
+  const incumbentScore = score(incumbent)
+  if (candidateScore !== incumbentScore) {
+    return candidateScore > incumbentScore ? candidate : incumbent
+  }
+
+  return candidate.length <= incumbent.length ? candidate : incumbent
 }
 
 function splitSentences(text: string): string[] {
@@ -231,17 +291,6 @@ export function assembleGardenTidyCustomerQuote(input: CustomerQuoteAssemblyInpu
     section("Site Notes", siteNotes(input)),
     section("Exclusions", input.quote.exclusions),
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)
-
-  if (typeof console !== "undefined") {
-    console.log("[SHIRLEY_DEBUG_GARDEN_TIDY_ASSEMBLY]", {
-      marker: GARDEN_TIDY_RUNTIME_MARKER,
-      source: GARDEN_TIDY_SOURCE_VERSION,
-      customer_scope_count: input.quote.customer_scope.length,
-      primary_quote_scope_count: input.quote.primary_quote.scope.length,
-      primary_quote_notes_count: input.quote.primary_quote.notes.length,
-      section_titles: sections.map((item) => item.title),
-    })
-  }
 
   return {
     title: "One-Off Garden Tidy",

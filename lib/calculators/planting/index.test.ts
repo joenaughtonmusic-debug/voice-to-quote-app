@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { calculatePlantCount, calculatePlantingQuote, extractPlantCalculatorRequestsFromText } from "./index"
+import { calculatePlantCount, calculatePlantingQuote, extractPlantCalculatorRequestsFromText, extractSpokenSpacingMmFromText } from "./index"
 
 test("calculates 11m at 800mm spacing", () => {
   const result = calculatePlantCount({ length_m: 11, spoken_spacing_mm: 800 })
@@ -91,6 +91,18 @@ test("calculates 11.5m hedge at 600mm spacing", () => {
   assert.equal(request.spoken_spacing_mm, 600)
   assert.equal(result.plant_count, 21)
   assert.equal(result.quantity_source, "calculated_from_spacing")
+})
+
+test("extracts Stephanie Cotswold planting area plant name and centimetre spacing", () => {
+  const transcript =
+    "it was a 14.2 metre planting area, and the plant she wanted planting was Michaelia gracipes. Maybe give both sizes as an option, probably with 50 centimetre spacing"
+
+  assert.equal(extractSpokenSpacingMmFromText(transcript), 500)
+
+  const [request] = extractPlantCalculatorRequestsFromText(transcript)
+  assert.equal(request.length_m, 14.2)
+  assert.match(request.plant_name ?? "", /gracipes/i)
+  assert.equal(request.spoken_spacing_mm, 500)
 })
 
 test("extracts separate lower and upper planting area requests", () => {

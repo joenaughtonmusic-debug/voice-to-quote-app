@@ -43,6 +43,7 @@ import { buildQuoteReviewNotices, type ReviewNotice } from "@/lib/core/review-no
 import { buildPricingReviewNotices, extractPricing, type PricingFact } from "@/lib/core/pricing-extraction"
 import {
   customerVisibleTemplateRecommendation,
+  plantingTemplateSignalsFromQuote,
   recommendTemplateForQuote,
   type TemplateRecommendation,
 } from "@/lib/template-recommendation"
@@ -156,6 +157,7 @@ export function QuoteReview({
     sectionsByTemplateId: templateSectionsByTemplateId,
     trade: editedQuoteForReview.job_type,
     jobType: editedQuoteForReview.primary_quote?.job_type || editedQuoteForReview.job_type,
+    plantingSignals: plantingTemplateSignalsFromQuote(editedQuoteForReview),
   })
   const renderedCustomerScope = customerPreview.scopeItems.join("\n")
   const visible = sections
@@ -977,7 +979,7 @@ function TemplatePreviewControls({
         <div>
           <h3 className="text-sm font-semibold text-foreground">Template</h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Preview-only template rendering. Standard Preview remains the default.
+            Standard Preview is the customer quote. Template wording is experimental and not used for export.
           </p>
         </div>
         {(loadingTemplates || loadingSections) && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -1055,11 +1057,11 @@ function TemplatePreviewControls({
         </div>
       )}
 
-      <div className="mt-3 flex rounded-xl bg-secondary p-1">
+      <div className="mt-3 flex rounded-xl bg-secondary/60 p-1">
         {(
           [
-            { id: "standard", label: "Use Standard Preview" },
-            { id: "template", label: "Use Template Preview" },
+            { id: "standard", label: "Standard Preview" },
+            { id: "template", label: "Template Wording (experimental)" },
           ] as const
         ).map((mode) => (
           <button
@@ -1068,8 +1070,12 @@ function TemplatePreviewControls({
             onClick={() => onPreviewModeChange(mode.id)}
             disabled={mode.id === "template" && !templateSectionsAvailable}
             className={cn(
-              "flex-1 rounded-lg py-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-              previewMode === mode.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+              "flex-1 rounded-lg py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              previewMode === mode.id
+                ? mode.id === "standard"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "bg-card text-muted-foreground shadow-sm"
+                : "text-muted-foreground",
             )}
           >
             {mode.label}
@@ -1080,21 +1086,21 @@ function TemplatePreviewControls({
       {selectedTemplateId && (
         <div className="mt-3 rounded-xl bg-secondary/40 p-3">
           {previewMode === "template" ? (
-            <p className="text-xs font-medium text-muted-foreground">
-              Template Preview is currently the active customer preview. Standard Preview remains available.
+            <p className="text-xs text-muted-foreground">
+              Template wording preview is active. This is not the customer quote — switch to Standard Preview before sending.
             </p>
           ) : (
             <div className="flex flex-col gap-2">
               <p className="text-xs text-muted-foreground">
-                This template is selected but not active yet.
+                Template selected for metadata only. Standard Preview is used for the customer quote.
               </p>
               <button
                 type="button"
                 onClick={onUseTemplateAsQuote}
                 disabled={loadingSections || !templateSectionsAvailable}
-                className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Use Template As Quote
+                Preview template wording (experimental)
               </button>
             </div>
           )}
@@ -1151,8 +1157,8 @@ function TemplatePreviewCard({
     <section className="rounded-2xl border border-primary/20 bg-primary/5 p-4 shadow-sm">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">Template Preview</h3>
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-primary">Preview only</p>
+          <h3 className="text-sm font-semibold text-foreground">Template Wording Preview</h3>
+          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Experimental — not used for quote</p>
         </div>
         <span className="rounded-full bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
           Not used for export

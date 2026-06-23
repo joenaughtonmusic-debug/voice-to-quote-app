@@ -322,18 +322,54 @@ function plantNameFromOptionRequest(text: string) {
   return plantNameFromContext(text, optionIntentMatch.index + optionIntentMatch[0].length)
 }
 
+function spacingUnitToMm(value: number, unit: string) {
+  const normalizedUnit = unit.toLowerCase()
+  if (normalizedUnit === "mm") return Math.round(value)
+  if (normalizedUnit.startsWith("c")) return Math.round(value * 10)
+  return Math.round(value * 1000)
+}
+
+export function extractSpokenSpacingMmFromText(text: string): number | null {
+  const patterns = [
+    /\b(?:with|at|probably\s+with)\s+(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?|m|metres?|meters?)\s+spacing\b/i,
+    /\b(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?)\s+spacing\b/i,
+    /\b(?:with|at)\s+(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?|m|metres?|meters?)\b/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (!match) continue
+    const value = Number(match[1])
+    if (!Number.isFinite(value) || value <= 0) continue
+    return spacingUnitToMm(value, match[2])
+  }
+
+  return null
+}
+
+function extractPlantNameFromPlantingIntent(text: string) {
+  const patterns = [
+    /\bplant\s+(?:she\s+wanted\s+)?planting\s+was\s+([A-Za-z][A-Za-z\s.'-]{2,60}?)(?:[.,]|\s+I['']|\s+not\b|\s+maybe\b|\s+probably\b)/i,
+    /\bplant(?:ing)?\s+(?:is|was)\s+([A-Za-z][A-Za-z\s.'-]{2,60}?)(?:[.,]|\s+at\b|\s+with\b|\s+not\b|\s+maybe\b)/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const plantName = cleanPlantName(match?.[1] ?? "")
+    if (isLikelyPlantName(plantName)) return plantName
+  }
+
+  return ""
+}
+
 export function extractPlantCalculatorRequestsFromText(text: string): PlantCalculatorRequest[] {
   const requests: PlantCalculatorRequest[] = []
   const seen = new Set<string>()
   const requestedOptionSizes = extractRequestedOptionSizes(text)
   const segments = areaSegments(text)
   const optionRequestPlantName = plantNameFromOptionRequest(text)
-  const spacingMatch = text.match(/\bat\s+(\d+(?:\.\d+)?)\s*(mm|m|metres?|meters?)\b/i)
-  const spokenSpacingMm = spacingMatch
-    ? spacingMatch[2].toLowerCase() === "mm"
-      ? Math.round(Number(spacingMatch[1]))
-      : Math.round(Number(spacingMatch[1]) * 1000)
-    : null
+  const spokenSpacingMm = extractSpokenSpacingMmFromText(text)
+  const plantingIntentPlantName = extractPlantNameFromPlantingIntent(text)
 
   function addRequest(request: PlantCalculatorRequest) {
     if (!isLikelyPlantName(request.plant_name ?? "")) return
@@ -409,6 +445,26 @@ export function extractPlantCalculatorRequestsFromText(text: string): PlantCalcu
       requested_option_sizes: requestedSizesForRequest(text, segments, match.index ?? 0, requestedOptionSizes),
       row_label: cleanAreaLabel(match[2] ?? ""),
       source_text: match[0].trim(),
+    })
+  }
+
+  const plantingAreaLengthPattern =
+    /\b(?:approximately|approx\.?|about|around|was\s+a)?\s*(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\s+planting\s+area\b/gi
+  for (const match of text.matchAll(plantingAreaLengthPattern)) {
+    const lengthM = Number(match[1])
+    if (!Number.isFinite(lengthM)) continue
+    if (isAreaOrDimensionContext(text, match.index ?? 0, match[0])) continue
+    const plantName =
+      plantingIntentPlantName ||
+      extractPlantNameFromPlantingIntent(text) ||
+      plantNameFromContext(text, match.index ?? 0, optionRequestPlantName)
+    addRequest({
+      plant_name: plantName,
+      length_m: lengthM,
+      spoken_spacing_mm: spokenSpacingMm,
+      area_label: requestAreaLabel(text, segments, match.index ?? 0),
+      requested_option_sizes: requestedSizesForRequest(text, segments, match.index ?? 0, requestedOptionSizes),
+      source_text: text.slice(match.index ?? 0, Math.min(text.length, (match.index ?? 0) + 600)),
     })
   }
 
@@ -559,9 +615,57 @@ function getSpacing(request: PlantCalculatorRequest) {
   return { spacing_mm: null, spacing_source: "missing" as const }
 }
 
+function spacingConflictWarning(spokenSpacingMm: number | null, librarySpacingMm: number | null) {
+  if (
+    !isPositiveNumber(spokenSpacingMm) ||
+    !isPositiveNumber(librarySpacingMm) ||
+    spokenSpacingMm === librarySpacingMm
+  ) {
+    return null
+  }
+
+  return warning(
+    "invalid_spacing",
+    `Spoken spacing (${spokenSpacingMm}mm) differs from plant library default (${librarySpacingMm}mm). Review plant count.`,
+    "spacing_mm",
+  )
+}
+
+function potSizeSortValue(option: PlantLibraryOption) {
+  const sizeText = [option.pot_size, option.plant_size, option.item_name, option.plant_name].filter(Boolean).join(" ")
+  const litreMatch = sizeText.match(/\b(\d+(?:\.\d+)?)\s*(?:l|litres?|liters?)\b/i)
+  if (litreMatch) return Number(litreMatch[1])
+  const metreMatch = sizeText.match(/\b(\d+(?:\.\d+)?)\s*m\b/i)
+  if (metreMatch) return Number(metreMatch[1]) * 100
+  const pbMatch = sizeText.match(/\bpb\s*(\d+)\b/i)
+  if (pbMatch) return Number(pbMatch[1])
+  return 0
+}
+
+function filterOptionsBySpokenPreference(options: PlantLibraryOption[], sourceText?: string) {
+  if (!sourceText?.trim() || options.length <= 1) return options
+
+  let filtered = [...options]
+  const excludeLargest = /\bnot\s+the\s+biggest\b/i.test(sourceText)
+  const bothSizes = /\bboth\s+sizes\b/i.test(sourceText)
+
+  if (excludeLargest && filtered.length >= 3) {
+    const ranked = [...filtered].sort((a, b) => potSizeSortValue(b) - potSizeSortValue(a))
+    const largestKey = plantOptionKey(ranked[0])
+    filtered = filtered.filter((option) => plantOptionKey(option) !== largestKey)
+  }
+
+  if (bothSizes && filtered.length > 2) {
+    filtered = [...filtered].sort((a, b) => potSizeSortValue(a) - potSizeSortValue(b)).slice(0, 2)
+  }
+
+  return filtered.length > 0 ? filtered : options
+}
+
 export function calculatePlantCount(request: PlantCalculatorRequest) {
   const warnings: PlantCalculatorWarning[] = []
   const spokenQuantity = request.spoken_quantity ?? null
+  const librarySpacing = getLibrarySpacing(request)
 
   if (spokenQuantity !== null && !isPositiveNumber(spokenQuantity)) {
     warnings.push(warning("invalid_quantity", "Spoken plant quantity must be greater than zero.", "spoken_quantity"))
@@ -569,6 +673,8 @@ export function calculatePlantCount(request: PlantCalculatorRequest) {
 
   if (isPositiveNumber(spokenQuantity)) {
     const spacing = getSpacing(request)
+    const conflict = spacingConflictWarning(spacing.spacing_mm, librarySpacing)
+    if (conflict) warnings.push(conflict)
     return {
       plant_count: Math.ceil(spokenQuantity),
       quantity_source: "spoken_quantity" as const,
@@ -582,6 +688,8 @@ export function calculatePlantCount(request: PlantCalculatorRequest) {
 
   const lengthM = request.length_m ?? null
   const { spacing_mm: spacingMm, spacing_source: spacingSource } = getSpacing(request)
+  const conflict = spacingConflictWarning(spacingMm, librarySpacing)
+  if (conflict) warnings.push(conflict)
 
   if (lengthM !== null && !isPositiveNumber(lengthM)) {
     warnings.push(warning("invalid_length", "Planting length must be greater than zero.", "length_m"))
@@ -630,7 +738,10 @@ export function calculatePlantCount(request: PlantCalculatorRequest) {
 
 export function calculatePlantingQuote(request: PlantCalculatorRequest): PlantCalculatorResult {
   const countResult = calculatePlantCount(request)
-  const allOptions = request.plant_library_match?.options ?? []
+  const allOptions = filterOptionsBySpokenPreference(
+    request.plant_library_match?.options ?? [],
+    request.source_text,
+  )
   const { options, missingSizes } = filterOptionsByRequestedSizes(allOptions, request.requested_option_sizes)
   const resultWarnings = [...countResult.warnings]
 

@@ -15,7 +15,7 @@ import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { matchPlantRowsFromLibrary, type KnowledgePlantRow } from "./plants"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "./processed-quote"
 import type { QuoteTemplateLibraryItem } from "./template-import-learning"
-import { recommendTemplateForQuote, scoreTemplatesForQuote } from "./template-recommendation"
+import { recommendTemplateForQuote, scoreTemplatesForQuote, plantingTemplateSignalsFromQuote } from "./template-recommendation"
 import { quoteOptionsFromPlantCalculatorResults } from "./trades/planting/quote-options"
 
 const ACCEPTANCE_DOC = "docs/PLANTING_MVP_ACCEPTANCE.md"
@@ -220,6 +220,7 @@ test("planting MVP recommends Planting and not maintenance tidy decking or retai
     sectionsByTemplateId: {},
     trade: quote.job_type,
     jobType: quote.job_type,
+    plantingSignals: plantingTemplateSignalsFromQuote(quote),
   })
   const recommendedNames = scoreTemplatesForQuote({
     facts,
@@ -227,6 +228,7 @@ test("planting MVP recommends Planting and not maintenance tidy decking or retai
     sectionsByTemplateId: {},
     trade: quote.job_type,
     jobType: quote.job_type,
+    plantingSignals: plantingTemplateSignalsFromQuote(quote),
   })
     .filter((score) => score.score >= 7)
     .map((score) => score.templateName)
@@ -245,21 +247,23 @@ test("planting MVP renders customer-ready quote draft through QuoteDraft-equival
 
   assert.equal(includesText(renderedText, "Prepared for\nAmy\n44 Amy Street"), true, renderedText)
   assert.equal(includesText(renderedText, "Planting Quote"), true, renderedText)
+  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Supply and plant"), true, renderedText)
   assert.equal(includesText(renderedText, "Planting Options"), true, renderedText)
-  assert.equal(includesText(renderedText, "Option 1"), true, renderedText)
   assert.equal(includesText(renderedText, "Ficus Tuffi 1.2m"), true, renderedText)
-  assert.equal(includesText(renderedText, "Option 2"), true, renderedText)
   assert.equal(includesText(renderedText, "Ficus Tuffi 14L"), true, renderedText)
-  assert.equal(includesText(renderedText, "Option 3"), true, renderedText)
   assert.equal(includesText(renderedText, "Ficus Tuffi 25L"), true, renderedText)
+  assert.equal(includesText(renderedText, "— $"), true, renderedText)
   assert.equal(includesText(renderedText, "Materials"), true, renderedText)
-  assert.equal(includesText(renderedText, "Garden mix"), true, renderedText)
-  assert.equal(includesText(renderedText, "Mulch"), true, renderedText)
-  assert.equal(includesText(renderedText, "Labour"), true, renderedText)
-  assert.equal(includesText(renderedText, "Included"), true, renderedText)
+  assert.equal(includesText(renderedText, "Garden mix to be allowed for separately"), true, renderedText)
+  assert.equal(includesText(renderedText, "Mulch to be allowed for separately"), true, renderedText)
+  assert.equal(includesText(renderedText, "Garden mix included"), false, renderedText)
   assert.equal(includesText(renderedText, "Exclusions"), true, renderedText)
   assert.equal(includesText(renderedText, "Irrigation not included"), true, renderedText)
 
+  assert.equal(includesText(renderedText, "11.5m"), false, renderedText)
+  assert.equal(includesText(renderedText, "plants x $"), false, renderedText)
+  assert.equal(includesText(renderedText, "Option 1:"), false, renderedText)
   assert.equal(includesText(renderedText, "Maintenance wording"), false, renderedText)
   assert.equal(includesText(renderedText, "Subscription wording"), false, renderedText)
   assert.equal(includesText(renderedText, "Garden tidy"), false, renderedText)

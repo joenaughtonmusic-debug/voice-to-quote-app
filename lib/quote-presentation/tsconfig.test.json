@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/quote-presentation-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "./planting-parity.test.ts",
+    "./quote-draft-shadow.test.ts",
+    "./stephanie-live-transcript.test.ts",
+    "./planting-cutover.test.ts",
+    "./stephanie-live-transcript.ts",
+    "./index.ts",
+    "./planting.ts",
+    "./types.ts",
+    "./render-customer-preview.ts",
+    "../calculators/planting/index.test.ts",
+    "../customer-preview-render.ts"
+  ]
+}

@@ -1,16 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
 import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerDraftPreviewModel } from "@/lib/customer-preview-render"
-import {
-  GARDEN_TIDY_RUNTIME_MARKER,
-  GARDEN_TIDY_SOURCE_VERSION,
-} from "@/lib/customer-quote-assembly/garden-tidy"
 import { buildCustomerQuotePreview, type CustomerQuotePreview } from "@/lib/customer-quote-preview"
 import type { CustomerQuoteOptionGroup } from "@/lib/customer-quote-options"
 import { CustomerQuoteOptionsCard } from "@/components/customer-quote-options-card"
@@ -30,6 +26,11 @@ import {
   type QuoteTemplateSectionDraft,
 } from "@/lib/template-import-learning"
 import type { TemplateSelectionSource } from "@/lib/template-selection"
+import {
+  buildQuotePresentationModel,
+  isPlantingWorkflow,
+  type PresentationPreviewSection,
+} from "@/lib/quote-presentation"
 
 type PreviewMode = "standard" | "template"
 
@@ -62,9 +63,7 @@ export function QuoteDraft({
 }) {
   const [saveState, setSaveState] = useState<SaveState>("idle")
   const [saveMessage, setSaveMessage] = useState("")
-  const [activePreviewMode, setActivePreviewMode] = useState<PreviewMode>(
-    previewMode === "template" && templateSections.length > 0 ? "template" : "standard",
-  )
+  const [activePreviewMode, setActivePreviewMode] = useState<PreviewMode>("standard")
   const customerPreviewInput = buildCustomerPreviewQuoteInput({
     processedQuote,
     rawTranscript,
@@ -84,20 +83,20 @@ export function QuoteDraft({
     rawTranscript,
     selectedTemplate: customerPreviewInput.selected_template,
   })
-  const useAssemblyPreview = Boolean(previewModel.assembly)
-  const rendererPath = useAssemblyPreview ? "assembly" : "legacy"
+  const plantingPresentationModel =
+    isPlantingWorkflow(processedQuote) &&
+    buildQuotePresentationModel({
+      quote: processedQuote,
+      rawTranscript,
+      customerPreview,
+    })
+  const usePlantingPresentationCustomerView = Boolean(previewModel.plantingCustomerQuote?.length)
+  const useAssemblyPreview = Boolean(previewModel.assembly) && !usePlantingPresentationCustomerView
+  const rendererPath = previewModel.rendererPath
   const quoteJobType = processedQuote.job_type || "not captured"
   const primaryQuoteJobType = processedQuote.primary_quote?.job_type || "not captured"
   const maintenanceDraft = isMaintenanceDraft(processedQuote, rawTranscript)
   const assemblyFailedForMaintenance = maintenanceDraft && !useAssemblyPreview
-  const runtimeDebugMarker = process.env.NEXT_PUBLIC_SHIRLEY_DEBUG_MARKER ?? GARDEN_TIDY_RUNTIME_MARKER
-  const gitBranch = process.env.NEXT_PUBLIC_GIT_BRANCH ?? "unavailable (restart dev server)"
-  const gitCommit = process.env.NEXT_PUBLIC_GIT_SHA ?? "unavailable (restart dev server)"
-  const [browserLocation, setBrowserLocation] = useState("pending hydration")
-
-  useEffect(() => {
-    setBrowserLocation(`${window.location.origin} (port ${window.location.port || "default"})`)
-  }, [])
 
   async function handleSaveDraft() {
     setSaveState("saving")
@@ -168,15 +167,22 @@ export function QuoteDraft({
             )}
           </div>
 
-          <div className="mt-4 rounded-xl border border-dashed border-border bg-secondary/30 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Dev diagnostics</p>
+          <StandardCustomerPreview
+            scopeItems={previewModel.scopeItems}
+            exclusions={previewModel.exclusions}
+            customerPreview={customerPreview}
+            assemblySections={usePlantingPresentationCustomerView ? [] : previewModel.assembly?.sections ?? []}
+            plantingCustomerQuote={previewModel.plantingCustomerQuote}
+            assemblyFailedForMaintenance={assemblyFailedForMaintenance}
+            hideLegacyLabourPricing={maintenanceDraft}
+            tradeOptions={customerPreview.tradeOptions}
+          />
+
+          <details className="mt-5 rounded-xl border border-dashed border-border bg-secondary/30 p-3">
+            <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Dev diagnostics
+            </summary>
             <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-muted-foreground">
-              <p className="font-semibold text-foreground">Runtime marker: {runtimeDebugMarker}</p>
-              <p>Git branch: {gitBranch}</p>
-              <p>Git commit: {gitCommit}</p>
-              <p>Garden tidy source: {GARDEN_TIDY_SOURCE_VERSION}</p>
-              <p>Browser location: {browserLocation}</p>
-              <p>Expected repo: voice-to-quote-app (port 3000)</p>
               <p>Renderer path: {rendererPath}</p>
               <p>quote.job_type: {quoteJobType}</p>
               <p>primary_quote.job_type: {primaryQuoteJobType}</p>
@@ -185,6 +191,20 @@ export function QuoteDraft({
               <p>Selected template source: {selectedTemplateSource}</p>
               <p>Pricing facts count: {customerPreview.pricingFacts.length}</p>
               <p>Assembly sections count: {previewModel.assembly?.sections.length ?? 0}</p>
+              <p>Presentation model active: {plantingPresentationModel ? "yes" : "no"}</p>
+              {plantingPresentationModel && (
+                <p>Presentation model line count: {plantingPresentationModel.lines.length}</p>
+              )}
+              {previewModel.plantingInternalReviewNotes.length > 0 && (
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 text-amber-900">
+                  <p className="font-semibold">Internal review notes (not shown to customer)</p>
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    {previewModel.plantingInternalReviewNotes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {previewModel.assemblyInputDebug && (
                 <>
                   <p>Assembly input customer_scope count: {previewModel.assemblyInputDebug.customer_scope.length}</p>
@@ -197,45 +217,37 @@ export function QuoteDraft({
                 </>
               )}
             </div>
-          </div>
+          </details>
 
           {hasTemplatePreview && !useAssemblyPreview && (
-            <div className="mt-5">
-              <div className="flex rounded-xl bg-secondary p-1">
-                {(
-                  [
-                    { id: "standard", label: "Use Standard Preview" },
-                    { id: "template", label: "Use Template Preview" },
-                  ] as const
-                ).map((mode) => (
+            <details className="mt-5 rounded-xl border border-dashed border-muted-foreground/30 bg-secondary/20 p-3">
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                Template Wording Preview — experimental, not used for quote
+              </summary>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+                Generic template placeholder wording only. Standard Preview above is the customer quote.
+              </p>
+              {activePreviewMode === "template" ? (
+                <>
+                  <TemplateCustomerPreview sections={renderedTemplateSections} />
                   <button
-                    key={mode.id}
                     type="button"
-                    onClick={() => setActivePreviewMode(mode.id)}
-                    className={cn(
-                      "flex-1 rounded-lg py-2 text-xs font-semibold transition-colors",
-                      activePreviewMode === mode.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
-                    )}
+                    onClick={() => setActivePreviewMode("standard")}
+                    className="mt-3 text-xs font-medium text-muted-foreground underline-offset-2 hover:underline"
                   >
-                    {mode.label}
+                    Hide template wording preview
                   </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {!useAssemblyPreview && activePreviewMode === "template" && hasTemplatePreview ? (
-            <TemplateCustomerPreview sections={renderedTemplateSections} />
-          ) : (
-            <StandardCustomerPreview
-              scopeItems={previewModel.scopeItems}
-              exclusions={previewModel.exclusions}
-              customerPreview={customerPreview}
-              assemblySections={previewModel.assembly?.sections ?? []}
-              assemblyFailedForMaintenance={assemblyFailedForMaintenance}
-              hideLegacyLabourPricing={maintenanceDraft}
-              tradeOptions={customerPreview.tradeOptions}
-            />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setActivePreviewMode("template")}
+                  className="mt-3 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground"
+                >
+                  Show template wording preview
+                </button>
+              )}
+            </details>
           )}
 
           <p className="mt-5 border-t border-border pt-4 text-xs text-muted-foreground">
@@ -301,6 +313,7 @@ function StandardCustomerPreview({
   exclusions,
   customerPreview,
   assemblySections,
+  plantingCustomerQuote,
   assemblyFailedForMaintenance,
   hideLegacyLabourPricing,
   tradeOptions,
@@ -309,10 +322,25 @@ function StandardCustomerPreview({
   exclusions: string[]
   customerPreview: CustomerQuotePreview
   assemblySections: Array<{ title: string; items: string[] }>
+  plantingCustomerQuote: PresentationPreviewSection[] | null
   assemblyFailedForMaintenance: boolean
   hideLegacyLabourPricing: boolean
   tradeOptions: CustomerQuoteOptionGroup[]
 }) {
+  if (plantingCustomerQuote && plantingCustomerQuote.length > 0) {
+    return (
+      <>
+        <PlantingCustomerQuotePreview sections={plantingCustomerQuote} />
+
+        {tradeOptions.length > 0 && (
+          <div className="mt-5">
+            <CustomerQuoteOptionsCard groups={tradeOptions} />
+          </div>
+        )}
+      </>
+    )
+  }
+
   if (assemblySections.length > 0) {
     return (
       <>
@@ -445,6 +473,35 @@ function TemplateCustomerPreview({ sections }: { sections: SandboxRenderedTempla
               Not supplied: {section.missingPlaceholders.join(", ")}.
             </p>
           )}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function PlantingCustomerQuotePreview({ sections }: { sections: PresentationPreviewSection[] }) {
+  return (
+    <div className="mt-5 flex flex-col gap-4">
+      {sections.map((section) => (
+        <section key={section.title}>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{section.title}</p>
+          <div className="divide-y divide-border rounded-xl border border-border">
+            {section.items.map((item, index) => (
+              <div key={`${section.title}-${item.title}-${index}`} className="px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{item.title}</p>
+                    {item.detail && item.detail !== item.title && (
+                      <p className="mt-0.5 text-sm text-muted-foreground">{item.detail}</p>
+                    )}
+                  </div>
+                  {item.subtotal && (
+                    <p className="shrink-0 text-sm font-semibold text-foreground">{item.subtotal}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
       ))}
     </div>

@@ -5,6 +5,7 @@ import { extractClientNameFromTranscript } from "@/lib/client-name-extraction"
 import {
   calculatePlantingQuote,
   extractPlantCalculatorRequestsFromText,
+  extractSpokenSpacingMmFromText,
   type PlantCalculatorRequest,
   type PlantCalculatorResult,
 } from "@/lib/calculators/planting"
@@ -1428,12 +1429,7 @@ function debugFicusTuffiPlantRecords(plantItems: PlantLibraryItem[]) {
 }
 
 function extractSpacingMm(transcript: string) {
-  const match = transcript.match(/\bat\s+(\d+(?:\.\d+)?)\s*(mm|m|metres?|meters?)\b/i)
-  if (!match) return null
-  const value = Number(match[1])
-  if (!Number.isFinite(value)) return null
-  const unit = match[2].toLowerCase()
-  return unit === "mm" ? Math.round(value) : Math.round(value * 1000)
+  return extractSpokenSpacingMmFromText(transcript)
 }
 
 function extractPlantLengthRows(transcript: string) {

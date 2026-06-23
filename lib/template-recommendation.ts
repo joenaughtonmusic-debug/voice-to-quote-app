@@ -1,5 +1,27 @@
 import type { QuoteFact, QuoteFactCategory } from "@/lib/core/quote-facts"
+import type { ProcessedQuote } from "@/lib/processed-quote"
 import type { QuoteTemplateLibraryItem, QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
+
+export type PlantingTemplateSignals = {
+  hasPlantCalculatorResults: boolean
+  hasPlantingQuoteOptions: boolean
+  hasPlantNameOrLength: boolean
+}
+
+export function plantingTemplateSignalsFromQuote(
+  quote: Pick<ProcessedQuote, "plant_calculator_results" | "quote_options">,
+): PlantingTemplateSignals {
+  const results = quote.plant_calculator_results ?? []
+  const options = quote.quote_options ?? []
+
+  return {
+    hasPlantCalculatorResults: results.length > 0,
+    hasPlantingQuoteOptions: options.some((option) => option.category === "planting"),
+    hasPlantNameOrLength: results.some(
+      (result) => Boolean(result.plant_name?.trim()) || (typeof result.length_m === "number" && Number.isFinite(result.length_m)),
+    ),
+  }
+}
 
 export type TemplateRecommendationConfidence = "high" | "medium" | "low"
 
@@ -28,9 +50,6 @@ const MEDIUM_CONFIDENCE_SCORE = 8
 const STRONG_CATEGORY_ALIGNMENT_SCORE = 12
 const PLANTING_MAINTENANCE_MISMATCH_PENALTY = 80
 const CROSS_DOMAIN_MISMATCH_PENALTY = 80
-
-/** Temporary runtime marker — remove after Shirley live-path verification. */
-export const TEMPLATE_RECOMMENDATION_RUNTIME_MARKER = "SHIRLEY_DEBUG_2026_06_22_A"
 
 type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | "fencing" | null
 
@@ -71,32 +90,16 @@ export function recommendTemplateForQuote({
   sectionsByTemplateId,
   trade,
   jobType,
+  plantingSignals,
 }: {
   facts: QuoteFact[]
   templates: QuoteTemplateLibraryItem[]
   sectionsByTemplateId: Record<string, QuoteTemplateSectionDraft[]>
   trade?: string | null
   jobType?: string | null
+  plantingSignals?: PlantingTemplateSignals
 }): TemplateRecommendation | null {
-  const scores = scoreTemplatesForQuote({ facts, templates, sectionsByTemplateId, trade, jobType })
-  const quoteDomain = quoteDomainFromContext(trade, jobType, facts)
-
-  if (typeof console !== "undefined") {
-    console.log("[SHIRLEY_DEBUG_TEMPLATE_RECOMMENDATION]", {
-      marker: TEMPLATE_RECOMMENDATION_RUNTIME_MARKER,
-      quote_domain: quoteDomain,
-      trade,
-      jobType,
-      top_template_scores: scores.slice(0, 5).map((item) => ({
-        name: item.templateName,
-        score: item.score,
-        confidence: item.confidence,
-      })),
-      selected_template: scores[0]?.templateName ?? null,
-      selected_source: "recommendation",
-    })
-  }
-
+  const scores = scoreTemplatesForQuote({ facts, templates, sectionsByTemplateId, trade, jobType, plantingSignals })
   const best = scores[0]
 
   if (!best || best.score < RECOMMENDATION_MIN_SCORE || best.confidence === "low") return null
@@ -131,19 +134,21 @@ export function scoreTemplatesForQuote({
   sectionsByTemplateId,
   trade,
   jobType,
+  plantingSignals,
 }: {
   facts: QuoteFact[]
   templates: QuoteTemplateLibraryItem[]
   sectionsByTemplateId: Record<string, QuoteTemplateSectionDraft[]>
   trade?: string | null
   jobType?: string | null
+  plantingSignals?: PlantingTemplateSignals
 }): TemplateScore[] {
   const quoteText = quoteSearchText(facts, trade, jobType)
   const quoteKeywords = keywordSet(quoteText)
   const quoteCategories = new Set(facts.map((fact) => fact.category))
-  const quoteDomain = quoteDomainFromContext(trade, jobType, facts)
+  const quoteDomain = quoteDomainFromContext(trade, jobType, facts, plantingSignals)
   const maintenanceContext = quoteDomain === "maintenance" || hasMaintenanceSignals(quoteText)
-  const strongPlantingSignals = hasStrongPlantingSignals(facts, quoteText)
+  const strongPlantingSignals = hasStrongPlantingSignals(facts, quoteText, plantingSignals)
 
   return templates
     .map((template) => {
@@ -253,6 +258,10 @@ function plantingMaintenanceMismatchPenalty(templateDomain: TemplateDomain, main
 function crossDomainMismatchPenalty(templateDomain: TemplateDomain, quoteDomain: TemplateDomain) {
   if (!templateDomain || !quoteDomain || templateDomain === quoteDomain) return 0
 
+  if (quoteDomain === "planting" && templateDomain !== "planting") {
+    return CROSS_DOMAIN_MISMATCH_PENALTY
+  }
+
   if (
     quoteDomain === "garden_tidy" &&
     (templateDomain === "decking" || templateDomain === "retaining" || templateDomain === "planting" || templateDomain === "fencing")
@@ -260,11 +269,7 @@ function crossDomainMismatchPenalty(templateDomain: TemplateDomain, quoteDomain:
     return CROSS_DOMAIN_MISMATCH_PENALTY
   }
 
-  if (
-    templateDomain === "decking" &&
-    quoteDomain !== "decking" &&
-    quoteDomain !== null
-  ) {
+  if (templateDomain === "decking" && quoteDomain !== "decking" && quoteDomain !== null) {
     return CROSS_DOMAIN_MISMATCH_PENALTY
   }
 
@@ -532,18 +537,43 @@ function normalize(value: string | null | undefined) {
     .trim()
 }
 
-function quoteDomainFromContext(trade?: string | null, jobType?: string | null, facts: QuoteFact[] = []): TemplateDomain {
-  return canonicalDomain(jobType) ?? canonicalDomain(trade) ?? quoteDomainFromFacts(facts)
+function quoteDomainFromContext(
+  trade?: string | null,
+  jobType?: string | null,
+  facts: QuoteFact[] = [],
+  plantingSignals?: PlantingTemplateSignals,
+): TemplateDomain {
+  const fromJobType = canonicalDomain(jobType)
+  const fromTrade = canonicalDomain(trade)
+
+  if (fromJobType === "planting" || fromTrade === "planting" || hasStructuralPlantingSignals(plantingSignals)) {
+    return "planting"
+  }
+
+  return fromJobType ?? fromTrade ?? quoteDomainFromFacts(facts, plantingSignals)
 }
 
-function quoteDomainFromFacts(facts: QuoteFact[]) {
+function quoteDomainFromFacts(facts: QuoteFact[], plantingSignals?: PlantingTemplateSignals) {
+  if (hasStructuralPlantingSignals(plantingSignals)) return "planting"
+
   const text = facts
     .filter((fact) =>
       ["job_scope", "labour", "plants", "materials", "waste", "equipment", "optional_works"].includes(fact.category),
     )
     .map((fact) => fact.description)
     .join(" ")
+
+  if (facts.some((fact) => fact.metadata?.option_category === "planting")) return "planting"
+
   return canonicalDomain(text)
+}
+
+function hasStructuralPlantingSignals(plantingSignals?: PlantingTemplateSignals) {
+  return Boolean(
+    plantingSignals?.hasPlantCalculatorResults ||
+      plantingSignals?.hasPlantingQuoteOptions ||
+      plantingSignals?.hasPlantNameOrLength,
+  )
 }
 
 function templateDomainFromMetadata(template: QuoteTemplateLibraryItem): TemplateDomain {
@@ -580,14 +610,16 @@ function canonicalDomain(value: string | null | undefined): TemplateDomain {
   if (/\b(decking|deck)\b/.test(text)) return "decking"
   if (/\b(retaining|retainer)\b/.test(text)) return "retaining"
   if (/\b(fencing|fence|paling fence)\b/.test(text)) return "fencing"
-  if (/\b(planting|plant install|hedge planting|plant supply|supply plants|plants)\b/.test(text)) return "planting"
+  if (/\b(planting|hedge_planting|hedge planting|plant install|plant supply|supply plants|plants)\b/.test(text)) return "planting"
   return null
 }
 
-function hasStrongPlantingSignals(facts: QuoteFact[], quoteText: string) {
+function hasStrongPlantingSignals(facts: QuoteFact[], quoteText: string, plantingSignals?: PlantingTemplateSignals) {
+  if (hasStructuralPlantingSignals(plantingSignals)) return true
+
   const text = normalize(quoteText)
   const plantFacts = facts
-    .filter((fact) => fact.category === "plants")
+    .filter((fact) => fact.category === "plants" || fact.metadata?.option_category === "planting")
     .map((fact) => normalize(fact.description))
     .filter(Boolean)
 
@@ -603,18 +635,19 @@ function hasStrongPlantingSignals(facts: QuoteFact[], quoteText: string) {
   }
 
   const plantingText = [text, ...plantFacts].join(" ")
-  const namedPlantMention = /\b(?:ficus tuffi|griselinia|lomandra|corokia|pittosporum|buxus|murraya|lavender|carex)\b/.test(
-    plantingText,
-  )
+  const namedPlantMention =
+    /\b(?:ficus tuffi|michelia|michaelia|griselinia|lomandra|corokia|pittosporum|buxus|murraya|lavender|carex)\b/.test(
+      plantingText,
+    )
   const plantingIntent =
-    /\b(supply and install|plant supply|supply plants|install plants|planting area|plant options?|hedge planting|plant out|new hedge|planting labour)\b/.test(
+    /\b(supply and install|plant supply|supply plants|install plants|planting area|plant options?|hedge planting|plant out|new hedge|planting labour|\d+(?:\.\d+)?\s*(?:m|metres?|meters?)\s+(?:planting|of)\b)/.test(
       plantingText,
     )
 
   return Boolean(
     plantingIntent ||
       /\b\d+\s*(?:x|off)?\s*(?:plants?|trees?|shrubs?|hedges?)\b/.test(plantingText) ||
-      (namedPlantMention && /\b(supply|install|planting|plant options?|hedge|new)\b/.test(plantingText)),
+      (namedPlantMention && /\b(supply|install|planting|plant options?|hedge|new|gracipes)\b/.test(plantingText)),
   )
 }
 

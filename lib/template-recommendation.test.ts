@@ -530,3 +530,122 @@ test("stale AI-selected Decking template is ignored for hedge_trimming one-off t
 
   assert.deepEqual(selection, { templateId: "", source: "stale_ai" })
 })
+
+const stephaniePlantingFacts = [
+  fact("job_scope", "14.2 metre planting area of Michaelia gracipes"),
+  fact("materials", "Five bags of garden mix"),
+  fact("labour", "One person, 1.5 days labour"),
+  {
+    ...fact("plants", "Michelia gracipes 4L"),
+    metadata: { option_category: "planting" },
+  },
+]
+
+const stephaniePlantingSignals = {
+  hasPlantCalculatorResults: true,
+  hasPlantingQuoteOptions: true,
+  hasPlantNameOrLength: true,
+}
+
+test("Stephanie planting quote recommends Planting not One-Off Garden Tidy", () => {
+  const templates = [maintenanceTemplate, gardenTidyTemplate, plantingTemplate]
+  const recommendation = recommendTemplateForQuote({
+    facts: stephaniePlantingFacts,
+    templates,
+    sectionsByTemplateId: {},
+    jobType: "planting",
+    trade: "planting",
+    plantingSignals: stephaniePlantingSignals,
+  })
+  const scores = scoreTemplatesForQuote({
+    facts: stephaniePlantingFacts,
+    templates,
+    sectionsByTemplateId: {},
+    jobType: "planting",
+    trade: "planting",
+    plantingSignals: stephaniePlantingSignals,
+  })
+
+  assert.equal(recommendation?.template.id, plantingTemplate.id)
+  assert.notEqual(recommendation?.template.id, gardenTidyTemplate.id)
+  const plantingScore = scores.find((score) => score.template.id === plantingTemplate.id)?.score ?? 0
+  const gardenTidyScore = scores.find((score) => score.template.id === gardenTidyTemplate.id)?.score ?? 0
+  assert.ok(plantingScore > gardenTidyScore, `${plantingScore} vs ${gardenTidyScore}`)
+})
+
+test("planting quote with quote_options category planting selects Planting template", () => {
+  const facts = [
+    fact("job_scope", "Plant 11.5 metres of Ficus Tuffi hedge."),
+    {
+      ...fact("plants", "Ficus Tuffi 14L"),
+      metadata: { option_category: "planting" },
+    },
+  ]
+  const recommendation = recommendTemplateForQuote({
+    facts,
+    templates: [gardenTidyTemplate, plantingTemplate],
+    sectionsByTemplateId: {},
+    jobType: "planting",
+    trade: "planting",
+    plantingSignals: {
+      hasPlantCalculatorResults: false,
+      hasPlantingQuoteOptions: true,
+      hasPlantNameOrLength: false,
+    },
+  })
+
+  assert.equal(recommendation?.template.id, plantingTemplate.id)
+})
+
+test("planting quote with plant_calculator_results selects Planting template", () => {
+  const facts = [fact("job_scope", "14.2 metre planting area")]
+  const recommendation = recommendTemplateForQuote({
+    facts,
+    templates: [gardenTidyTemplate, plantingTemplate],
+    sectionsByTemplateId: {},
+    jobType: "planting",
+    trade: "planting",
+    plantingSignals: {
+      hasPlantCalculatorResults: true,
+      hasPlantingQuoteOptions: false,
+      hasPlantNameOrLength: true,
+    },
+  })
+
+  assert.equal(recommendation?.template.id, plantingTemplate.id)
+})
+
+test("stale AI-selected One-Off Garden Tidy is ignored for planting workflow", () => {
+  const selection = resolveTemplateSelection({
+    templates: [gardenTidyTemplate, plantingTemplate],
+    selectedTemplateName: "One-Off Garden Tidy",
+    facts: stephaniePlantingFacts,
+    jobType: "planting",
+    trade: "planting",
+  })
+
+  assert.deepEqual(selection, { templateId: "", source: "stale_ai" })
+})
+
+test("manual Planting template selection still wins over garden tidy recommendation context", () => {
+  const recommendation = recommendTemplateForQuote({
+    facts: stephaniePlantingFacts,
+    templates: [gardenTidyTemplate, plantingTemplate],
+    sectionsByTemplateId: {},
+    jobType: "planting",
+    trade: "planting",
+    plantingSignals: stephaniePlantingSignals,
+  })
+  const selection = resolveTemplateSelection({
+    templates: [gardenTidyTemplate, plantingTemplate],
+    recommendation,
+    facts: stephaniePlantingFacts,
+    jobType: "planting",
+    trade: "planting",
+    currentTemplateId: gardenTidyTemplate.id,
+    currentSource: "manual",
+  })
+
+  assert.equal(recommendation?.template.id, plantingTemplate.id)
+  assert.deepEqual(selection, { templateId: gardenTidyTemplate.id, source: "manual" })
+})

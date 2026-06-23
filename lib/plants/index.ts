@@ -193,8 +193,15 @@ function similarityScore(a: string, b: string) {
   return 1 - levenshteinDistance(a, b) / longest
 }
 
-function scorePlant(plant: NormalizedPlant, plantName: string) {
+function plantNameQueryVariants(plantName: string) {
   const query = normalizeSearchText(plantName)
+  const variants = new Set([query])
+  if (/\bmichaelia\b/.test(query)) variants.add(query.replace(/\bmichaelia\b/, "michelia"))
+  if (/\bmichelia\b/.test(query)) variants.add(query.replace(/\bmichelia\b/, "michaelia"))
+  return Array.from(variants)
+}
+
+function scorePlantQuery(plant: NormalizedPlant, query: string) {
   const exactNameTerms = [plant.plant_name, plant.common_name ?? "", plant.botanical_name ?? ""].map(normalizeSearchText)
 
   if (exactNameTerms.some((term) => term && term === query)) {
@@ -219,7 +226,28 @@ function scorePlant(plant: NormalizedPlant, plantName: string) {
     return { score: fuzzyScore, reason: "Fuzzy Plant Library match." }
   }
 
+  const queryWords = query.split(" ").filter(Boolean)
+  const species = queryWords[queryWords.length - 1]
+  if (species && species.length >= 4) {
+    for (const term of plant.search_terms) {
+      if (!term.endsWith(species)) continue
+      const genusScore = similarityScore(term.slice(0, term.length - species.length).trim(), queryWords.slice(0, -1).join(" "))
+      if (genusScore >= 0.75) {
+        return { score: Math.max(0.72, genusScore), reason: "Fuzzy genus match with exact species." }
+      }
+    }
+  }
+
   return { score: 0, reason: "No Plant Library match." }
+}
+
+function scorePlant(plant: NormalizedPlant, plantName: string) {
+  let best = { score: 0, reason: "No Plant Library match." }
+  for (const query of plantNameQueryVariants(plantName)) {
+    const scored = scorePlantQuery(plant, query)
+    if (scored.score > best.score) best = scored
+  }
+  return best
 }
 
 function confidenceFromScore(score: number): PlantLibraryMatch["match_confidence"] {
@@ -260,15 +288,26 @@ export function matchPlantRowsFromLibrary(rows: KnowledgePlantRow[], plantName: 
   const bestName = normalizePlantIdentityName(best.plant.plant_name)
   const options = normalizedPlants.filter((plant) => normalizePlantIdentityName(plant.plant_name) === bestName)
   const defaultSpacing = best.plant.spacing_mm ?? options.find((option) => option.spacing_mm)?.spacing_mm ?? null
+  const matchConfidence = confidenceFromScore(best.score)
+  const warnings: PlantCalculatorWarning[] = []
+
+  if (matchConfidence === "medium") {
+    warnings.push({
+      code: "unresolved_plant",
+      message: `Plant Library match needs review (${best.reason}). Spoken name: "${plantName}".`,
+      field: "plant_name",
+      severity: "warning",
+    })
+  }
 
   return {
     plant_name: best.plant.plant_name,
-    match_confidence: confidenceFromScore(best.score),
+    match_confidence: matchConfidence,
     confidence_score: Number(best.score.toFixed(2)),
     match_reason: best.reason,
     default_spacing_mm: defaultSpacing,
     options: options.map(({ search_terms: _searchTerms, ...option }) => option),
-    warnings: [],
+    warnings,
   }
 }
 

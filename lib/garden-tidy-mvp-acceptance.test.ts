@@ -279,6 +279,54 @@ test("Shirley live handoff — Scope of Work excludes labour and greenwaste quan
   assert.ok(includes.some((item) => /greenwaste removal/i.test(item)))
 })
 
+test("Shirley live handoff — Green Waste dedupes repeated two-trailer lines", () => {
+  const baseQuote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Shirley",
+    site_address: "Shirley address",
+    job_type: "hedge_trimming",
+    selected_template_name: "One-Off Garden Tidy",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "hedge_trimming",
+      scope: [],
+      notes: [],
+    },
+    customer_scope: [],
+    labour_allowance: "",
+    greenwaste: "Two trailer loads expected",
+  }
+
+  const primaryQuoteSectionContent = [
+    "Note: Two trailer loads expected.",
+    "Note: Two trailer loads of greenwaste expected.",
+    "Note: Three quarters of a trailer load of greenwaste for six days.",
+  ].join("\n")
+
+  const sections = processedQuoteToEditableSections(baseQuote).map((section) =>
+    section.key === "primary_quote" ? { ...section, content: primaryQuoteSectionContent } : section,
+  )
+  const handoffQuote = buildQuoteHandoffForDraftPreview({
+    sections,
+    baseQuote: editableSectionsToProcessedQuote(sections, baseQuote),
+    customerScopeItems: [],
+    dirtyKeys: new Set(),
+  })
+  const model = currentDraftPreviewModel(shirleyRawTranscript, handoffQuote, gardenTidyTemplate)
+  const greenwaste = assemblySectionItems("Green Waste", model)
+
+  const twoTrailerLines = greenwaste.filter((item) => /\btwo\s+trailer\s+loads?\b/i.test(item))
+  assert.equal(
+    twoTrailerLines.length,
+    1,
+    `Expected one two-trailer line. Got: ${greenwaste.join(" | ")}`,
+  )
+  assert.ok(
+    greenwaste.some((item) => /quarter/i.test(item)),
+    `Distinct fractional trailer line must remain. Got: ${greenwaste.join(" | ")}`,
+  )
+})
+
 test("garden tidy MVP extracts customer and address", () => {
   const transcript = acceptanceTranscript()
   const address = extractAddressDetails(transcript)
