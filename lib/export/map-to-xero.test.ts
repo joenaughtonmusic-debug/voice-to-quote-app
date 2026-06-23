@@ -13,6 +13,7 @@ import { buildPlantingExportableLines } from "./planting-export-lines"
 import { buildPavingExportableLines } from "./paving-export-lines"
 import { buildDeckingExportableLines } from "./decking-export-lines"
 import { buildRetainingExportableLines } from "./retaining-export-lines"
+import { buildGardenTidyExportableLines } from "./garden-tidy-export-lines"
 
 test("parseLabourAllowanceText parses two people for a full day", () => {
   const parsed = parseLabourAllowanceText("Two people for a full day")
@@ -362,4 +363,73 @@ test("retaining exportable lines preserve priced labour and materials from quote
   assert.equal(lines[1]?.unitAmount, 650)
   assert.ok((xeroLines[0]?.unitAmount ?? 0) > 0)
   assert.ok((xeroLines[1]?.unitAmount ?? 0) > 0)
+})
+
+test("structuredAllowanceLabourPrice returns allowanceWorkings for two people one and a quarter days", () => {
+  // 2 people × 1.25 days × 8 hrs/day = 20 hrs × $80/hr = $1,600
+  const quote = {
+    labour_allowance: "Two people for approximately one and a quarter days",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [
+      {
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "hours",
+        final_rate_used: "80",
+        quantity: "2",
+        total: "160.00",
+      },
+    ],
+    pricing_facts: [],
+  }
+
+  const structured = structuredAllowanceLabourPrice(quote)
+  assert.ok(structured !== null, "expected structured price to be resolved")
+  assert.equal(structured?.pricingSource, "structured_allowance")
+  assert.equal(structured?.amount, 1600)
+
+  const w = structured?.allowanceWorkings
+  assert.ok(w !== undefined, "expected allowanceWorkings to be present")
+  assert.equal(w?.people, 2)
+  assert.equal(w?.days, 1.25)
+  assert.equal(w?.hoursPerPerson, 8)
+  assert.equal(w?.totalHours, 20)
+  assert.equal(w?.rate, 80)
+  assert.equal(w?.rateUnit, "hours")
+  assert.ok(w?.sourceText.includes("one and a quarter"), "sourceText should include allowance description")
+})
+
+test("garden tidy exportable labour line carries labourWorkings when structured allowance is used", () => {
+  // 2 people × 1.25 days × 8 hrs/day = 20 hrs × $80/hr = $1,600
+  const quote = {
+    client_name: "Test",
+    site_address: "Test Address",
+    quote_title: "One-Off Garden Tidy",
+    job_type: "one_off_tidy",
+    customer_scope: ["Prune and shape hedges", "General tidy"],
+    labour_allowance: "Two people for approximately one and a quarter days",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [
+      {
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "hours",
+        final_rate_used: "80",
+        quantity: "2",
+        total: "160.00",
+      },
+    ],
+    pricing_facts: [],
+    greenwaste: "",
+  }
+
+  const lines = buildGardenTidyExportableLines(quote)
+  const labourLine = lines.find((l) => l.role === "labour")
+  assert.ok(labourLine !== undefined, "expected a labour exportable line")
+  assert.ok(labourLine?.labourWorkings !== undefined, "expected labourWorkings on labour exportable line")
+  assert.equal(labourLine?.labourWorkings?.people, 2)
+  assert.equal(labourLine?.labourWorkings?.days, 1.25)
+  assert.equal(labourLine?.labourWorkings?.totalHours, 20)
+  assert.equal(labourLine?.labourWorkings?.rate, 80)
+  assert.equal(labourLine?.unitAmount, 1600)
 })

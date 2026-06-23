@@ -8,6 +8,7 @@ import {
   taxTypeFromText,
   xeroItemCode,
 } from "./xero/helpers"
+import type { LabourAllowanceWorkings } from "./labour-line-builder"
 import type { XeroExportLineItem } from "./xero/types"
 
 export type ExportPricingSource =
@@ -42,7 +43,10 @@ export type ExportableQuoteLine = {
   pricingSource: ExportPricingSource
   quantityWasDefaulted?: boolean
   unitAmountWasDefaulted?: boolean
+  labourWorkings?: LabourAllowanceWorkings
 }
+
+export type { LabourAllowanceWorkings }
 
 export function accountCodeFromExportableLine(line: ExportableQuoteLine) {
   return cleanMetadataText(line.accountCode) ?? cleanMetadataText(line.salesAccountCode)

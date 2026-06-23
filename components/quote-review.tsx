@@ -54,6 +54,7 @@ import {
 } from "@/lib/template-recommendation-loading"
 import { deckingReviewFromQuoteFacts, type DeckingReviewModel } from "@/lib/trades/decking/review"
 import { retainingReviewFromQuoteFacts, type RetainingReviewModel } from "@/lib/trades/retaining/review"
+import { resolveLabourExportPrice, type LabourAllowanceWorkings } from "@/lib/export/labour-line-builder"
 
 type View = "customer" | "internal"
 export type CustomerPreviewMode = "standard" | "template"
@@ -139,6 +140,12 @@ export function QuoteReview({
   const quoteFacts = quoteFactsFromProcessedQuote(editedQuoteForReview)
   const deckingReview = deckingReviewFromQuoteFacts(quoteFacts)
   const retainingReview = retainingReviewFromQuoteFacts(quoteFacts)
+  const labourExportPrice = resolveLabourExportPrice({
+    pricing_facts: pricingFacts,
+    labour_allowance: editedQuoteForReview.labour_allowance,
+    primary_quote: editedQuoteForReview.primary_quote,
+    line_items: editedQuoteForReview.line_items,
+  })
   const reviewNotices = [
     ...buildQuoteReviewNotices({
     rawTranscript,
@@ -490,6 +497,9 @@ export function QuoteReview({
           )}
           {view === "internal" && deckingReview && <DeckingReviewCard review={deckingReview} />}
           {view === "internal" && retainingReview && <RetainingReviewCard review={retainingReview} />}
+          {view === "internal" && labourExportPrice.pricingSource !== "unpriced" && (
+            <LabourPricingCard labourPrice={labourExportPrice} />
+          )}
 
           {view === "customer" && (
             <TemplatePreviewControls
@@ -818,6 +828,63 @@ function RetainingReviewCard({ review }: { review: RetainingReviewModel }) {
           <p>Some retaining assumptions need review before sending.</p>
         </div>
       )}
+    </section>
+  )
+}
+
+function LabourPricingCard({ labourPrice }: { labourPrice: ReturnType<typeof resolveLabourExportPrice> }) {
+  const w = labourPrice.allowanceWorkings
+  const isStructured = labourPrice.pricingSource === "structured_allowance"
+  const isSpoken = labourPrice.pricingSource === "spoken_fixed"
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Labour Pricing</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            This is the labour price that will export to Xero.
+          </p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+            {isStructured ? "Structured allowance" : isSpoken ? "Spoken fixed price" : "Unpriced"}
+          </span>
+          <span className="text-sm font-semibold text-foreground">{money(labourPrice.unitAmount)}</span>
+        </div>
+
+        {isStructured && w && (
+          <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+            <p>
+              <span className="font-semibold text-foreground">{w.people}</span> people ×{" "}
+              <span className="font-semibold text-foreground">{w.days}</span> days ×{" "}
+              <span className="font-semibold text-foreground">{w.hoursPerPerson}</span> hrs/day ={" "}
+              <span className="font-semibold text-foreground">{w.totalHours} hrs</span> total
+            </p>
+            <p>
+              Labour rate:{" "}
+              <span className="font-semibold text-foreground">
+                ${w.rate} per labour hour
+              </span>
+            </p>
+            <p>
+              Total:{" "}
+              <span className="font-semibold text-foreground">{money(labourPrice.unitAmount)}</span>
+            </p>
+            <p className="mt-1 italic text-muted-foreground/80">Source: &ldquo;{w.sourceText}&rdquo;</p>
+          </div>
+        )}
+
+        {isSpoken && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Spoken customer price captured from transcript. Overrides allowance-based calculation.
+          </p>
+        )}
+      </div>
     </section>
   )
 }

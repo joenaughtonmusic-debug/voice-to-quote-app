@@ -160,6 +160,7 @@ export function buildGardenTidyExportableLines(quote: XeroPayloadQuote): Exporta
         gstRate: labourItem?.gst_rate ?? null,
         pricingSource: labourPrice.pricingSource,
         unitAmountWasDefaulted: labourPrice.unitAmountWasDefaulted,
+        labourWorkings: labourPrice.allowanceWorkings,
       },
       labourItem ?? undefined,
     ),

@@ -26,12 +26,23 @@ export type ParsedLabourAllowance = {
   sourceText: string
 }
 
+export type LabourAllowanceWorkings = {
+  people: number
+  days: number
+  hoursPerPerson: number
+  totalHours: number
+  rate: number
+  rateUnit: string
+  sourceText: string
+}
+
 export type ResolvedLabourPrice = {
   amount: number
   pricingSource: "spoken_fixed" | "structured_allowance" | "unpriced"
   quantity: number
   unitAmount: number
   unitAmountWasDefaulted: boolean
+  allowanceWorkings?: LabourAllowanceWorkings
 }
 
 function parseWordNumber(value: string) {
@@ -183,6 +194,15 @@ export function structuredAllowanceLabourPrice(quote: XeroPayloadQuote): Resolve
     quantity: 1,
     unitAmount: amount,
     unitAmountWasDefaulted: false,
+    allowanceWorkings: {
+      people: allowance.people,
+      days: allowance.days,
+      hoursPerPerson: HOURS_PER_DAY,
+      totalHours: allowance.hours,
+      rate,
+      rateUnit: unit,
+      sourceText: allowance.sourceText,
+    },
   }
 }
 
