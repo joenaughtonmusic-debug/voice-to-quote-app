@@ -126,6 +126,9 @@ function rangeForSentence(sentence: string): PricingDraft | null {
 function allowanceForSentence(sentence: string): PricingDraft | null {
   if (!/\bin\s+the\s+region\s+of\b|\ballow(?:ance)?\b/i.test(sentence)) return null
 
+  // "Allow N hours to <task>" is a labour quantity, not a price allowance.
+  if (/\ballow\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/i.test(sentence)) return null
+
   const amount = amountFromText(sentence)
   if (amount === null) return null
 

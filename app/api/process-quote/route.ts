@@ -13,7 +13,7 @@ import { isTruePlantCatalogItem } from "@/lib/plant-item-classification"
 import { matchPlantRowsFromLibrary, type KnowledgePlantRow } from "@/lib/plants"
 import { parseJsonWithRepair } from "@/lib/quote-json-repair"
 import { normalizeFencingProcessedQuote } from "@/lib/fencing-processing"
-import { normalizeRetainingProcessedQuote } from "@/lib/retaining-processing"
+import { normalizeRetainingProcessedQuote, correctMisclassifiedRetaining } from "@/lib/retaining-processing"
 import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
 import { hasPlantingCalculatorIntent } from "@/lib/trades/planting/intent"
 import { quoteOptionsFromPlantCalculatorResults } from "@/lib/trades/planting/quote-options"
@@ -2946,7 +2946,7 @@ export async function POST(request: Request) {
 
     try {
       const extraction = await extractQuoteWithRetry(extractionContext)
-      const quote = normalizeFencingProcessedQuote(normalizeRetainingProcessedQuote(applyAddressReviewDetails(
+      const quote = normalizeFencingProcessedQuote(correctMisclassifiedRetaining(normalizeRetainingProcessedQuote(applyAddressReviewDetails(
         removeCapturedLeadMissingInformation(
           surfaceLineItemMissingInformation(
             normalizeClassificationSpecificOutput(
@@ -2987,7 +2987,7 @@ export async function POST(request: Request) {
           leadDetails,
         ),
         leadDetails,
-      ), transcript), transcript)
+      ), transcript), transcript), transcript)
       quote.client_name = leadDetails.client_name ?? quote.client_name ?? "Not captured"
       quote.site_address = formatLeadSiteAddress(leadDetails) ?? quote.site_address ?? "Not captured"
       applyDeckingBillOptions(quote, transcript, knowledgeItemContext)
@@ -3038,7 +3038,7 @@ export async function POST(request: Request) {
         error_message: message,
       })
 
-      return NextResponse.json(normalizeFencingProcessedQuote(normalizeRetainingProcessedQuote(fallbackQuote(transcript, leadDetails, classification, message, templateContext), transcript), transcript))
+      return NextResponse.json(normalizeFencingProcessedQuote(correctMisclassifiedRetaining(normalizeRetainingProcessedQuote(fallbackQuote(transcript, leadDetails, classification, message, templateContext), transcript), transcript), transcript))
     }
   } catch {
     return NextResponse.json({ error: "Unexpected quote processing error." }, { status: 500 })

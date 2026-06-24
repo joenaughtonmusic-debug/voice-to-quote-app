@@ -7,10 +7,22 @@ import { detectRetainingFromText } from "./trades/retaining"
 const RETAINING_PATTERN = /\b(retaining\s+wall|timber\s+retaining|replace\s+(?:old\s+)?retaining|install\s+(?:new\s+)?retaining\s+wall)\b/i
 const RETAINING_SUPPORT_PATTERN = /\b(drainage|draincoil|novaflow|scoria|backfill|retaining\s+posts?|H4\s+posts?\s+at\s+\d+(?:\.\d+)?\s*(?:m|metres?|meters?)\s+spacing)\b/i
 
+/**
+ * Explicit negation phrases that override retaining pattern matches.
+ * "not a retaining wall" in an internal note must not classify the job as retaining.
+ */
+const RETAINING_NEGATION_PATTERN = /\bnot\s+a\s+retaining\s+wall\b|\bgarden\s+bed\s+renovation\b|\btimber\s+(?:border|edging)\s+job\b/i
+
+function retainingPatternMatch(transcript: string): boolean {
+  if (RETAINING_NEGATION_PATTERN.test(transcript)) return false
+  return RETAINING_PATTERN.test(transcript)
+}
+
 export function isRetainingTranscript(transcript: string) {
   if (isFencingTranscript(transcript)) return false
+  if (RETAINING_NEGATION_PATTERN.test(transcript)) return false
   const detection = detectRetainingFromText(transcript)
-  return RETAINING_PATTERN.test(transcript) || (detection.is_retaining && RETAINING_SUPPORT_PATTERN.test(transcript))
+  return retainingPatternMatch(transcript) || (detection.is_retaining && RETAINING_SUPPORT_PATTERN.test(transcript))
 }
 
 export function buildRetainingProcessedQuote(transcript: string): ProcessedQuote {
@@ -47,6 +59,53 @@ export function buildRetainingProcessedQuote(transcript: string): ProcessedQuote
 type RetainingNormalizableQuote = ProcessedQuote & {
   plant_calculator_results?: unknown[]
   quote_options?: Array<{ category?: string | null }>
+}
+
+/**
+ * Corrects a quote where the AI extraction set job_type to "retaining" but the
+ * deterministic transcript test disagrees — i.e. a false-positive retaining
+ * classification (e.g. a garden bed renovation with timber borders).
+ *
+ * When corrected, the stale "Retaining Wall Quote" title and template metadata
+ * are cleared. The quote_title is inferred from the transcript when possible,
+ * or set to "General Landscaping" as a safe fallback. Scope and materials are
+ * preserved as-is.
+ */
+export function correctMisclassifiedRetaining<T extends RetainingNormalizableQuote>(quote: T, transcript: string): T {
+  const isRetainingJob = /\bretaining\b/i.test(quote.job_type ?? "") ||
+    /\bretaining\b/i.test(quote.primary_quote?.job_type ?? "")
+
+  if (!isRetainingJob) return quote
+  if (isRetainingTranscript(transcript)) return quote
+
+  const inferredTitle = inferLandscapingTitle(transcript)
+  const inferredJobType = inferLandscapingJobType(transcript)
+
+  return {
+    ...quote,
+    job_type: inferredJobType,
+    quote_title: inferredTitle,
+    selected_template_id: /\bretaining\b/i.test(quote.selected_template_name ?? "") ? "" : quote.selected_template_id,
+    selected_template_name: /\bretaining\b/i.test(quote.selected_template_name ?? "") ? "" : quote.selected_template_name,
+    template_match_confidence: /\bretaining\b/i.test(quote.selected_template_name ?? "") ? "none" : quote.template_match_confidence,
+    primary_quote: {
+      ...quote.primary_quote,
+      job_type: inferredJobType,
+      quote_title: inferredTitle,
+    },
+  } as T
+}
+
+function inferLandscapingTitle(transcript: string): string {
+  if (/\bgarden\s+bed\s+renovation\b/i.test(transcript)) return "Garden Bed Renovation"
+  if (/\bgarden\s+bed\b/i.test(transcript)) return "Garden Bed Works"
+  if (/\btimber\s+(?:border|edging)\b|\bkeystone\s+edging\b/i.test(transcript)) return "Garden Bed Renovation"
+  return "General Landscaping"
+}
+
+function inferLandscapingJobType(transcript: string): string {
+  if (/\bgarden\s+bed\b|\btimber\s+(?:border|edging)\b|\bkeystone\s+edging\b/i.test(transcript)) return "garden_bed_renovation"
+  return "landscaping"
 }
 
 export function hasPlantingExcluded(transcript: string) {

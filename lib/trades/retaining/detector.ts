@@ -64,6 +64,9 @@ function buildRequest(text: string): RetainingCalculatorRequest {
   }
 }
 
+const GARDEN_BED_NEGATIVE_PATTERN =
+  /\bgarden\s+bed\b|\btimber\s+(?:border|edging)\b|\bkeystone\s+edging\b|\bgarden\s+border\b|\btimber\s+garden\b|\bnot\s+a\s+retaining\s+wall\b|\bedging\s+border\b|\bbed\s+border\b/i
+
 export function detectRetainingFromText(text: string): RetainingDetectionResult {
   const lowerText = text.toLowerCase()
   const reasons: string[] = []
@@ -74,9 +77,23 @@ export function detectRetainingFromText(text: string): RetainingDetectionResult 
     reasons.push("Retaining wall terms detected.")
   }
 
-  if (/\btimber\b|\bposts?\b|\bpost\s+holes?\b|\bdrainage\b|\bscoria\b|\bwall\b/.test(lowerText)) {
+  // Timber, posts, drainage etc. score points only in genuine retaining contexts.
+  // "timber" alone is too broad — it appears in decking, fencing, and garden borders.
+  // Score these only when retaining-specific language is also present.
+  const hasRetainingContext = /\bretaining\b|\bH4\s+posts?\b|\bbackfill\b|\bscoria\b|\bdrainage\b|\bnovaflow\b|\bdraincoil\b/.test(lowerText)
+  if (hasRetainingContext && /\btimber\b|\bposts?\b|\bpost\s+holes?\b|\bwall\b/.test(lowerText)) {
     score += 20
     reasons.push("Retaining-related structure or material terms detected.")
+  } else if (!hasRetainingContext && /\bdrainage\b|\bscoria\b|\bbackfill\b/.test(lowerText)) {
+    // drainage/scoria/backfill without retaining context — still a mild signal
+    score += 10
+    reasons.push("Drainage or fill material terms detected.")
+  }
+
+  // Negative guard: garden bed borders and edging are not retaining walls.
+  if (GARDEN_BED_NEGATIVE_PATTERN.test(text)) {
+    score -= 30
+    reasons.push("Garden bed / edging negative signal detected — not a retaining wall.")
   }
 
   const request = buildRequest(text)

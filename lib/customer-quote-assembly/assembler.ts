@@ -2,6 +2,7 @@ import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput } from "./types"
 import { assembleDeckingCustomerQuote, hasDeckingAssemblyFacts } from "./decking"
 import { assembleFencingCustomerQuote, hasFencingAssemblyFacts } from "./fencing"
 import { assembleGardenTidyCustomerQuote } from "./garden-tidy"
+import { assembleGeneralLandscapingCustomerQuote, hasGeneralLandscapingFacts } from "./general-landscaping"
 import { assembleMaintenanceCustomerQuote } from "./maintenance"
 import { assemblePavingCustomerQuote, hasPavingAssemblyFacts } from "./paving"
 import { assemblePlantingCustomerQuote } from "./planting"
@@ -34,6 +35,10 @@ function isDecking(value: string | null | undefined) {
 
 function isRetaining(value: string | null | undefined) {
   return /\bretaining|retaining\s+wall\b/i.test(value ?? "")
+}
+
+function isGeneralLandscaping(value: string | null | undefined) {
+  return /\blandscaping|general_landscaping|garden_bed(?:_renovation)?|garden.bed.(?:works?|renov)|miscellaneous\b/i.test(value ?? "")
 }
 
 function isFencing(value: string | null | undefined) {
@@ -147,6 +152,15 @@ export function assembleCustomerQuote(input: CustomerQuoteAssemblyInput): Custom
 
   if (isMaintenance(input.quote.job_type) || isMaintenance(input.quote.primary_quote.job_type)) {
     return assembleMaintenanceCustomerQuote(input)
+  }
+
+  // General landscaping: job types like "landscaping", "garden_bed_renovation", "general_landscaping".
+  // Only activates when the job_type explicitly signals a general landscaping workflow.
+  if (
+    (isGeneralLandscaping(input.quote.job_type) || isGeneralLandscaping(input.quote.primary_quote.job_type)) &&
+    hasGeneralLandscapingFacts(input)
+  ) {
+    return assembleGeneralLandscapingCustomerQuote(input)
   }
 
   return null

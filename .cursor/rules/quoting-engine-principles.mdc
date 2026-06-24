@@ -1,0 +1,33 @@
+---
+description: Core principles for the voice-to-quote estimating and quoting engine
+alwaysApply: true
+---
+
+# Quoting Engine Core Principles
+
+This app is an **estimating and quoting engine**, not a transcript-to-preview renderer. Every change must preserve the full pipeline.
+
+## A workflow is only working when ALL of these are aligned:
+- Customer preview (correct title, scope, materials, optional works — no internal data)
+- Internal review (labour quantities, materials, assumptions, warnings, flags)
+- Pricing facts (line items with correct quantities and rates)
+- Matched JMS lines (item codes, account codes, tax codes)
+- Xero/JMS export (descriptions, quantities, prices, codes — all correct)
+
+## Hours are quantities, never currency
+
+`Allow 7 hours` → labour quantity of **7 h**, NOT a pricing fact of `$7`.
+
+```
+// ❌ BAD — treats "Allow 7 hours" as a $7 allowance
+extractPricing("Allow 7 hours to remove edging") → { amount: 7 }
+
+// ✅ GOOD — labour hour phrases are quantities, not prices
+labourQuantity("Allow 7 hours to remove edging") → { hours: 7, task: "remove edging" }
+```
+
+Labour total for a multi-task job = **sum of all tasks**, not just the first.
+
+## Optional works must stay separate
+
+Optional works must never be merged into the main quote scope. They must appear in a distinct `Optional Works` section, both in customer preview and internal review.

@@ -1,0 +1,43 @@
+---
+description: What customer previews must and must not contain
+globs: lib/customer-quote-assembly/**
+alwaysApply: false
+---
+
+# Customer Preview Contract
+
+Customer-facing output must **never** expose:
+- Internal notes
+- Labour hour workings (`Allow N hours to…`)
+- Pricing facts or line item rates
+- Matched JMS lines or item codes
+- Account codes or tax codes
+- `[]` placeholders
+
+## Required sections (when data is present)
+
+| Section | Source |
+|---|---|
+| Scope of Work | `customer_scope` + `primary_quote.scope` (filtered) |
+| Materials | `quote.materials` |
+| Optional Works | `optional_quotes[].scope` |
+| Exclusions | `quote.exclusions` |
+
+## Internal review must preserve (not shown to customer)
+
+- Labour quantities (hours per task, total hours)
+- Material quantities and flags
+- Assumptions and missing information
+- Warnings and review notices
+- Account codes, tax codes, item/source mappings
+
+## Assembler guard rules
+
+```typescript
+// ❌ BAD — internal note leaks to customer
+sections: [{ title: "Notes", items: ["This is not a retaining wall"] }]
+
+// ✅ GOOD — internal notes filtered before assembly
+isInternalNote(value) → strip from all customer-facing sections
+isLabourLine(value)   → strip from all customer-facing sections
+```
