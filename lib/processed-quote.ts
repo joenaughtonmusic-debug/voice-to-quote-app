@@ -166,7 +166,9 @@ function matchedLineItemLines(items: QuoteLineItem[]) {
   return items.map((item) =>
     [
       item.item_code ? `${item.item_code} · ${item.item_name}` : item.item_name || item.description || "Unmatched item",
-      item.quantity ? `Qty ${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "",
+      item.quantity
+        ? `Qty ${item.quantity}${item.unit && !item.quantity.toLowerCase().includes(item.unit.toLowerCase()) ? ` ${item.unit}` : ""}`
+        : "",
       item.knowledge_base_rate ? `KB rate ${item.knowledge_base_rate}` : "",
       item.override_rate ? `Override ${item.override_rate}` : "",
       item.final_rate_used ? `Final rate ${item.final_rate_used}` : item.rate ? `Rate ${item.rate}` : "",

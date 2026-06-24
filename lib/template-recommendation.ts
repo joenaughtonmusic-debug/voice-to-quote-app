@@ -51,7 +51,7 @@ const STRONG_CATEGORY_ALIGNMENT_SCORE = 12
 const PLANTING_MAINTENANCE_MISMATCH_PENALTY = 80
 const CROSS_DOMAIN_MISMATCH_PENALTY = 80
 
-type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | "fencing" | null
+type TemplateDomain = "garden_tidy" | "maintenance" | "planting" | "decking" | "retaining" | "fencing" | "landscaping" | null
 
 const CATEGORY_LABELS: Partial<Record<QuoteFactCategory, string>> = {
   job_scope: "job scope",
@@ -270,6 +270,23 @@ function crossDomainMismatchPenalty(templateDomain: TemplateDomain, quoteDomain:
   }
 
   if (templateDomain === "decking" && quoteDomain !== "decking" && quoteDomain !== null) {
+    return CROSS_DOMAIN_MISMATCH_PENALTY
+  }
+
+  // Retaining and other heavy-construction templates must not be suggested for non-specialist jobs.
+  if (templateDomain === "retaining" && quoteDomain !== "retaining") {
+    return CROSS_DOMAIN_MISMATCH_PENALTY
+  }
+
+  // General landscaping jobs must not be pushed into specialist templates.
+  if (
+    quoteDomain === "landscaping" &&
+    (templateDomain === "planting" ||
+      templateDomain === "retaining" ||
+      templateDomain === "decking" ||
+      templateDomain === "fencing" ||
+      templateDomain === "garden_tidy")
+  ) {
     return CROSS_DOMAIN_MISMATCH_PENALTY
   }
 
@@ -611,6 +628,13 @@ function canonicalDomain(value: string | null | undefined): TemplateDomain {
   if (/\b(retaining|retainer)\b/.test(text)) return "retaining"
   if (/\b(fencing|fence|paling fence)\b/.test(text)) return "fencing"
   if (/\b(planting|hedge_planting|hedge planting|plant install|plant supply|supply plants|plants)\b/.test(text)) return "planting"
+  // Landscaping / garden-bed domain — checked last so specialist patterns above take priority.
+  if (/\b(general[_ ]landscaping|garden[_ ]bed[_ ]renovation|garden[_ ]bed[_ ]works?|landscaping[_ ]estimate|garden[_ ]bed)\b/.test(text)) {
+    return "landscaping"
+  }
+  if (/\blandscaping\b/.test(text) && !/\b(planting|maintenance|tidy)\b/.test(text)) {
+    return "landscaping"
+  }
   return null
 }
 

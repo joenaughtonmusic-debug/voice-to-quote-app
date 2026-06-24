@@ -31,6 +31,7 @@ import {
   transcriptMentionsHedgeTrimming,
   transcriptMentionsRecurringWork,
 } from "@/lib/quote-classification"
+import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "@/lib/core/labour-allowance-extraction"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const QUOTE_MODEL = process.env.OPENAI_QUOTE_MODEL ?? "gpt-4o-mini"
@@ -2118,6 +2119,16 @@ function extractQuantityNearMaterial(transcript: string, material: string) {
   return null
 }
 
+/**
+ * Returns the portion of the transcript before any "Optional works:" / "Optional:"
+ * section boundary. Materials mentioned only inside optional works are not required
+ * main-scope items and should not appear in the Matched JMS missing-materials list.
+ */
+function transcriptExcludingOptionalSection(transcript: string): string {
+  const boundary = transcript.search(/\boptional\s+works?\s*:/i)
+  return boundary >= 0 ? transcript.slice(0, boundary).trim() : transcript
+}
+
 function extractLandscapingMaterialMentions(transcript: string) {
   const materialPatterns = [
     /\b\d{2,4}\s*x\s*\d{2,4}\s*(?:h\d\s*)?(?:rough\s+sawn\s*)?(?:retaining\s*)?(?:posts?|timber|sleepers?|rails?)\b/gi,
@@ -2157,7 +2168,7 @@ function preserveLandscapingMaterialLineItems(
 ) {
   if (classification.specialist !== "landscaping") return quote
 
-  const materialMentions = extractLandscapingMaterialMentions(transcript)
+  const materialMentions = extractLandscapingMaterialMentions(transcriptExcludingOptionalSection(transcript))
 
   for (const { material, quantity } of materialMentions) {
     if (!quantity) continue
@@ -2317,6 +2328,82 @@ function applyDeterministicLabourAllowances(
   quote.internal_notes = Array.isArray(quote.internal_notes) ? quote.internal_notes : []
   if (!quote.internal_notes.some((note) => note.includes("Deterministic labour calculation:"))) {
     quote.internal_notes.push(`Deterministic labour calculation:\n${labourAllowance}`)
+  }
+
+  return quote
+}
+
+/**
+ * Applies per-task "Allow N hours to <task>" labour allowances deterministically.
+ * Handles transcripts like the Stephanie garden bed renovation that use individual
+ * hour phrases per task rather than the "N days, M people" crew pattern.
+ * Only fires when the days×people path has not already created a labour item.
+ */
+function applyPerTaskHourAllowances(
+  quote: z.infer<typeof processedQuoteSchema>,
+  transcript: string,
+  knowledgeItemContext: unknown[],
+  classification: QuoteClassification,
+) {
+  // Don't override labour items already set by the days×people deterministic path
+  if (quote.line_items.some((item) => /Deterministic labour allowance calculated from spoken days/i.test(item.match_reason ?? ""))) {
+    return quote
+  }
+
+  const allowances = extractPerTaskHourAllowances(transcript)
+  if (allowances.length === 0) return quote
+
+  const { totalHours, breakdownText } = summarisePerTaskHourAllowances(allowances)
+  const bestLabourItem = findBestLabourItem(knowledgeItemContext, transcript, classification)
+  const bestItemCode = typeof bestLabourItem?.item_code === "string" ? bestLabourItem.item_code : ""
+  const bestItemName = typeof bestLabourItem?.item_name === "string" ? bestLabourItem.item_name : "Labour"
+  const bestRate =
+    bestLabourItem?.sell_price === null || bestLabourItem?.sell_price === undefined
+      ? null
+      : String(bestLabourItem.sell_price)
+
+  // Replace any AI-extracted labour items (which may have wrong/missing quantities)
+  quote.line_items = quote.line_items.filter((item) => !hasLabourSignals(item))
+
+  const description = allowances.map((a) => `${a.label}: ${a.hours}h`).join("; ") + `; Total: ${totalHours}h`
+  const labourLineItem = {
+    item_code: bestItemCode,
+    item_name: bestItemName,
+    item_type: "labour",
+    description,
+    quantity: String(totalHours),
+    unit: "hours",
+    rate: bestRate,
+    knowledge_base_rate: bestRate,
+    override_rate: null,
+    final_rate_used: bestRate,
+    total: null,
+    match_confidence: bestLabourItem ? ("high" as const) : ("low" as const),
+    match_reason: "Deterministic per-task hour allowances summed from transcript.",
+    needs_review: bestRate === null,
+    warning: bestRate === null ? "Rate missing — pricing review required" : "",
+  }
+
+  quote.line_items.push({
+    ...labourLineItem,
+    total: calculateLineItemTotal(labourLineItem) ?? labourLineItem.total,
+  })
+
+  // Clear stale labour-quantity warnings now that quantity is known
+  quote.missing_information = quote.missing_information.filter(
+    (item) => !/\blabou?r\b/i.test(item) || !/\b(quantity|hours?)\b/i.test(item),
+  )
+  quote.confidence_warnings = quote.confidence_warnings.filter(
+    (item) => !/\blabou?r\b/i.test(item) || !/\b(quantity|hours?)\b/i.test(item),
+  )
+
+  const existingAllowance = quote.labour_allowance?.trim() ?? ""
+  const isPlaceholder = !existingAllowance || /^not\s+specified$/i.test(existingAllowance)
+  quote.labour_allowance = isPlaceholder ? breakdownText : `${existingAllowance}\n${breakdownText}`
+
+  quote.internal_notes = Array.isArray(quote.internal_notes) ? quote.internal_notes : []
+  if (!quote.internal_notes.some((note) => note.includes("Per-task labour:"))) {
+    quote.internal_notes.push(`Per-task labour:\n${breakdownText}`)
   }
 
   return quote
@@ -2957,10 +3044,15 @@ export async function POST(request: Request) {
                       enforcePlantCategoryMatching(
                         applyPlantingCalculator(
                           preserveGreenwasteUncertainty(
-                            applyDeterministicLabourAllowances(
-                              preserveLandscapingMaterialLineItems(
-                                preferTradeAwareLabourLineItems(extraction.quote, transcript, knowledgeItemContext, classification),
+                            applyPerTaskHourAllowances(
+                              applyDeterministicLabourAllowances(
+                                preserveLandscapingMaterialLineItems(
+                                  preferTradeAwareLabourLineItems(extraction.quote, transcript, knowledgeItemContext, classification),
+                                  transcript,
+                                  classification,
+                                ),
                                 transcript,
+                                knowledgeItemContext,
                                 classification,
                               ),
                               transcript,

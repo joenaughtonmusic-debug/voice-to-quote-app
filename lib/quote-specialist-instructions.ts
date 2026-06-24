@@ -30,7 +30,7 @@ export function getLandscapingExtractorInstructions() {
 - Internal calculation priorities: preserve every measurement and dimension exactly as spoken, including units; preserve labour stages, stage durations, material lists, construction sequence, timber sizes, concrete types, fasteners, aggregates, membranes, drainage products, and product names exactly as spoken.
 - Do not summarise labour-heavy or material-heavy work. Create separate detailed scope entries and line_items for distinct stages/material groups.
 - Preserve each distinct material as its own line item, even when no price is found. Do not collapse materials into one generic "Materials" line.
-- Preserve optional works as a separate list in primary_quote.notes, prefixed with "Optional:" or in the optional_works field.
+- Put all optional works items in the optional_quotes array as a single QuoteIntent entry (optional_quotes[0].scope = ["Remove weed species from the garden bed", "Remove apple tree stump", ...]). Do NOT add optional works to customer_scope, primary_quote.scope, or primary_quote.notes. Do NOT add materials that appear only in optional works scope to the root materials array or line_items.
 - Confidence warning triggers: missing measurements, unclear material quantities, unclear disposal, unclear access/machine needs, unclear drainage/falls, uncertain structural details, consent/engineering uncertainty, unknown finish specification, or rate/quantity gaps.
 - Put missing quantities, dimensions, specifications, and pricing into missing_information rather than inventing them.`
 }

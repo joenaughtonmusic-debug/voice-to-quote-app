@@ -3,6 +3,7 @@ import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAs
 function cleanLine(value: string) {
   return value
     .replace(/^\s*(?:scope|note|site\s+note|optional\s*:)\s*/i, "")
+    .replace(/^\s*:\s*/, "")
     .replace(/\s+/g, " ")
     .replace(/[.]+$/g, "")
     .replace(/^\[\s*\]$/, "")
@@ -66,6 +67,11 @@ function isOptionalLine(value: string) {
   return /^optional\s*(?:works?\s*)?:/i.test(value.trim())
 }
 
+/** Strip leading "Optional [works]: " prefix when extracting items from notes/scope. */
+function stripOptionalPrefix(value: string) {
+  return value.replace(/^optional\s*(?:works?\s*)?:\s*/i, "").trim()
+}
+
 function scopeOfWorkItems(input: CustomerQuoteAssemblyInput): string[] {
   return unique([
     ...input.quote.customer_scope,
@@ -90,12 +96,22 @@ function materialItems(input: CustomerQuoteAssemblyInput): string[] {
 
 function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
   const fromOptionalQuotes = input.quote.optional_quotes.flatMap((q) => q.scope)
-  const fromNotes = input.quote.primary_quote.notes.filter((note) =>
-    /^optional\b/i.test(note.trim()),
-  )
 
-  const items = unique([...fromOptionalQuotes, ...fromNotes])
+  // Fallback: scan notes and scope for lines with an "Optional [works]:" prefix — the AI
+  // sometimes uses primary_quote.notes instead of optional_quotes, particularly when the
+  // landscaping extractor instructions said "optional_works field" (incorrect field name).
+  const optionalPrefixSources = [
+    ...input.quote.primary_quote.notes,
+    ...input.quote.primary_quote.scope,
+    ...input.quote.customer_scope,
+  ]
+  const fromPrefixedLines = optionalPrefixSources
+    .filter((item) => isOptionalLine(item))
+    .map(stripOptionalPrefix)
+
+  const items = unique([...fromOptionalQuotes, ...fromPrefixedLines])
     .filter((item) => !isEmptyOrPlaceholder(item))
+    .filter((item) => !/^(?:title|job\s+type|cadence)\s*:/i.test(item))
     .map(normalizeLine)
     .filter(Boolean)
 
@@ -107,12 +123,30 @@ function section(title: string, items: string[]): CustomerQuoteAssemblySection |
   return cleaned.length > 0 ? { title, items: cleaned } : null
 }
 
+/** Returns true when a title is a raw machine slug (e.g. "garden_bed_renovation", "landscaping"). */
+function isRawJobTypeSlug(value: string) {
+  // All lowercase, only word chars and underscores — never a human-readable title
+  return /^[a-z][a-z0-9_]*$/.test(value)
+}
+
+function prettifyJobType(jobType: string): string {
+  const jt = jobType.toLowerCase()
+  if (/garden_bed_renovation|garden.bed.renov/i.test(jt)) return "Garden Bed Renovation"
+  if (/garden_bed|garden.bed/i.test(jt)) return "Garden Bed Works"
+  if (/general_landscaping|general.landscaping/i.test(jt)) return "General Landscaping"
+  if (/^landscaping$/.test(jt)) return "Landscaping"
+  return "General Landscaping"
+}
+
 function inferTitle(input: CustomerQuoteAssemblyInput): string {
   const title = input.quote.quote_title?.trim()
-  if (title && !/\bretaining\b/i.test(title)) return title
-  const jobType = (input.quote.job_type ?? "").toLowerCase()
-  if (/garden_bed_renovation|garden.bed.renov/i.test(jobType)) return "Garden Bed Renovation"
-  if (/garden_bed|garden.bed/i.test(jobType)) return "Garden Bed Works"
+  // Pass through human-readable titles that aren't retaining or raw slugs
+  if (title && !/\bretaining\b/i.test(title) && !isRawJobTypeSlug(title)) return title
+  // Raw slug or retaining title — derive a readable label from job_type
+  const jobType = input.quote.job_type?.trim() ?? ""
+  if (jobType) return prettifyJobType(jobType)
+  // Final fallback: prettify the raw title if it happens to be a job_type slug
+  if (title && isRawJobTypeSlug(title)) return prettifyJobType(title)
   return "General Landscaping"
 }
 

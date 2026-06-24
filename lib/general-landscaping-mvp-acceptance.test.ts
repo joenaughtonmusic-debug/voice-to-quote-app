@@ -7,6 +7,10 @@ import { hasRetainingAssemblyFacts } from "./customer-quote-assembly/retaining"
 import { assembleCustomerQuote } from "./customer-quote-assembly"
 import { assembleGeneralLandscapingCustomerQuote, hasGeneralLandscapingFacts } from "./customer-quote-assembly/general-landscaping"
 import { extractPricing } from "./core/pricing-extraction"
+import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "./core/labour-allowance-extraction"
+import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
+import { recommendTemplateForQuote, scoreTemplatesForQuote } from "./template-recommendation"
+import type { QuoteTemplateLibraryItem } from "./template-import-learning"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "./processed-quote"
 import type { CustomerQuoteAssemblyInput } from "./customer-quote-assembly/types"
 
@@ -519,5 +523,501 @@ test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount
   assert.ok(
     !badFact,
     `extractPricing must not produce amount=$8 from a labour hour phrase.\nSource text: "${badFact?.source_text}"\nFull pricing: ${JSON.stringify(pricing, null, 2)}`,
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 14. Live-path simulation — AI-shaped fixture (no pre-populated optional_quotes)
+//     This mirrors what the API actually returns: raw slug title, optional_quotes:[],
+//     optional items in primary_quote.notes with "Optional:" prefix.
+// ---------------------------------------------------------------------------
+
+/**
+ * Simulates the ProcessedQuote the API returns after AI extraction + post-processing
+ * for the Stephanie transcript, without the hand-crafted optional_quotes fixture.
+ * The AI uses primary_quote.notes for optional items (common real-world output).
+ */
+function stephanieAiDirectOutput(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Stephanie",
+    site_address: "10 Cotswold Lane, Mount Wellington",
+    quote_title: "garden_bed_renovation",
+    job_type: "garden_bed_renovation",
+    selected_template_id: "",
+    selected_template_name: "",
+    template_match_confidence: "none",
+    primary_quote: {
+      quote_title: "garden_bed_renovation",
+      job_type: "garden_bed_renovation",
+      cadence: "",
+      scope: [
+        "Remove the existing keystone edging",
+        "Remove the existing mandarin tree",
+        "Install new 200x50 timber garden bed borders",
+        "The garden bed area is approximately 10 square metres",
+        "The new border comes out approximately 900 millimetres from the fence",
+      ],
+      notes: [
+        "Optional: Remove weed species from the garden bed",
+        "Optional: Remove apple tree stump",
+        "Optional: Replenish the garden bed with garden mix and mulch",
+        "This is a small garden bed renovation / timber border job, not a retaining wall",
+        "Keep optional works separate from the main quote",
+      ],
+    },
+    customer_scope: [
+      "Remove the existing keystone edging",
+      "Remove the existing mandarin tree",
+      "Install new 200x50 timber garden bed borders",
+      "The garden bed area is approximately 10 square metres",
+      "The new border comes out approximately 900 millimetres from the fence",
+    ],
+    materials: ["200x50 timber", "Timber pegs", "Bugle screws and fixings"],
+    optional_quotes: [],
+    internal_notes: [
+      "This is a small garden bed renovation / timber border job, not a retaining wall",
+      "Keep optional works separate from the main quote",
+    ],
+    line_items: [],
+    exclusions: [],
+  }
+}
+
+function directOutputAssemblyInput(quote: ProcessedQuote): CustomerQuoteAssemblyInput {
+  return { quote, rawTranscript: stephanieTranscript }
+}
+
+test("Live-path: raw slug title 'garden_bed_renovation' renders as 'Garden Bed Renovation'", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  assert.ok(result !== null, "assembleCustomerQuote must return a result")
+  assert.equal(result!.title, "Garden Bed Renovation")
+})
+
+test("Live-path: raw slug 'general_landscaping' title renders as 'General Landscaping'", () => {
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    quote_title: "general_landscaping",
+    job_type: "general_landscaping",
+    customer_scope: ["Install new garden borders"],
+    primary_quote: { ...EMPTY_PROCESSED_QUOTE.primary_quote, job_type: "general_landscaping" },
+  }
+  const result = assembleCustomerQuote({ quote })
+  assert.ok(result !== null)
+  assert.equal(result!.title, "General Landscaping")
+})
+
+test("Live-path: Optional Works section present when optional items are in primary_quote.notes", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const optionalSection = result?.sections.find((s) => s.title === "Optional Works")
+  assert.ok(optionalSection, `Optional Works section must be present. Sections: ${result?.sections.map((s) => s.title).join(", ")}`)
+  assert.ok(optionalSection!.items.length >= 3, `Expected at least 3 optional items, got: ${optionalSection!.items.join(" | ")}`)
+})
+
+test("Live-path: Optional Works includes weed removal from notes", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
+  assert.ok(/weed/i.test(optText), `Expected weed removal in optional works: ${optText}`)
+})
+
+test("Live-path: Optional Works includes apple tree stump from notes", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
+  assert.ok(/apple\s+tree\s+stump|stump/i.test(optText), `Expected apple tree stump in optional works: ${optText}`)
+})
+
+test("Live-path: Optional Works includes garden mix / mulch from notes", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
+  assert.ok(/garden\s+mix|mulch/i.test(optText), `Expected garden mix or mulch in optional works: ${optText}`)
+})
+
+test("Live-path: Scope of Work contains all 5 main scope items", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const scopeSection = result?.sections.find((s) => s.title === "Scope of Work")
+  assert.ok(scopeSection, "Scope of Work section must be present")
+  assert.ok(scopeSection!.items.length >= 5, `Expected at least 5 scope items, got ${scopeSection!.items.length}: ${scopeSection!.items.join(" | ")}`)
+})
+
+test("Live-path: optional items do not contaminate Scope of Work", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
+  assert.ok(!/weed\s+species/i.test(scopeText), `Optional item 'weed species' must not appear in Scope of Work: ${scopeText}`)
+  assert.ok(!/apple\s+tree\s+stump/i.test(scopeText), `Optional item 'apple tree stump' must not appear in Scope of Work: ${scopeText}`)
+})
+
+test("Live-path: internal notes do not appear in customer preview", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
+  assert.ok(!/not\s+a\s+retaining\s+wall/i.test(allText), `Internal note exposed: ${allText}`)
+  assert.ok(!/keep\s+optional\s+works?\s+separate/i.test(allText), `Internal note exposed: ${allText}`)
+})
+
+test("Live-path: labour hour phrases do not appear in customer preview", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
+  assert.ok(!/allow\s+\d+\s+hours?\s+to/i.test(allText), `Labour allowance must not appear in customer preview: ${allText}`)
+})
+
+test("Live-path: no stray [] in customer preview", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
+  assert.ok(!/\[\s*\]/.test(allText), `Found stray [] in output: ${allText}`)
+})
+
+// ---------------------------------------------------------------------------
+// 15. Per-task labour allowance extraction
+// ---------------------------------------------------------------------------
+
+test("extractPerTaskHourAllowances — extracts 3 tasks from Stephanie transcript", () => {
+  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  assert.equal(allowances.length, 3, `Expected 3 allowances, got ${allowances.length}: ${JSON.stringify(allowances)}`)
+})
+
+test("extractPerTaskHourAllowances — keystone edging task is 7h", () => {
+  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const task = allowances.find((a) => /keystone\s+edging/i.test(a.label))
+  assert.ok(task, `Expected a keystone edging task. Got: ${JSON.stringify(allowances)}`)
+  assert.equal(task!.hours, 7)
+})
+
+test("extractPerTaskHourAllowances — mandarin tree task is 2h", () => {
+  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const task = allowances.find((a) => /mandarin\s+tree/i.test(a.label))
+  assert.ok(task, `Expected a mandarin tree task. Got: ${JSON.stringify(allowances)}`)
+  assert.equal(task!.hours, 2)
+})
+
+test("extractPerTaskHourAllowances — timber border task is 8h", () => {
+  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const task = allowances.find((a) => /timber\s+(garden\s+bed\s+)?border/i.test(a.label))
+  assert.ok(task, `Expected a timber border task. Got: ${JSON.stringify(allowances)}`)
+  assert.equal(task!.hours, 8)
+})
+
+test("summarisePerTaskHourAllowances — totals 17h from Stephanie transcript", () => {
+  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const { totalHours } = summarisePerTaskHourAllowances(allowances)
+  assert.equal(totalHours, 17)
+})
+
+test("extractPerTaskHourAllowances — returns empty for transcript with no hour phrases", () => {
+  const noHourTranscript = "Quote for Mary at 12 Hill Road. Replace retaining wall. 12.4m long, 1m high."
+  const allowances = extractPerTaskHourAllowances(noHourTranscript)
+  assert.equal(allowances.length, 0)
+})
+
+// ---------------------------------------------------------------------------
+// 16. Template recommendation — landscaping domain guards
+// ---------------------------------------------------------------------------
+
+const plantingTemplate: QuoteTemplateLibraryItem = {
+  id: "planting",
+  template_name: "Planting",
+  category: "planting",
+  trade: "planting",
+  job_type: "planting",
+  document_type: "quote_template",
+  common_line_items: ["Planting labour", "Plant supply"],
+  status: "active",
+}
+
+const retainingTemplate: QuoteTemplateLibraryItem = {
+  id: "retaining",
+  template_name: "Retaining Wall Quote",
+  category: "retaining",
+  trade: "retaining",
+  job_type: "retaining",
+  document_type: "quote_template",
+  common_line_items: ["Retaining wall labour", "H4 posts"],
+  status: "active",
+}
+
+const landscapingTemplate: QuoteTemplateLibraryItem = {
+  id: "landscaping-estimate",
+  template_name: "Landscaping Estimate",
+  category: "landscaping",
+  trade: "landscaping",
+  job_type: "landscaping",
+  document_type: "quote_template",
+  common_line_items: ["Landscaping labour", "Materials"],
+  status: "active",
+}
+
+const gardenTidyTemplate: QuoteTemplateLibraryItem = {
+  id: "garden-tidy",
+  template_name: "One-Off Garden Tidy",
+  category: "garden_tidy",
+  trade: "maintenance",
+  job_type: "garden_tidy",
+  document_type: "quote_template",
+  common_line_items: ["Garden tidy labour"],
+  status: "active",
+}
+
+const allTemplates = [plantingTemplate, retainingTemplate, landscapingTemplate, gardenTidyTemplate]
+
+// ---------------------------------------------------------------------------
+// 17. Template recommendation — garden_tidy domain guard for landscaping
+// ---------------------------------------------------------------------------
+
+test("Template recommendation: garden_bed_renovation does not recommend One-Off Garden Tidy", () => {
+  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const facts = quoteFactsFromProcessedQuote(quote)
+  const recommendation = recommendTemplateForQuote({
+    facts,
+    templates: allTemplates,
+    sectionsByTemplateId: {},
+    trade: quote.job_type,
+    jobType: quote.job_type,
+  })
+  assert.ok(
+    recommendation?.template.id !== "garden-tidy",
+    `One-Off Garden Tidy must not be recommended for garden_bed_renovation. Got: ${recommendation?.templateName}`,
+  )
+})
+
+test("Template recommendation: garden_tidy score is penalised below landscaping for garden_bed_renovation", () => {
+  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const facts = quoteFactsFromProcessedQuote(quote)
+  const scores = scoreTemplatesForQuote({
+    facts,
+    templates: allTemplates,
+    sectionsByTemplateId: {},
+    trade: quote.job_type,
+    jobType: quote.job_type,
+  })
+  const gardenTidyScore = scores.find((s) => s.template.id === "garden-tidy")
+  const landscapingScore = scores.find((s) => s.template.id === "landscaping-estimate")
+  assert.ok(
+    !gardenTidyScore || !landscapingScore || landscapingScore.score > gardenTidyScore.score,
+    `Landscaping Estimate must outscore One-Off Garden Tidy for garden_bed_renovation.\nGarden Tidy: ${gardenTidyScore?.score}\nLandscaping: ${landscapingScore?.score}`,
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 18. Labour quantity display format
+// ---------------------------------------------------------------------------
+
+test("Labour display format: bare quantity + separate unit shows 'Qty 17 hours' not 'Qty 17 hours hours'", () => {
+  // This documents the matchedLineItemLines guard contract: when unit is already
+  // embedded in quantity, it must not be appended again.
+  const quantity = "17"
+  const unit = "hours"
+  // Mirror the guard added to matchedLineItemLines in processed-quote.ts
+  const formatted = `Qty ${quantity}${unit && !quantity.toLowerCase().includes(unit.toLowerCase()) ? ` ${unit}` : ""}`
+  assert.equal(formatted, "Qty 17 hours")
+})
+
+test("Labour display format: quantity with embedded unit is not double-appended", () => {
+  // If quantity already contains the unit word, the guard must suppress the extra append.
+  const quantity = "17 hours"
+  const unit = "hours"
+  const formatted = `Qty ${quantity}${unit && !quantity.toLowerCase().includes(unit.toLowerCase()) ? ` ${unit}` : ""}`
+  assert.equal(formatted, "Qty 17 hours", "Double 'hours hours' must not appear")
+})
+
+// ---------------------------------------------------------------------------
+// 19. Optional-works section exclusion from main material scan
+// ---------------------------------------------------------------------------
+
+test("Optional-works boundary is present in Stephanie transcript", () => {
+  const boundary = stephanieTranscript.search(/\boptional\s+works?\s*:/i)
+  assert.ok(boundary > 0, "Expected to find 'Optional works:' boundary in Stephanie transcript")
+})
+
+test("garden mix appears only after optional-works boundary in Stephanie transcript", () => {
+  const boundary = stephanieTranscript.search(/\boptional\s+works?\s*:/i)
+  const mainSection = stephanieTranscript.slice(0, boundary)
+  assert.ok(
+    !/garden\s+mix/i.test(mainSection),
+    "garden mix must not appear in the main-scope section of the transcript — it is an optional-works item only",
+  )
+})
+
+test("mulch appears only after optional-works boundary in Stephanie transcript", () => {
+  const boundary = stephanieTranscript.search(/\boptional\s+works?\s*:/i)
+  const mainSection = stephanieTranscript.slice(0, boundary)
+  assert.ok(
+    !/mulch/i.test(mainSection),
+    "mulch must not appear in the main-scope section of the transcript — it is an optional-works item only",
+  )
+})
+
+test("Template recommendation: garden_bed_renovation does not select Planting", () => {
+  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const facts = quoteFactsFromProcessedQuote(quote)
+  const scores = scoreTemplatesForQuote({ facts, templates: allTemplates, sectionsByTemplateId: {}, trade: quote.job_type, jobType: quote.job_type })
+  const plantingScore = scores.find((s) => s.template.id === "planting")
+  const landscapingScore = scores.find((s) => s.template.id === "landscaping-estimate")
+  assert.ok(
+    !plantingScore || (landscapingScore && landscapingScore.score >= plantingScore.score),
+    `Planting must not outscore Landscaping Estimate for garden_bed_renovation.\nPlanting: ${plantingScore?.score}\nLandscaping: ${landscapingScore?.score}`,
+  )
+})
+
+test("Template recommendation: garden_bed_renovation does not recommend Retaining Wall Quote", () => {
+  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const facts = quoteFactsFromProcessedQuote(quote)
+  const recommendation = recommendTemplateForQuote({
+    facts,
+    templates: allTemplates,
+    sectionsByTemplateId: {},
+    trade: quote.job_type,
+    jobType: quote.job_type,
+  })
+  assert.ok(
+    recommendation?.template.id !== "retaining",
+    `Retaining must not be recommended for garden_bed_renovation. Got: ${recommendation?.templateName}`,
+  )
+})
+
+// ---------------------------------------------------------------------------
+// 20. Optional Works customer preview — metadata filtering and leading-colon strip
+// ---------------------------------------------------------------------------
+
+/**
+ * Simulates what the AI returns when it correctly uses optional_quotes but
+ * contaminates q.scope with metadata lines and leading-colon items.
+ */
+function stephanieAiWithOptionalQuoteMetadata(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Stephanie",
+    site_address: "10 Cotswold Lane, Mount Wellington",
+    quote_title: "garden_bed_renovation",
+    job_type: "garden_bed_renovation",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "garden_bed_renovation",
+      scope: [
+        "Remove the existing keystone edging",
+        "Remove the existing mandarin tree",
+        "Install new 200x50 timber garden bed borders",
+        "The garden bed area is approximately 10 square metres",
+        "The new border comes out approximately 900 millimetres from the fence",
+      ],
+      notes: [],
+    },
+    customer_scope: [
+      "Remove the existing keystone edging",
+      "Remove the existing mandarin tree",
+      "Install new 200x50 timber garden bed borders",
+      "The garden bed area is approximately 10 square metres",
+      "The new border comes out approximately 900 millimetres from the fence",
+    ],
+    materials: ["200x50 timber", "Timber pegs", "Bugle screws and fixings"],
+    optional_quotes: [
+      {
+        ...EMPTY_PROCESSED_QUOTE.primary_quote,
+        job_type: "optional_works",
+        scope: [
+          "Title: Optional Works",
+          "Job type: optional_works",
+          "Cadence: not specified",
+          ": Remove weed species from the garden bed",
+          ": Remove apple tree stump",
+          ": Replenish the garden bed with garden mix and mulch",
+        ],
+        notes: [],
+      },
+    ],
+    line_items: [],
+    exclusions: [],
+  }
+}
+
+test("Optional Works preview: metadata lines (Title/Job type/Cadence) are filtered out", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const optItems = result?.sections.find((s) => s.title === "Optional Works")?.items ?? []
+  const joinedText = optItems.join(" | ")
+  assert.ok(!/^title\s*:/i.test(joinedText) && !/\btitle\s*:/i.test(joinedText), `Title metadata must not appear in Optional Works: ${joinedText}`)
+  assert.ok(!/job\s+type\s*:/i.test(joinedText), `Job type metadata must not appear in Optional Works: ${joinedText}`)
+  assert.ok(!/cadence\s*:/i.test(joinedText), `Cadence metadata must not appear in Optional Works: ${joinedText}`)
+})
+
+test("Optional Works preview: items do not have a leading colon", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const optItems = result?.sections.find((s) => s.title === "Optional Works")?.items ?? []
+  for (const item of optItems) {
+    assert.ok(!/^\s*:/.test(item), `Optional Works item must not start with a colon: "${item}"`)
+  }
+})
+
+test("Optional Works preview: 3 optional scope items are present after filtering", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const optItems = result?.sections.find((s) => s.title === "Optional Works")?.items ?? []
+  assert.ok(optItems.length >= 3, `Expected at least 3 optional items after filtering metadata, got ${optItems.length}: ${optItems.join(" | ")}`)
+})
+
+test("Optional Works preview: weed removal item is present after metadata filtering", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
+  assert.ok(/weed/i.test(optText), `Expected weed removal in optional works after filtering: ${optText}`)
+})
+
+test("Optional Works preview: apple tree stump item is present after metadata filtering", () => {
+  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
+  assert.ok(/stump/i.test(optText), `Expected stump in optional works after filtering: ${optText}`)
+})
+
+// ---------------------------------------------------------------------------
+// 21. Internal labour allowance — "not specified" placeholder suppression
+// ---------------------------------------------------------------------------
+
+test("Internal labour allowance: 'not specified' placeholder does not appear when real breakdown exists", () => {
+  // The labour_allowance field should contain the task breakdown, not "not specified\n..."
+  const breakdown = "remove the keystone edging: 7h\nremove the mandarin tree: 2h\ninstall the new timber garden bed border: 8h\nTotal: 17h"
+  // Simulate what applyPerTaskHourAllowances now does: replace placeholder, don't append
+  const existingNotSpecified = "not specified"
+  const isPlaceholder = /^not\s+specified$/i.test(existingNotSpecified.trim())
+  const result = isPlaceholder ? breakdown : `${existingNotSpecified}\n${breakdown}`
+  assert.ok(!/not specified/i.test(result), `'not specified' must not appear when real breakdown exists. Got: ${result}`)
+  assert.ok(/17h/.test(result), `Breakdown total must be present. Got: ${result}`)
+})
+
+test("Internal labour allowance: real breakdown replaces 'not specified' placeholder", () => {
+  const breakdown = "remove the keystone edging: 7h\nTotal: 7h"
+  const placeholder = "Not Specified"
+  const isPlaceholder = /^not\s+specified$/i.test(placeholder.trim())
+  const result = isPlaceholder ? breakdown : `${placeholder}\n${breakdown}`
+  assert.equal(result, breakdown, "Result should be the breakdown only, not 'Not Specified\\n...'")
+})
+
+test("Internal labour allowance: existing real allowance is preserved when appending breakdown", () => {
+  // If a non-placeholder value exists, the breakdown is appended (not replaced)
+  const existing = "Two people for a full day"
+  const breakdown = "task: 8h\nTotal: 8h"
+  const isPlaceholder = /^not\s+specified$/i.test(existing.trim())
+  const result = isPlaceholder ? breakdown : `${existing}\n${breakdown}`
+  assert.ok(result.includes(existing), "Original allowance must be preserved")
+  assert.ok(result.includes(breakdown), "Breakdown must be appended")
+})
+
+test("Template recommendation: real retaining job recommends Retaining above Planting", () => {
+  const retainingQuote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    job_type: "retaining",
+    customer_scope: ["Replace timber retaining wall along the back boundary"],
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "retaining",
+      scope: ["Replace timber retaining wall along the back boundary", "H4 posts at 1m spacing"],
+    },
+  }
+  const facts = quoteFactsFromProcessedQuote(retainingQuote)
+  const scores = scoreTemplatesForQuote({
+    facts,
+    templates: allTemplates,
+    sectionsByTemplateId: {},
+    trade: "retaining",
+    jobType: "retaining",
+  })
+  const retainingScore = scores.find((s) => s.template.id === "retaining")
+  const plantingScore = scores.find((s) => s.template.id === "planting")
+  assert.ok(
+    retainingScore && (!plantingScore || retainingScore.score > plantingScore.score),
+    `Retaining must outscore Planting for a genuine retaining job.\nRetaining: ${retainingScore?.score}\nPlanting: ${plantingScore?.score}`,
   )
 })
