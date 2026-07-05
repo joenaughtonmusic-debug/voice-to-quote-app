@@ -57,6 +57,7 @@ export type ProcessedQuote = {
   line_items: QuoteLineItem[]
   plant_calculator_results?: PlantCalculatorResult[]
   quote_options?: QuoteOption[]
+  audit_result?: import("@/lib/quote-auditor/types").AuditResult
 }
 
 export type EditableQuoteSection = {

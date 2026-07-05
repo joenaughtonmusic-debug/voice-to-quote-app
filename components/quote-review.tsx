@@ -500,6 +500,9 @@ export function QuoteReview({
           {view === "internal" && labourExportPrice.pricingSource !== "unpriced" && (
             <LabourPricingCard labourPrice={labourExportPrice} />
           )}
+          {view === "internal" && processedQuote.audit_result && (
+            <QuoteAuditCard auditResult={processedQuote.audit_result} />
+          )}
 
           {view === "customer" && (
             <TemplatePreviewControls
@@ -884,6 +887,91 @@ function LabourPricingCard({ labourPrice }: { labourPrice: ReturnType<typeof res
             Spoken customer price captured from transcript. Overrides allowance-based calculation.
           </p>
         )}
+      </div>
+    </section>
+  )
+}
+
+function QuoteAuditCard({ auditResult }: { auditResult: NonNullable<ProcessedQuote["audit_result"]> }) {
+  const hasErrors = auditResult.issues.some((i) => i.severity === "error")
+  const hasWarnings = auditResult.issues.some((i) => i.severity === "warning")
+
+  const statusColour = hasErrors
+    ? "bg-destructive/10 text-destructive border-destructive/30"
+    : hasWarnings
+      ? "bg-warning/10 text-warning-foreground border-warning/30"
+      : "bg-green-50 text-green-800 border-green-200"
+
+  const statusLabel =
+    auditResult.audit_status === "pass"
+      ? "Pass"
+      : auditResult.audit_status === "needs_review"
+        ? "Needs Review"
+        : auditResult.audit_status === "fail"
+          ? "Fail"
+          : "Corrected"
+
+  if (auditResult.audit_status === "pass" && auditResult.issues.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Quote Audit</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Deterministic post-processing checks. Internal only — does not affect customer preview.
+          </p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusColour}`}>
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="grid gap-2">
+        {auditResult.issues.map((issue) => {
+          const severityColour =
+            issue.severity === "error"
+              ? "border-destructive/40 bg-destructive/5"
+              : issue.severity === "warning"
+                ? "border-warning/40 bg-warning/5"
+                : "border-border bg-secondary/30"
+          return (
+            <div key={issue.id} className={`rounded-xl border p-3 ${severityColour}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono font-semibold text-muted-foreground">{issue.id}</span>
+                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {issue.category.replace("_", " ")}
+                </span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  issue.severity === "error" ? "bg-destructive/20 text-destructive" : issue.severity === "warning" ? "bg-warning/20 text-warning-foreground" : "bg-secondary text-muted-foreground"
+                }`}>
+                  {issue.severity}
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm text-foreground">{issue.message}</p>
+              {issue.evidence && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="font-semibold">Evidence:</span> {issue.evidence}
+                </p>
+              )}
+              {issue.expected && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  <span className="font-semibold">Expected:</span> {issue.expected}
+                </p>
+              )}
+              {issue.actual && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  <span className="font-semibold">Actual:</span> {issue.actual}
+                </p>
+              )}
+              {issue.suggested_fix && (
+                <p className="mt-1 text-xs italic text-muted-foreground">{issue.suggested_fix}</p>
+              )}
+            </div>
+          )
+        })}
       </div>
     </section>
   )

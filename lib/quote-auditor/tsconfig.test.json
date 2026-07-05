@@ -1,0 +1,31 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/quote-auditor-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./index.ts",
+    "./types.ts",
+    "./validators/v01-unit-sanity.ts",
+    "./validators/v02-pricing-facts.ts",
+    "./validators/v03-labour-consistency.ts",
+    "../processed-quote.ts",
+    "../core/pricing-extraction/types.ts",
+    "../core/pricing-extraction/index.ts",
+    "../export/labour-line-builder.ts",
+    "../export/xero/helpers.ts",
+    "../export/xero/types.ts",
+    "../quote-options.ts",
+    "../calculators/planting/index.ts"
+  ]
+}

@@ -33,6 +33,7 @@ import {
 } from "@/lib/quote-classification"
 import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "@/lib/core/labour-allowance-extraction"
 import { normaliseDaysLabourLineItem } from "@/lib/export/labour-line-builder"
+import { auditProcessedQuote } from "@/lib/quote-auditor"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const QUOTE_MODEL = process.env.OPENAI_QUOTE_MODEL ?? "gpt-4o-mini"
@@ -3089,6 +3090,16 @@ export async function POST(request: Request) {
       applyPlantingMaterialOptions(quote, transcript, knowledgeItemContext)
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       normaliseDaysLabourLineItem(quote, transcript)
+
+      // Deterministic Quote Auditor — runs after all pipeline steps so it sees
+      // the final line_items, labour_allowance, and plant_calculator_results.
+      // Result is attached to the quote for Internal View display; it never
+      // blocks quote creation or export in this batch.
+      quote.audit_result = auditProcessedQuote({
+        rawTranscript: transcript,
+        processedQuote: quote,
+      })
+
       quote.missing_information = Array.isArray(quote.missing_information) ? quote.missing_information : []
 
       if (!leadDetails.client_name && !quote.missing_information.includes("Client name not captured")) {

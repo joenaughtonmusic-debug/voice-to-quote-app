@@ -32,6 +32,7 @@
     "test:photos-mvp": "tsc --project lib/photos-mvp-acceptance.tsconfig.test.json && node --test .tmp/photos-mvp-tests/lib/photos-mvp-acceptance.test.js",
     "test:quote-draft-options": "tsc --project lib/quote-draft-options.tsconfig.test.json && node --test .tmp/quote-draft-options-tests/lib/quote-draft-options.test.js",
     "test:export-mapper": "tsc --project lib/export/tsconfig.test.json && node --test .tmp/export-mapper-tests/lib/export/map-to-xero.test.js",
+    "test:quote-auditor": "tsc --project lib/quote-auditor/tsconfig.test.json && node --test .tmp/quote-auditor-tests/lib/quote-auditor/index.test.js",
     "start": "next start",
     "lint": "eslint ."
   },
