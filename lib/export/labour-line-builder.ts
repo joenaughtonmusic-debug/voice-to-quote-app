@@ -182,7 +182,11 @@ export function structuredAllowanceLabourPrice(quote: XeroPayloadQuote): Resolve
   if (!rateInfo) return null
 
   const { rate, unit } = rateInfo
-  const usesDayRate = /\b(days?|day\s*rate|daily)\b/i.test(unit)
+  // Only treat the rate as a day rate when the line-item unit explicitly says
+  // "day rate", "daily rate", or "per day". A unit of "days" describes the
+  // quantity (e.g. "1.5 days"), not the rate basis — in that case the KB rate
+  // is still per hour and we must multiply converted hours × rate.
+  const usesDayRate = /\b(day[-_\s]?rate|daily[-_\s]?rate|per[-_\s]?day)\b/i.test(unit)
   const personDays = allowance.people * allowance.days
 
   const amount = usesDayRate ? personDays * rate : allowance.hours * rate
@@ -235,4 +239,127 @@ export function resolveLabourExportPrice(
 export function spokenFixedLabourPrice(pricingFacts: PricingFact[] | undefined) {
   const spoken = spokenCustomerFixedPrice({ pricing_facts: pricingFacts })
   return typeof spoken?.amount === "number" && Number.isFinite(spoken.amount) ? spoken.amount : null
+}
+
+type LabourLineItem = {
+  item_name?: string | null
+  item_type?: string | null
+  unit?: string | null
+  quantity?: string | null
+  final_rate_used?: string | null
+  rate?: string | null
+  knowledge_base_rate?: string | null
+  total?: string | null
+  match_reason?: string | null
+}
+
+function isLabourItem(item: LabourLineItem) {
+  return /\blabou?r\b/i.test(item.item_type ?? "") || /\blabou?r\b/i.test(item.item_name ?? "")
+}
+
+function quantityNumericValue(quantity: string | null | undefined) {
+  if (!quantity?.trim()) return null
+  const match = quantity.trim().match(/^(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  const value = Number(match[1])
+  return Number.isFinite(value) ? value : null
+}
+
+function isHourlyLabourUnit(unit: string | null | undefined) {
+  const normalized = (unit ?? "").trim().toLowerCase()
+  return !normalized || /^(hours?|hrs?)$/.test(normalized)
+}
+
+function labourItemNeedsHourNormalisation(item: LabourLineItem, parsed: ParsedLabourAllowance | null) {
+  if (!isLabourItem(item)) return false
+
+  const unit = (item.unit ?? "").trim().toLowerCase()
+  const quantity = (item.quantity ?? "").trim().toLowerCase()
+
+  // AI set unit to days.
+  if (/^days?$/.test(unit)) return true
+
+  // preferTradeAwareLabourLineItems may overwrite unit to "hours" while quantity
+  // still embeds days (e.g. quantity "1.5 days" + unit "hours" → "Qty 1.5 days hours").
+  if (/\bdays?\b/.test(quantity) && isHourlyLabourUnit(unit)) return true
+
+  // Quantity reflects person-days (1.5) but rate is hourly — not billable hours (12).
+  if (parsed && parsed.hours > 0 && isHourlyLabourUnit(unit)) {
+    const qtyNum = quantityNumericValue(quantity)
+    const personDays = parsed.people * parsed.days
+    if (
+      qtyNum !== null &&
+      Math.abs(qtyNum - personDays) < 0.01 &&
+      Math.abs(qtyNum - parsed.hours) > 0.01
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
+/**
+ * When the AI extracts a labour line item with unit "days" (e.g. "1.5 days")
+ * but the KB rate is per-hour, the quantity and total are wrong.
+ *
+ * This step uses parseLabourAllowanceText on the quote's labour_allowance (and
+ * primary_quote scope/notes/transcript as fallbacks) to recover totalHours and
+ * recalculates total = totalHours × rate.
+ *
+ * Only fires when neither the deterministic days×people path nor the per-task-hours
+ * path has already replaced the labour line_item (detected via match_reason).
+ */
+export function normaliseDaysLabourLineItem<
+  T extends {
+    labour_allowance?: string | null
+    primary_quote?: { scope?: string[] | null; notes?: string[] | null } | null
+    line_items: LabourLineItem[]
+  },
+>(quote: T, transcript?: string): T {
+  // Skip if already handled by a deterministic pipeline path
+  if (
+    quote.line_items.some(
+      (item) =>
+        /Deterministic labour allowance calculated from spoken days/i.test(item.match_reason ?? "") ||
+        /Deterministic per-task hour allowances/i.test(item.match_reason ?? ""),
+    )
+  ) {
+    return quote
+  }
+
+  // Try to parse total hours from labour_allowance, scope/notes, then transcript.
+  const candidates = [
+    quote.labour_allowance,
+    ...(quote.primary_quote?.notes ?? []),
+    ...(quote.primary_quote?.scope ?? []),
+    transcript,
+  ].filter(Boolean) as string[]
+
+  let parsed: ParsedLabourAllowance | null = null
+  for (const candidate of candidates) {
+    parsed = parseLabourAllowanceText(candidate)
+    if (parsed) break
+  }
+  if (!parsed || parsed.hours <= 0) return quote
+
+  const labourItemsToNormalise = quote.line_items.filter((item) =>
+    labourItemNeedsHourNormalisation(item, parsed),
+  )
+  if (labourItemsToNormalise.length === 0) return quote
+
+  const { hours: totalHours, people, days } = parsed
+
+  for (const item of labourItemsToNormalise) {
+    const rate = Number(item.final_rate_used ?? item.rate ?? item.knowledge_base_rate ?? 0)
+    item.quantity = String(totalHours)
+    item.unit = "hours"
+    if (rate > 0) {
+      item.total = String(totalHours * rate)
+    }
+    const normNote = `Hours normalised from ${people} person × ${days} days × 8 hrs/day = ${totalHours}h.`
+    item.match_reason = item.match_reason ? `${item.match_reason} ${normNote}` : normNote
+  }
+
+  return quote
 }

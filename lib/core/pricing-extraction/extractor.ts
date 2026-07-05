@@ -129,6 +129,9 @@ function allowanceForSentence(sentence: string): PricingDraft | null {
   // "Allow N hours to <task>" is a labour quantity, not a price allowance.
   if (/\ballow\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/i.test(sentence)) return null
 
+  // "Allow N bags/plants/units/etc of <material>" is a material quantity, not a price.
+  if (/\ballow\s+\d+(?:\.\d+)?\s*(?:bags?|plants?|units?|pallets?|rolls?|bundles?|sheets?|litres?|liters?|m3|cubic)\b/i.test(sentence)) return null
+
   const amount = amountFromText(sentence)
   if (amount === null) return null
 

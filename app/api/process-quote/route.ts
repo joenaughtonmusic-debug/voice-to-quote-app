@@ -32,6 +32,7 @@ import {
   transcriptMentionsRecurringWork,
 } from "@/lib/quote-classification"
 import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "@/lib/core/labour-allowance-extraction"
+import { normaliseDaysLabourLineItem } from "@/lib/export/labour-line-builder"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const QUOTE_MODEL = process.env.OPENAI_QUOTE_MODEL ?? "gpt-4o-mini"
@@ -3087,6 +3088,7 @@ export async function POST(request: Request) {
       applyPavingBillOptions(quote, transcript, knowledgeItemContext)
       applyPlantingMaterialOptions(quote, transcript, knowledgeItemContext)
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
+      normaliseDaysLabourLineItem(quote, transcript)
       quote.missing_information = Array.isArray(quote.missing_information) ? quote.missing_information : []
 
       if (!leadDetails.client_name && !quote.missing_information.includes("Client name not captured")) {

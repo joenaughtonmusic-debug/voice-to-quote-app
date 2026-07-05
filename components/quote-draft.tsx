@@ -162,7 +162,7 @@ export function QuoteDraft({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quote</p>
             <h3 className="mt-1 text-base font-semibold text-foreground">{previewModel.quoteTitle}</h3>
-            {processedQuote.job_type && !useAssemblyPreview && (
+            {processedQuote.job_type && !useAssemblyPreview && !usePlantingPresentationCustomerView && (
               <p className="mt-0.5 text-sm text-muted-foreground">{processedQuote.job_type}</p>
             )}
           </div>

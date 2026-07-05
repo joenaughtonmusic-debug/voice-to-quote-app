@@ -8,7 +8,8 @@ import {
   mapExportableLineToXero,
 } from "./map-to-xero"
 import type { ExportableQuoteLine } from "./exportable-line"
-import { parseLabourAllowanceText, resolveLabourExportPrice, structuredAllowanceLabourPrice } from "./labour-line-builder"
+import { normaliseDaysLabourLineItem, parseLabourAllowanceText, resolveLabourExportPrice, structuredAllowanceLabourPrice } from "./labour-line-builder"
+import { formatMatchedJmsLineItems, processedQuoteToEditableSections, EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
 import { buildPlantingExportableLines } from "./planting-export-lines"
 import { buildPavingExportableLines } from "./paving-export-lines"
 import { buildDeckingExportableLines } from "./decking-export-lines"
@@ -363,6 +364,171 @@ test("retaining exportable lines preserve priced labour and materials from quote
   assert.equal(lines[1]?.unitAmount, 650)
   assert.ok((xeroLines[0]?.unitAmount ?? 0) > 0)
   assert.ok((xeroLines[1]?.unitAmount ?? 0) > 0)
+})
+
+test("normaliseDaysLabourLineItem converts AI days-unit labour item to hours and recalculates total", () => {
+  // Michelia JMS contract: "Allow one person for one and a half days" at $110/hr
+  // AI extracts {unit:"days", quantity:"1.5", total:"165.00"} → should become
+  // {unit:"hours", quantity:"12", total:"1320"}
+  const quote = {
+    labour_allowance: "Allow one person for one and a half days because there are roots in the garden bed",
+    primary_quote: { scope: [] as string[], notes: [] as string[] },
+    line_items: [
+      {
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "days",
+        final_rate_used: "110",
+        quantity: "1.5",
+        total: "165.00",
+        match_reason: null as string | null,
+      },
+    ],
+  }
+
+  const result = normaliseDaysLabourLineItem(quote)
+  const labourItem = result.line_items[0]!
+  assert.equal(labourItem.unit, "hours", "unit must be normalised to hours")
+  assert.equal(labourItem.quantity, "12", "quantity must be 12 (1 × 1.5 days × 8 hrs)")
+  assert.equal(labourItem.total, "1320", "total must be 1320 (12 × $110/hr)")
+  assert.ok(!/165/i.test(labourItem.total ?? ""), "total must not be 165")
+  assert.ok(!/1\.5\s*days/i.test(`${labourItem.quantity} ${labourItem.unit}`), "display must not show '1.5 days'")
+})
+
+test("normaliseDaysLabourLineItem does not fire when deterministic path already handled", () => {
+  const quote = {
+    labour_allowance: "Allow one person for one and a half days",
+    primary_quote: { scope: [] as string[], notes: [] as string[] },
+    line_items: [
+      {
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "days",
+        final_rate_used: "110",
+        quantity: "1.5",
+        total: "165.00",
+        match_reason: "Deterministic labour allowance calculated from spoken days, people, and 8-hour day rule.",
+      },
+    ],
+  }
+
+  const result = normaliseDaysLabourLineItem(quote)
+  // Should not modify — deterministic path already ran
+  assert.equal(result.line_items[0]!.quantity, "1.5")
+  assert.equal(result.line_items[0]!.unit, "days")
+})
+
+test("normaliseDaysLabourLineItem normalises post-KB-match labour item with quantity '1.5 days' and unit 'hours'", () => {
+  // preferTradeAwareLabourLineItems overwrites unit to KB "hours" while quantity still
+  // embeds days — this produces the live bug "Qty 1.5 days hours | Total 165.00".
+  const quote = {
+    labour_allowance: "Allow one person for one and a half days because there are roots in the garden bed",
+    primary_quote: { scope: [] as string[], notes: [] as string[] },
+    line_items: [
+      {
+        item_code: "LAB-001",
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "hours",
+        knowledge_base_rate: "110",
+        final_rate_used: "110",
+        quantity: "1.5 days",
+        total: "165.00",
+        match_reason: "Trade-aware labour context detected",
+      },
+    ],
+  }
+
+  const result = normaliseDaysLabourLineItem(quote)
+  const labourItem = result.line_items[0]!
+  assert.equal(labourItem.quantity, "12")
+  assert.equal(labourItem.unit, "hours")
+  assert.equal(labourItem.total, "1320")
+
+  const jmsLine = formatMatchedJmsLineItems(result.line_items as ProcessedQuote["line_items"])[0] ?? ""
+  assert.match(jmsLine, /Qty 12 hours/)
+  assert.match(jmsLine, /Total 1320/)
+  assert.ok(!/1\.5\s*days\s*hours/i.test(jmsLine), `Must not show '1.5 days hours': ${jmsLine}`)
+  assert.ok(!/165/i.test(jmsLine), `Must not show total 165: ${jmsLine}`)
+})
+
+test("Michelia Matched JMS Line Items panel shows 12 hours and 1320 after normalisation", () => {
+  const micheliaTranscript =
+    "Allow one person for one and a half days because there are roots in the garden bed."
+
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Stephanie",
+    site_address: "10 Cotswold Lane",
+    quote_title: "Planting Quote",
+    job_type: "planting",
+    primary_quote: {
+      quote_title: "Planting Quote",
+      job_type: "planting",
+      cadence: "",
+      scope: [],
+      notes: [],
+    },
+    labour_allowance: micheliaTranscript,
+    line_items: [
+      {
+        item_code: "LAB-001",
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        description: "Planting labour",
+        unit: "hours",
+        quantity: "1.5 days",
+        rate: "110",
+        knowledge_base_rate: "110",
+        override_rate: null,
+        final_rate_used: "110",
+        total: "165.00",
+        match_confidence: "high",
+        match_reason: "Trade-aware labour context detected",
+        needs_review: false,
+        warning: "",
+      },
+    ],
+  }
+
+  normaliseDaysLabourLineItem(quote, micheliaTranscript)
+
+  const matchedSection = processedQuoteToEditableSections(quote).find(
+    (section) => section.key === "matched_jms_line_items",
+  )
+  assert.ok(matchedSection, "Matched JMS section must exist")
+  const jmsText = matchedSection!.content
+  assert.match(jmsText, /Qty 12 hours/i, `Expected Qty 12 hours in: ${jmsText}`)
+  assert.match(jmsText, /Total 1320/i, `Expected Total 1320 in: ${jmsText}`)
+  assert.ok(!/1\.5\s*days\s*hours/i.test(jmsText), `Must not show '1.5 days hours': ${jmsText}`)
+  assert.ok(!/165/i.test(jmsText), `Must not show total 165: ${jmsText}`)
+})
+
+test("structuredAllowanceLabourPrice prices correctly when line-item unit is 'days' but rate is hourly", () => {
+  // Michelia scenario: AI extracts unit "days" from "one and a half days" transcript phrasing.
+  // The KB rate is $110/hour. The correct price is 1 × 1.5 × 8 × $110 = $1,320, NOT 1.5 × $110 = $165.
+  const quote = {
+    labour_allowance: "one person for one and a half days",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [
+      {
+        item_name: "Planting Labour",
+        item_type: "labour",
+        unit: "days",
+        final_rate_used: "110",
+        quantity: "1.5",
+        total: "165.00",
+      },
+    ],
+    pricing_facts: [],
+  }
+
+  const structured = structuredAllowanceLabourPrice(quote)
+  assert.ok(structured !== null, "expected structured price to be resolved")
+  assert.equal(structured?.amount, 1320, `1 × 1.5 days × 8 hrs × $110/hr should be $1,320, not $165`)
+  assert.equal(structured?.allowanceWorkings?.totalHours, 12)
+  assert.equal(structured?.allowanceWorkings?.people, 1)
+  assert.equal(structured?.allowanceWorkings?.days, 1.5)
 })
 
 test("structuredAllowanceLabourPrice returns allowanceWorkings for two people one and a quarter days", () => {

@@ -548,3 +548,249 @@ test("Stephanie priced plant option still appears after material resolver runs",
   assert.equal(plantingOptions!.items.some((item) => /Michelia gracipes 4L — \$/i.test(item.title)), true)
   assert.equal(includesText(rendered, "Michelia gracipes 4L — $"), true, rendered)
 })
+
+// ---------------------------------------------------------------------------
+// Michelia transcript: "plant she wanted was" phrasing — new transcript format
+// ---------------------------------------------------------------------------
+
+const micheliaTranscript = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+
+This is a planting quote for the front garden bed.
+
+The planting area is approximately 14.2 metres long.
+
+The plant she wanted was Michelia gracipes.
+
+She does not want the biggest size, but please show both size options if available.
+
+Plant spacing should be 50 centimetres.
+
+Allow one person for one and a half days because there are roots in the garden bed.
+
+Allow 5 bags of garden mix.
+
+Optional work:
+Install a 150x50 timber board border around the planting area.
+
+Internal notes:
+This is a planting job, not a garden tidy.
+Use the spoken 50 centimetre spacing.
+Keep the timber board border as optional work.`
+
+/**
+ * Builds a ProcessedQuote that simulates AI output for the Michelia transcript.
+ * Includes contaminated optional_quotes.scope with metadata lines, mirroring
+ * what the AI sometimes produces for optional works entries.
+ */
+function buildMicheliaQuote(): ProcessedQuote {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscript)
+  const libraryMatch = request
+    ? matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name ?? "")
+    : undefined
+  const result = request
+    ? calculatePlantingQuote({ ...request, plant_library_match: libraryMatch })
+    : null
+
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Stephanie",
+    site_address: "10 Cotswold Lane, Mount Wellington",
+    quote_title: "planting",
+    job_type: "planting",
+    primary_quote: {
+      quote_title: "planting",
+      job_type: "planting",
+      cadence: "",
+      scope: [
+        "Supply and plant Michelia gracipes hedge to the agreed planting area",
+        "Planting area approximately 14.2 metres long",
+        "Plants to be spaced at approximately 50cm centres",
+      ],
+      notes: [],
+    },
+    customer_scope: [
+      "Supply and plant Michelia gracipes hedge to the agreed planting area",
+    ],
+    materials: ["Garden mix"],
+    labour_allowance: "Allow one person for one and a half days because there are roots in the garden bed",
+    // Simulates AI optional_quotes with metadata-contaminated scope
+    optional_quotes: [
+      {
+        ...EMPTY_PROCESSED_QUOTE.primary_quote,
+        job_type: "optional work, if required",
+        scope: [
+          "Title: Optional Works",
+          "Job type: optional work, if required",
+          ": Install a 150x50 timber board border around the planting area",
+        ],
+        notes: [],
+      },
+    ],
+    follow_up_tasks: [],
+    plant_calculator_results: result ? [result] : [],
+    quote_options: result ? quoteOptionsFromPlantCalculatorResults([result]) : [],
+  }
+}
+
+test("Michelia quote: calculator produces Michelia gracipes not 'long'", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscript)
+  assert.ok(request, "Expected a calculator request from Michelia transcript")
+  assert.match(
+    request.plant_name ?? "",
+    /michelia/i,
+    `plant_name must be Michelia, not '${request.plant_name}'`,
+  )
+  assert.ok(!/^long$/i.test(request.plant_name ?? ""), `plant_name must not be 'long'. Got: ${request.plant_name}`)
+  assert.equal(request.length_m, 14.2)
+  assert.equal(request.spoken_spacing_mm, 500)
+})
+
+test("Michelia customer quote uses planting presentation model", () => {
+  const { previewModel } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  assert.equal(previewModel.rendererPath, "planting-presentation")
+})
+
+test("Michelia customer quote scope shows Michelia gracipes, not 'long hedge'", () => {
+  const { rendered } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  assert.ok(includesText(rendered, "Michelia"), `Expected Michelia in rendered output: ${rendered}`)
+  assert.ok(!includesText(rendered, "long hedge"), `Must not show 'long hedge': ${rendered}`)
+})
+
+test("Michelia customer scope shows Michelia gracipes and not the size suffix from library", () => {
+  // When the library name is "Michelia gracipes 4L" and the spoken name is
+  // "Michelia gracipes", the scope should say "Michelia gracipes" (no size suffix).
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const scopeSection = presentationSections.find((s) => s.title === "Scope of Work")
+  const firstScopeItem = scopeSection?.items[0]?.title ?? ""
+  assert.ok(
+    /michelia\s+gracipes/i.test(firstScopeItem),
+    `First scope item must contain "Michelia gracipes". Got: "${firstScopeItem}"`,
+  )
+  assert.ok(
+    !/michelia\s+gracipes\s+\d+/i.test(firstScopeItem),
+    `Scope must not include size suffix from library (e.g. "Michelia gracipes 4L"). Got: "${firstScopeItem}"`,
+  )
+})
+
+test("Michelia customer scope uses spoken name over library apostrophe variant", () => {
+  // Production scenario: library fuzzy-matches "Michelia gracipes" to "Michelia 'Gracepies'"
+  // (a variant with an apostrophe). The spoken name is more reliable here — use it.
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscript)
+  assert.ok(request, "Calculator must produce a request from Michelia transcript")
+
+  const gracepiesRow = micheliaRow(
+    "PLANT-GRACEPIES",
+    "Michelia 'Gracepies' 14L",
+    "Michelia 'Gracepies' 14L",
+    "14L",
+    154.0,
+    500,
+  )
+  const libraryMatch = matchPlantRowsFromLibrary([gracepiesRow], request.plant_name ?? "")
+  const result = calculatePlantingQuote({ ...request, plant_library_match: libraryMatch })
+
+  const gracepiesQuote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    quote_title: "planting",
+    job_type: "planting",
+    primary_quote: {
+      quote_title: "planting",
+      job_type: "planting",
+      cadence: "",
+      scope: [],
+      notes: [],
+    },
+    plant_calculator_results: [result],
+    quote_options: quoteOptionsFromPlantCalculatorResults([result]),
+  }
+
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, gracepiesQuote)
+  const scopeSection = presentationSections.find((s) => s.title === "Scope of Work")
+  const firstScopeItem = scopeSection?.items[0]?.title ?? ""
+  assert.ok(
+    /michelia\s+gracipes/i.test(firstScopeItem),
+    `Customer scope must use spoken name "Michelia gracipes", not library variant "Michelia 'Gracepies'". Got: "${firstScopeItem}"`,
+  )
+  assert.ok(
+    !/michelia\s+'gracepies'/i.test(firstScopeItem),
+    `Customer scope must not show apostrophe variant "Michelia 'Gracepies'". Got: "${firstScopeItem}"`,
+  )
+})
+
+test("Michelia customer quote scope shows planting area length", () => {
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const scopeSection = presentationSections.find((s) => s.title === "Scope of Work")
+  const scopeText = scopeSection?.items.map((i) => i.title).join(" ") ?? ""
+  assert.ok(/14\.2/i.test(scopeText), `Expected 14.2 metres in scope: ${scopeText}`)
+})
+
+test("Michelia customer quote scope shows 50cm spacing", () => {
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const scopeSection = presentationSections.find((s) => s.title === "Scope of Work")
+  const scopeText = scopeSection?.items.map((i) => i.title).join(" ") ?? ""
+  assert.ok(/50\s*cm|500\s*mm/i.test(scopeText), `Expected 50cm spacing in scope: ${scopeText}`)
+})
+
+test("Michelia customer quote shows Materials section with garden mix", () => {
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const materialsSection = presentationSections.find((s) => s.title === "Materials")
+  assert.ok(materialsSection, `Expected Materials section. Sections: ${presentationSections.map((s) => s.title).join(", ")}`)
+  const matText = materialsSection!.items.map((i) => i.title).join(" ")
+  assert.ok(/garden\s+mix/i.test(matText), `Expected garden mix in materials: ${matText}`)
+})
+
+test("Michelia customer quote shows Labour section", () => {
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const labourSection = presentationSections.find((s) => s.title === "Labour")
+  assert.ok(labourSection, `Expected Labour section. Sections: ${presentationSections.map((s) => s.title).join(", ")}`)
+})
+
+test("Michelia customer quote optional works: metadata stripped, timber border present", () => {
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const optSection = presentationSections.find((s) => s.title === "Optional Works")
+  assert.ok(optSection, `Expected Optional Works section. Sections: ${presentationSections.map((s) => s.title).join(", ")}`)
+  const optText = optSection!.items.map((i) => i.title).join(" | ")
+  assert.ok(/timber.*board.*border|150.*50.*timber/i.test(optText), `Expected timber border in optional works: ${optText}`)
+  assert.ok(!/job\s+type\s*:/i.test(optText), `Job type metadata must not appear: ${optText}`)
+  assert.ok(!/^title\s*:/im.test(optText), `Title metadata must not appear: ${optText}`)
+})
+
+test("Michelia customer quote optional works: no standalone 'optional work' metadata item", () => {
+  const { presentationSections } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  const optSection = presentationSections.find((s) => s.title === "Optional Works")
+  const optItems = optSection?.items.map((i) => i.title) ?? []
+  const badItem = optItems.find((t) => /^optional\s+works?(?:\s*,\s*if\s+required)?$/i.test(t.trim()))
+  assert.ok(
+    !badItem,
+    `Standalone 'optional work' must not appear as an item. Items: ${optItems.join(" | ")}`,
+  )
+})
+
+test("Michelia customer quote does not expose internal notes", () => {
+  const { rendered } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  assert.ok(!/not a garden tidy/i.test(rendered), `Internal note must not appear: ${rendered}`)
+  assert.ok(!/use the spoken/i.test(rendered), `Internal note must not appear: ${rendered}`)
+})
+
+test("Michelia customer quote does not expose raw labour duration in scope", () => {
+  const { rendered } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  // Labour section may say "Planting labour included" but must not expose "1.5 days" in scope
+  const scopeMatch = rendered.match(/Scope of Work[\s\S]*?(?=\n[A-Z]|\n\n[A-Z]|$)/)
+  const scopeText = scopeMatch?.[0] ?? ""
+  assert.ok(!/1\.5\s+days/i.test(scopeText), `Labour duration must not appear in scope section: ${scopeText}`)
+})
+
+test("Michelia customer quote does not contain bogus 'metres long. The' plant text", () => {
+  const { rendered } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  assert.ok(!/metres\s+long\.\s*The/i.test(rendered), `Bogus "metres long. The" must not appear in customer view: ${rendered}`)
+})
+
+test("Michelia customer quote does not contain 'Planting area 2' from bogus second request", () => {
+  const { rendered } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  assert.ok(!/Planting area 2/i.test(rendered), `Bogus "Planting area 2" must not appear in customer view: ${rendered}`)
+})
+
+test("Michelia customer quote does not contain joined plant names ('Michelia gracipes and')", () => {
+  const { rendered } = quoteDraftRendered(micheliaTranscript, buildMicheliaQuote())
+  assert.ok(!/Michelia gracipes and/i.test(rendered), `Joined plant names must not appear in customer view: ${rendered}`)
+})

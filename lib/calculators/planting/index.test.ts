@@ -93,6 +93,65 @@ test("calculates 11.5m hedge at 600mm spacing", () => {
   assert.equal(result.quantity_source, "calculated_from_spacing")
 })
 
+// ---------------------------------------------------------------------------
+// Michelia transcript: "plant she wanted was" phrasing + "metres long" length sentence
+// ---------------------------------------------------------------------------
+
+const micheliaTranscriptForCalc = `
+The planting area is approximately 14.2 metres long.
+
+The plant she wanted was Michelia gracipes.
+
+She does not want the biggest size, but please show both size options if available.
+
+Plant spacing should be 50 centimetres.
+`.trim()
+
+test("Michelia transcript: does not extract 'long' as plant name from length sentence", () => {
+  const requests = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  const badRequest = requests.find((r) => /^long$/i.test(r.plant_name ?? ""))
+  assert.ok(
+    !badRequest,
+    `Must not produce plant_name="long" from a length sentence. Requests: ${JSON.stringify(requests)}`,
+  )
+})
+
+test("Michelia transcript: does not produce bogus 'metres long. The' plant name", () => {
+  const requests = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  const badRequest = requests.find((r) => /metres.*long/i.test(r.plant_name ?? ""))
+  assert.ok(
+    !badRequest,
+    `Must not produce a plant_name containing "metres long" from the length/plant sentences. Requests: ${JSON.stringify(requests.map((r) => r.plant_name))}`,
+  )
+})
+
+test("Michelia transcript: produces exactly one calculator request", () => {
+  const requests = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.equal(
+    requests.length,
+    1,
+    `Expected exactly 1 request, got ${requests.length}: ${JSON.stringify(requests.map((r) => r.plant_name))}`,
+  )
+})
+
+test("Michelia transcript: extracts Michelia gracipes as plant name", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.ok(request, `Expected at least one request. Got: ${JSON.stringify(extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc))}`)
+  assert.match(request.plant_name ?? "", /michelia/i)
+})
+
+test("Michelia transcript: extracts 14.2m as planting length", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.ok(request, "Expected a request")
+  assert.equal(request.length_m, 14.2)
+})
+
+test("Michelia transcript: extracts 500mm (50cm) spacing", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.ok(request, "Expected a request")
+  assert.equal(request.spoken_spacing_mm, 500)
+})
+
 test("extracts Stephanie Cotswold planting area plant name and centimetre spacing", () => {
   const transcript =
     "it was a 14.2 metre planting area, and the plant she wanted planting was Michaelia gracipes. Maybe give both sizes as an option, probably with 50 centimetre spacing"

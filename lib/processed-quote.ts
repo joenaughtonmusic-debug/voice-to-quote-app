@@ -185,6 +185,11 @@ function matchedLineItemLines(items: QuoteLineItem[]) {
   )
 }
 
+/** Formats line_items for the Internal View "Matched JMS Line Items" panel. */
+export function formatMatchedJmsLineItems(items: QuoteLineItem[]) {
+  return matchedLineItemLines(items)
+}
+
 function quoteOptionLines(options: QuoteOption[] | undefined) {
   if (!Array.isArray(options) || options.length === 0) return []
 

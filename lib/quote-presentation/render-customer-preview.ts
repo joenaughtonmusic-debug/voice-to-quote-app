@@ -85,6 +85,21 @@ function scopeOfWorkItems(model: QuotePresentationModel): PresentationPreviewIte
       ? `Supply and plant ${plantName} hedge to the agreed planting area.`
       : "Supply and plant agreed plants to the agreed planting area.",
   })
+
+  // Show the planting area length so customers can verify the quote scope.
+  const summaryLines = plantingSummaryLines(model)
+  const lengthLine = summaryLines.find((l) => typeof l.plantingLengthM === "number")
+  if (lengthLine?.plantingLengthM) {
+    items.push({ title: `Planting area approximately ${lengthLine.plantingLengthM} metres long.` })
+  }
+
+  // Show the spacing as a customer-facing measurement (e.g. "50cm centres").
+  const spacingLine = summaryLines.find((l) => typeof l.spacingMm === "number")
+  if (spacingLine?.spacingMm) {
+    const spacingCm = Math.round(spacingLine.spacingMm / 10)
+    items.push({ title: `Plants to be spaced at approximately ${spacingCm}cm centres.` })
+  }
+
   items.push({
     title: "Prepare planting area, dig planting holes, install plants, backfill with garden mix, water in, and tidy on completion.",
   })

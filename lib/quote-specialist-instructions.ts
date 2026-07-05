@@ -47,7 +47,8 @@ export function getPlantingExtractorInstructions() {
   return `Planting specialist extractor:
 - Preserve plant names, cultivars, quantities, pot sizes, grades, spacing, locations, soil preparation, compost, fertiliser, mulch, staking, irrigation, and aftercare exactly as spoken.
 - Separate plants, soil products, amendments, mulch, labour, delivery, and greenwaste into useful materials/line items.
-- Preserve planting sequence and site-specific plant cautions. Do not invent quantities, spacing, or plant substitutions.`
+- Preserve planting sequence and site-specific plant cautions. Do not invent quantities, spacing, or plant substitutions.
+- Put all optional works items in the optional_quotes array as a single QuoteIntent entry (optional_quotes[0].scope = ["Install a 150x50 timber board border around the planting area", ...]). Do NOT add optional works to primary_quote.scope or primary_quote.notes. Optional works must not appear as "(optional)" suffixed items in the primary quote scope.`
 }
 
 export function getHedgeTrimmingExtractorInstructions() {
