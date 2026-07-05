@@ -44,32 +44,26 @@ test("Golden Quote 2 — Garden bed renovation: contract holds across all layers
   assertReportPasses(gardenBedRenovation)
 })
 
-test("Golden Quote 3 — Adam/Titirangi: current BROKEN state is captured (locked)", () => {
-  // This fixture encodes the current bugs. It passing means the pipeline is
-  // still broken exactly as documented. When someone fixes the decking
-  // misclassification / topsoil / suburb, these checks flip and force the
-  // fixture to be rewritten to the desired contract.
+test("Golden Quote 3 — Adam/Titirangi: routed as landscaping, no decking output (QA-3 fix)", () => {
   assertReportPasses(adamTitirangi)
 })
 
-test("Golden Quote 3 — Adam/Titirangi: auditor now DETECTS the classification/customer-preview/address bugs", () => {
-  // QA-2: the deterministic auditor now flags the known Adam failures. The quote
-  // is still wrong (not fixed), but the safety net catches it.
+test("Golden Quote 3 — Adam/Titirangi: decking + suburb audit issues resolved (hedge warning may remain)", () => {
+  // QA-3: the decking misclassification, decking-scope leak, missing topsoil/lawn
+  // scope, and dropped suburb are fixed. The optional-hedge warning is allowed to
+  // remain (future work — plant count/spacing not yet calculated).
   const { projection } = runGoldenQuote(adamTitirangi)
   const ids = projection.audit.issues.map((i) => i.id)
-  const categories = projection.audit.issues.map((i) => i.category)
 
-  assert.ok(ids.includes("V04-decking-on-non-decking"), `Expected V04 decking flag; got [${ids.join(", ")}]`)
-  assert.ok(ids.includes("V08-suburb-missing"), `Expected V08 suburb flag; got [${ids.join(", ")}]`)
-  assert.ok(
-    ids.some((id) => id.startsWith("V06-")),
-    `Expected a V06 customer-preview flag; got [${ids.join(", ")}]`,
-  )
-  // At least one calculator/classification issue, one customer_preview issue, one address issue.
-  assert.ok(categories.includes("calculator"), "Expected a calculator/classification issue")
-  assert.ok(categories.includes("customer_preview"), "Expected a customer_preview issue")
-  assert.ok(categories.includes("address"), "Expected an address issue")
-  assert.notEqual(projection.audit.audit_status, "pass", "Adam audit status must not be 'pass'")
+  for (const resolved of [
+    "V04-decking-on-non-decking",
+    "V06-decking-scope-leak",
+    "V06-missing-topsoil-lawn-scope",
+    "V06-missing-lawn-seed",
+    "V08-suburb-missing",
+  ]) {
+    assert.ok(!ids.includes(resolved), `${resolved} must no longer fire; got [${ids.join(", ")}]`)
+  }
 })
 
 test("every fixture documents its mocked boundary", () => {

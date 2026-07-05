@@ -69,3 +69,22 @@ test("does not detect decking from electrical transcript", () => {
   assert.equal(result.areas.length, 0)
   assert.equal(result.total_square_metres, null)
 })
+
+test("does not detect decking from a lawn/retaining job with area + posts but no deck intent", () => {
+  // Adam/Titirangi: "6m by 16.8m" topsoil area + "100x100 timber posts" (retaining)
+  // must NOT classify as decking — there is no deck/decking/joists/bearers/subframe.
+  const transcript =
+    "Levelling the back lawn. Construct a small timber retaining wall 400mm high using 100x100 timber posts. Topsoil across an area approximately 6m by 16.8m."
+  const detection = detectDeckingFromText(transcript)
+
+  assert.equal(detection.is_decking, false, "posts + area dimension must not trigger decking without deck intent")
+  assert.equal(detection.confidence, "none")
+})
+
+test("still detects decking when a deck is explicitly mentioned with an area", () => {
+  const transcript = "Build a 6m by 4m timber deck."
+  const detection = detectDeckingFromText(transcript)
+
+  assert.equal(detection.is_decking, true)
+  assert.equal(detection.request.areas.length, 1)
+})

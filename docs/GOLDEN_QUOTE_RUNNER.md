@@ -55,27 +55,31 @@ So each fixture's `buildProcessedQuote()` **stubs the AI-extracted fields**
 states exactly what it stubs in `mockingNotes`.
 
 Consequence: the harness proves the **downstream** layers are correct given good
-extraction. It does **not** yet prove the route produces good extraction. Golden
-Quote 3 (Adam) is hand-authored to the **current broken** output and asserts the
-bugs persist, so the suite turns red the moment the pipeline improves.
+extraction. It does **not** by itself prove the route produces good extraction —
+each fixture stubs the AI-extracted fields. Where a fix lives in deterministic
+code, it is verified by a real unit test (e.g. the decking detector below).
 
-### Adam/Titirangi auditor coverage (QA-2)
+### Adam/Titirangi routing fix (QA-3)
 
-The deterministic Quote Auditor now **detects** the Adam failures (detection
-only — the quote is still wrong). The Adam fixture asserts these fire:
+QA-2 added auditor validators that **detected** the Adam failures. QA-3 fixes the
+first of them: the decking detector (`lib/trades/decking/detector.ts`) now
+requires explicit deck intent, so `posts` + a `6m by 16.8m` area no longer trip
+decking. Verified by `lib/trades/decking/index.test.ts`
+("does not detect decking from a lawn/retaining job…").
 
-| Issue id | Catches |
+The Adam fixture now encodes the **desired** mixed-landscaping output:
+
+| Was (QA-2 broken) | Now (QA-3) |
 |---|---|
-| `V04-decking-on-non-decking` | decking calculator output on a non-decking transcript |
-| `V06-decking-scope-leak` | `Deck area 1` / `Decking boards` in customer scope |
-| `V06-missing-topsoil-lawn-scope` | topsoil/lawn establishment spoken but absent from the preview |
-| `V06-missing-lawn-seed` (warning) | lawn seed spoken but omitted |
-| `V06-optional-hedge-unwarned` (warning) | optional Ficus hedge present but never calculated/warned |
-| `V08-suburb-missing` (warning) | `20 Lemnos Street in Titirangi` → suburb dropped |
+| `job_type: decking`, `Deck area 1`, `Decking boards` | `general_landscaping`, no decking output |
+| topsoil/lawn scope missing | retaining wall, polythene, topsoil, lawn seed in scope |
+| suburb `Titirangi` dropped | `20 Lemnos Street, Titirangi` |
+| audit fired V04/V06/V08 | V04, V06-decking-leak, V06-missing-topsoil/lawn-seed, V08 all resolved |
 
-Adam's audit status is therefore `needs_review`. Still **undetected / unfixed**
-(future batches): topsoil volume calculation (5.04m³), preserving the `$129` lawn
-seed price on a line item, and actually calculating the optional hedge.
+Adam's audit status is still `needs_review` because `V06-optional-hedge-unwarned`
+remains **by design**. Still future work (fixture `knownFailures`): topsoil volume
+(5.04m³), the `$129` lawn-seed price on a priced line, hedge plant-count/spacing,
+and retaining post-spacing/drainage.
 
 ## Route-extraction plan (to make the REAL pipeline testable end-to-end)
 
