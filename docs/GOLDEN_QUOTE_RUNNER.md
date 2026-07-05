@@ -95,35 +95,50 @@ The Adam fixture calls these, so its topsoil line (`Qty 5.04 m3`) and lawn-seed 
 remains future work (`needs_review`). Still future: hedge plant-count/spacing and
 retaining post-spacing/drainage.
 
-## Route-extraction plan (to make the REAL pipeline testable end-to-end)
+## Route extraction — DONE (the REAL pipeline is now callable headlessly)
 
-Today the transcript→ProcessedQuote pipeline only exists inside the Next.js POST
-handler. To let fixtures call the real pipeline, extract it — mechanically, no
-logic change:
+The transcript→ProcessedQuote pipeline was moved out of the Next.js POST handler
+into `lib/pipeline/process-transcript.ts`. Behaviour is unchanged — it is the same
+code, moved verbatim (the only substantive edits were injecting the two OpenAI
+calls as deps and two type-only casts that the route previously relied on
+`typescript.ignoreBuildErrors` to hide).
 
-1. **Create `lib/pipeline/process-transcript.ts`** exporting a pure
-   `processTranscript(input): Promise<ProcessedQuote>` that contains the current
-   body of `POST` in `app/api/process-quote/route.ts` (the 28-step chain +
-   `recoverMissingLabourLineItem` / `normaliseDaysLabourLineItem` /
-   `clearStaleLabourWarningsAfterRecovery` / `auditProcessedQuote`).
-2. **Inject the LLM call** as a parameter (`extract: (prompt) => Promise<rawJson>`)
-   so tests can pass a **recorded extraction fixture** and run fully offline.
-   Production passes the real OpenAI call.
-3. **Reduce the route** to a thin wrapper that parses the request, calls
-   `processTranscript`, and returns `NextResponse.json`.
-4. **Export the currently route-local post-processors** that the fixtures had to
-   re-stub — notably `applyPerTaskHourAllowances` (garden-bed labour line
-   assembly) and the classification/normalisation helpers — so
-   `buildProcessedQuote()` can be replaced by a recorded-extraction → real-pipeline
-   run.
-5. Once (1)–(4) land, swap each fixture's `buildProcessedQuote()` for
-   `processTranscript(transcript, { extract: recordedExtraction })`. The
-   contracts stay identical; only the input source changes. Adam will then
-   reflect **real** current output and its `knownFailures` become the backlog.
+```ts
+processTranscriptToQuote(
+  input: ProcessTranscriptInput,          // { transcript, templateContext?, knowledgeItemContext?, primaryTrade?, ... }
+  deps?: ProcessTranscriptDeps,           // { classify?, extractQuote?, logger? } — inject to run offline
+): Promise<ProcessTranscriptResult>       // { quote, fallbackUsed, classification, leadDetails }
+```
 
-Do this as its own batch (it is the "extract pipeline" item in the Batch-1 plan);
-it is intentionally **out of scope** for the initial harness so no broad refactor
-of the 3,230-line route happens under the same change.
+- `app/api/process-quote/route.ts` is now a thin wrapper: parse request → call
+  `processTranscriptToQuote` → `NextResponse.json(result.quote)`.
+- **What is now callable headlessly:** the full deterministic pipeline — lead
+  extraction, the 18-step nested chain, `apply*BillOptions`, calculators,
+  `recoverMissingLabourLineItem`, `normaliseDaysLabourLineItem`,
+  `clearStaleLabourWarningsAfterRecovery`, and `auditProcessedQuote`. Verified by
+  `lib/pipeline/process-transcript.test.ts` (`npm run test:pipeline`): the real
+  pipeline recovers labour to 12h/$1,320 and attaches `audit_result` with **no
+  browser and no live OpenAI**.
+- **What still needs mocking:** the two OpenAI calls — `classify` (classification)
+  and `extractQuote` (the extraction that returns the raw `ProcessedQuote`). Tests
+  inject both via `deps`. Everything after extraction is real.
+
+### Calling it from a golden fixture (future step)
+
+Golden fixtures still use hand-authored `buildProcessedQuote()`. They can now be
+migrated one at a time to run the real pipeline with a **recorded extraction**:
+
+```ts
+const { quote } = await processTranscriptToQuote(
+  { transcript, knowledgeItemContext },
+  { classify: async () => recordedClassification,
+    extractQuote: async () => ({ quote: recordedExtraction, elapsedMs: 0, promptLength: 0, responseLength: 0, reliabilityMetric: "first_pass_success" }) },
+)
+```
+
+This batch deliberately does **not** migrate the golden fixtures (kept stable); it
+only makes the pipeline callable. Migrating each fixture to a recorded extraction
+is the natural next step.
 
 ## Adding a new golden quote
 
