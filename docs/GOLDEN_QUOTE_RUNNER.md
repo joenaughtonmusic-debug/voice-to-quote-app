@@ -77,9 +77,23 @@ The Adam fixture now encodes the **desired** mixed-landscaping output:
 | audit fired V04/V06/V08 | V04, V06-decking-leak, V06-missing-topsoil/lawn-seed, V08 all resolved |
 
 Adam's audit status is still `needs_review` because `V06-optional-hedge-unwarned`
-remains **by design**. Still future work (fixture `knownFailures`): topsoil volume
-(5.04m³), the `$129` lawn-seed price on a priced line, hedge plant-count/spacing,
-and retaining post-spacing/drainage.
+remains **by design**.
+
+### Adam/Titirangi topsoil + lawn seed (QA-4)
+
+Two deterministic calculators now compute the lawn-establishment facts (verified by
+`lib/calculators/lawn-establishment.test.ts`, `npm run test:lawn-establishment`):
+
+- `lib/calculators/soil-volume.ts` — `6m × 16.8m × 50mm` → **100.8m² / 5.04m³**
+  (requires an explicit "depth"/"deep" word, so a `400mm high` wall is never read
+  as a spread depth; never fires on decking/planting text).
+- `lib/calculators/lawn-establishment.ts` — parses `5kg bag, $129 for the bag` →
+  `{ lawn seed, 1 bag, 5kg, $129, spoken }` (`5kg` is never read as `$5`).
+
+The Adam fixture calls these, so its topsoil line (`Qty 5.04 m3`) and lawn-seed line
+(`Qty 1 bag`, `Total 129`) are genuinely computed. KB item mapping for those lines
+remains future work (`needs_review`). Still future: hedge plant-count/spacing and
+retaining post-spacing/drainage.
 
 ## Route-extraction plan (to make the REAL pipeline testable end-to-end)
 

@@ -34,6 +34,7 @@
     "test:export-mapper": "tsc --project lib/export/tsconfig.test.json && node --test .tmp/export-mapper-tests/lib/export/map-to-xero.test.js",
     "test:quote-auditor": "tsc --project lib/quote-auditor/tsconfig.test.json && node --test .tmp/quote-auditor-tests/lib/quote-auditor/index.test.js",
     "test:golden-quotes": "tsc --project lib/golden-quotes/tsconfig.test.json && node --test .tmp/golden-quotes-tests/lib/golden-quotes/index.test.js",
+    "test:lawn-establishment": "tsc --project lib/calculators/tsconfig.lawn-establishment.test.json && node --test .tmp/lawn-establishment-tests/lib/calculators/lawn-establishment.test.js",
     "start": "next start",
     "lint": "eslint ."
   },

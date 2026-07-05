@@ -1,3 +1,4 @@
+import { calculateLawnEstablishment } from "../../calculators/lawn-establishment"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../../processed-quote"
 import type { GoldenQuoteFixture } from "../contracts"
 
@@ -15,11 +16,16 @@ const TRANSCRIPT = `Okay, this is a quote for Adam at 20 Lemnos Street in Titira
  * ("does not detect decking from a lawn/retaining job…"). The projection layers
  * (customer preview, audit, JMS) below run on real code.
  *
- * Detailed dimensions and the $129 lawn-seed price are held in internal_notes so
- * the customer preview stays clean; preserving them as a priced line item and
- * calculating topsoil volume / hedge plant count remain future work (knownFailures).
+ * QA-4: topsoil volume (100.8m²/5.04m³) and the lawn-seed bag price ($129) are
+ * now computed by real calculators (lib/calculators/soil-volume.ts +
+ * lawn-establishment.ts) and carried on line items + internal notes. Customer
+ * preview stays clean (no measured maths). KB item mapping for those lines and
+ * the hedge plant-count calc remain future work (knownFailures).
  */
 function buildProcessedQuote(): ProcessedQuote {
+  // Real deterministic calculators (QA-4) — topsoil 100.8m²/5.04m³, lawn seed $129.
+  const { topsoil, lawnSeed } = calculateLawnEstablishment(TRANSCRIPT)
+
   return {
     ...EMPTY_PROCESSED_QUOTE,
     client_name: "Adam",
@@ -67,12 +73,50 @@ function buildProcessedQuote(): ProcessedQuote {
     internal_notes: [
       "Retaining wall: approximately 400mm high, 16.8m long, set out approximately 900mm off the fence.",
       "Retaining timber: two 200x50 horizontal retaining timbers with 100x100 timber posts.",
-      "Topsoil area: 6m x 16.8m = 100.8m²; depth 50mm (volume ~5.04m³ to confirm).",
-      "Lawn seed: 5kg bag; spoken price $129.",
+      // Computed by the real soil-volume calculator (QA-4).
+      `Topsoil area: 6m x 16.8m = ${topsoil?.areaM2 ?? "?"}m²; depth 50mm; volume ${topsoil?.volumeM3 ?? "?"}m³ before waste/rounding.`,
+      `Lawn seed: ${lawnSeed?.size ?? "?"} bag; spoken price $${lawnSeed?.rate ?? "?"}.`,
       "Optional Ficus Tuffi hedge along fence; roughly 1m plants; optional labour 2 people x 1 day.",
     ],
     // No decking line items — the decking detector no longer fires (QA-3 fix).
-    line_items: [],
+    // Topsoil + lawn seed lines carry the computed quantity/price; item mapping
+    // is left for a future KB batch (needs_review), but the facts are preserved.
+    line_items: [
+      {
+        item_code: "",
+        item_name: "Topsoil",
+        item_type: "material",
+        description: `Import and spread topsoil — ${topsoil?.areaM2 ?? "?"}m² × 50mm`,
+        quantity: topsoil ? String(topsoil.volumeM3) : null,
+        unit: "m3",
+        rate: null,
+        knowledge_base_rate: null,
+        override_rate: null,
+        final_rate_used: null,
+        total: null,
+        match_confidence: "none",
+        match_reason: "Topsoil volume calculated from area × depth; no KB item matched.",
+        needs_review: true,
+        warning: "Rate missing — no KB topsoil item matched",
+      },
+      {
+        item_code: "",
+        item_name: `Lawn seed (${lawnSeed?.size ?? "5kg"} bag)`,
+        item_type: "material",
+        description: "Lawn seed — cheap grade, spoken price preserved",
+        quantity: "1",
+        unit: "bag",
+        rate: lawnSeed?.rate != null ? String(lawnSeed.rate) : null,
+        knowledge_base_rate: null,
+        override_rate: null,
+        final_rate_used: lawnSeed?.rate != null ? String(lawnSeed.rate) : null,
+        total: lawnSeed?.rate != null ? String(lawnSeed.rate) : null,
+        match_confidence: "low",
+        match_reason: "Spoken bag price preserved; no KB lawn seed item matched.",
+        needs_review: true,
+        warning: "Item mapping missing — spoken price used",
+      },
+    ],
   }
 }
 
@@ -104,9 +148,33 @@ export const adamTitirangi: GoldenQuoteFixture = {
       actual: (p) => `internal_notes=${JSON.stringify(p.quote.internal_notes)}`,
     },
     {
-      label: "topsoil area 6m x 16.8m preserved",
-      assert: (p) => p.quote.internal_notes.some((n) => /6m\s*x\s*16\.8m/i.test(n)),
+      label: "topsoil area calculated as 100.8m²",
+      assert: (p) => p.quote.internal_notes.some((n) => /100\.8m²/.test(n)),
       actual: (p) => `internal_notes=${JSON.stringify(p.quote.internal_notes)}`,
+    },
+    {
+      label: "topsoil volume calculated as 5.04m³",
+      assert: (p) =>
+        p.quote.internal_notes.some((n) => /5\.04m³/.test(n)) ||
+        p.quote.line_items.some((i) => /topsoil/i.test(i.item_name) && i.quantity === "5.04"),
+      actual: (p) =>
+        `topsoil qty=${JSON.stringify(p.quote.line_items.filter((i) => /topsoil/i.test(i.item_name)).map((i) => i.quantity))}`,
+    },
+    {
+      label: "lawn seed preserves 5kg bag and $129",
+      assert: (p) =>
+        p.quote.line_items.some(
+          (i) => /lawn seed/i.test(i.item_name) && /5kg/i.test(i.item_name) && i.rate === "129",
+        ),
+      actual: (p) =>
+        `lawn seed line=${JSON.stringify(
+          p.quote.line_items.filter((i) => /lawn seed/i.test(i.item_name)).map((i) => ({ name: i.item_name, rate: i.rate })),
+        )}`,
+    },
+    {
+      label: "5kg is not misread as a $5 rate",
+      assert: (p) => !p.quote.line_items.some((i) => /lawn seed/i.test(i.item_name) && i.rate === "5"),
+      actual: (p) => `lawn seed rates=${JSON.stringify(p.quote.line_items.filter((i) => /lawn seed/i.test(i.item_name)).map((i) => i.rate))}`,
     },
     {
       label: "optional Ficus hedge kept as optional works",
@@ -118,6 +186,14 @@ export const adamTitirangi: GoldenQuoteFixture = {
     {
       label: "no decking artefacts in matched lines",
       mustNotContain: ["Decking boards", "Deck area"],
+    },
+    {
+      label: "topsoil volume line",
+      mustContain: ["Topsoil", "Qty 5.04 m3"],
+    },
+    {
+      label: "lawn seed priced line",
+      mustContain: ["Lawn seed (5kg bag)", "Qty 1 bag", "Total 129"],
     },
   ],
   expectedAudit: {
@@ -134,8 +210,7 @@ export const adamTitirangi: GoldenQuoteFixture = {
     ],
   },
   knownFailures: [
-    "Topsoil VOLUME (6 × 16.8 × 0.05 = 5.04m³) is noted internally but not yet computed by a calculator.",
-    "Lawn seed spoken price $129 is kept in internal notes but not yet mapped to a priced line item.",
+    "Topsoil + lawn seed lines carry the computed quantity/price but have no KB item mapping (needs_review) — resolved when the KB/price-list batch lands.",
     "Optional Ficus hedge has no plant-count/spacing calculation yet (V06-optional-hedge-unwarned still fires by design).",
     "Retaining post spacing / drainage requirement not yet captured or warned.",
   ],
