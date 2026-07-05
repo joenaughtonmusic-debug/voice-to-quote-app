@@ -347,3 +347,79 @@ test("Auditor handles empty quote without throwing", () => {
   assert.equal(result.audit_status, "pass")
   assert.equal(result.issues.length, 0)
 })
+
+// ── V03 missing labour export line ───────────────────────────────────────────
+
+test("V03: labour allowance parseable but no labour line item — flags V03-missing-labour-export-line", () => {
+  const quoteNoLabourLine = {
+    ...EMPTY_PROCESSED_QUOTE,
+    quote_title: "Planting Quote",
+    job_type: "planting",
+    primary_quote: {
+      quote_title: "Planting Quote",
+      job_type: "planting",
+      cadence: "",
+      scope: [],
+      notes: [],
+    },
+    labour_allowance: "one person for one and a half days because there are roots in the garden bed",
+    // No labour line item — simulates the Michelia failure mode
+    line_items: [
+      {
+        item_code: "",
+        item_name: "Garden mix",
+        item_type: "material",
+        description: "5 bags garden mix",
+        quantity: "5 bags",
+        unit: "bags",
+        rate: null,
+        knowledge_base_rate: null,
+        override_rate: null,
+        final_rate_used: null,
+        total: null,
+        match_confidence: "low",
+        match_reason: "Not found in item library",
+        needs_review: true,
+        warning: "Rate missing",
+      },
+    ],
+    pricing_facts: [],
+  } as unknown as ProcessedQuote
+
+  const result = auditProcessedQuote(ctx(quoteNoLabourLine, MICHELIA_TRANSCRIPT))
+
+  const issue = result.issues.find((i) => i.id === "V03-missing-labour-export-line")
+  assert.ok(issue, "Must flag missing labour export line when allowance is parseable")
+  assert.equal(issue!.severity, "error")
+  assert.equal(issue!.category, "labour")
+  assert.match(issue!.evidence ?? "", /one person for one and a half days/i)
+  assert.match(issue!.expected ?? "", /12 hours/i)
+})
+
+test("V03: clean Michelia quote with labour line — does NOT flag missing labour export line", () => {
+  const result = auditProcessedQuote(ctx(micheliaCleanQuote(), MICHELIA_TRANSCRIPT))
+  const issue = result.issues.find((i) => i.id === "V03-missing-labour-export-line")
+  assert.equal(issue, undefined, "Must not flag missing labour line when labour item exists")
+})
+
+test("Michelia clean case: recovered labour line has quantity 12 hours, total 1320, no quantity-missing warning", () => {
+  const quote = micheliaCleanQuote()
+
+  const labourItem = quote.line_items.find((item) => /\blabou?r\b/i.test(item.item_type))
+  assert.ok(labourItem, "Must have a labour line item")
+  assert.equal(labourItem!.quantity, "12", "Labour quantity must be 12 hours")
+  assert.equal(labourItem!.unit, "hours")
+  assert.equal(labourItem!.total, "1320")
+  assert.ok(
+    !labourItem!.warning || !/quantity/i.test(labourItem!.warning),
+    `Labour item must not carry a quantity-missing warning, got: "${labourItem!.warning}"`,
+  )
+  assert.equal(labourItem!.needs_review, false, "Recovered labour item must not need review")
+})
+
+test("Michelia clean case: missing_information does not include labour quantity/hours", () => {
+  const quote = micheliaCleanQuote()
+  const missingInfo = (quote as unknown as Record<string, unknown>).missing_information as string[] | undefined
+  const hasLabourQtyEntry = (missingInfo ?? []).some((entry) => /labour.*quantity/i.test(entry))
+  assert.equal(hasLabourQtyEntry, false, "missing_information must not include labour quantity/hours when labour is recovered")
+})

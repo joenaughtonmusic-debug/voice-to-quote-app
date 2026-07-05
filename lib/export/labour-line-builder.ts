@@ -299,6 +299,91 @@ function labourItemNeedsHourNormalisation(item: LabourLineItem, parsed: ParsedLa
   return false
 }
 
+type RecoverableQuoteLineItem = {
+  item_code: string
+  item_name: string
+  item_type: string
+  description: string
+  quantity: string | null
+  unit: string
+  rate: string | null
+  knowledge_base_rate: string | null
+  override_rate: string | null
+  final_rate_used: string | null
+  total: string | null
+  match_confidence: string
+  match_reason: string
+  needs_review: boolean
+  warning: string
+}
+
+/**
+ * Recovery fallback for when all deterministic labour paths
+ * (extractLabourDayPeopleAllowances, extractPerTaskHourAllowances,
+ *  preferTradeAwareLabourLineItems) have run but produced no labour line item.
+ *
+ * This happens when the spoken labour allowance uses word-form numbers
+ * ("one person for one and a half days") that the numeric-digit extractors
+ * cannot parse. parseLabourAllowanceText handles these cases.
+ *
+ * Accepts an optional knowledgeBaseRate (pre-fetched from the KB by the caller)
+ * so the synthetic item has a total from the start — no second rate-lookup pass
+ * is required.
+ *
+ * The match_reason starts with "Deterministic labour allowance calculated from
+ * spoken days" so normaliseDaysLabourLineItem and applyPerTaskHourAllowances
+ * will both skip it.
+ */
+export function recoverMissingLabourLineItem<
+  T extends {
+    labour_allowance?: string | null
+    primary_quote?: { scope?: string[] | null; notes?: string[] | null } | null
+    line_items: RecoverableQuoteLineItem[]
+  },
+>(quote: T, transcript?: string, knowledgeBaseRate: string | null = null): T {
+  // Skip if any labour item already exists (deterministic or AI paths succeeded)
+  if (quote.line_items.some((item) => isLabourItem(item))) return quote
+
+  const candidates = [
+    quote.labour_allowance,
+    ...(quote.primary_quote?.notes ?? []),
+    ...(quote.primary_quote?.scope ?? []),
+    transcript,
+  ].filter(Boolean) as string[]
+
+  let parsed: ParsedLabourAllowance | null = null
+  for (const candidate of candidates) {
+    parsed = parseLabourAllowanceText(candidate)
+    if (parsed) break
+  }
+  if (!parsed || parsed.hours <= 0) return quote
+
+  const { hours, people, days, sourceText } = parsed
+  const rate = Number(knowledgeBaseRate ?? 0)
+  const total = rate > 0 ? String(hours * rate) : null
+
+  const synthetic: RecoverableQuoteLineItem = {
+    item_code: "",
+    item_name: "Landscaping Labour",
+    item_type: "labour",
+    description: `${people} person × ${days} days × 8 hrs/day = ${hours} hours`,
+    quantity: String(hours),
+    unit: "hours",
+    rate: knowledgeBaseRate,
+    knowledge_base_rate: knowledgeBaseRate,
+    override_rate: null,
+    final_rate_used: knowledgeBaseRate,
+    total,
+    match_confidence: knowledgeBaseRate ? "medium" : "low",
+    match_reason: `Deterministic labour allowance calculated from spoken days — recovered from word-form allowance: "${sourceText}". parseLabourAllowanceText parsed ${people}p × ${days}d × 8h = ${hours}h.`,
+    needs_review: knowledgeBaseRate === null,
+    warning: knowledgeBaseRate === null ? "Rate missing — no KB labour item matched" : "",
+  }
+
+  quote.line_items.push(synthetic)
+  return quote
+}
+
 /**
  * When the AI extracts a labour line item with unit "days" (e.g. "1.5 days")
  * but the KB rate is per-hour, the quantity and total are wrong.

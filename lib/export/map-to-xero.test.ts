@@ -8,7 +8,7 @@ import {
   mapExportableLineToXero,
 } from "./map-to-xero"
 import type { ExportableQuoteLine } from "./exportable-line"
-import { normaliseDaysLabourLineItem, parseLabourAllowanceText, resolveLabourExportPrice, structuredAllowanceLabourPrice } from "./labour-line-builder"
+import { normaliseDaysLabourLineItem, parseLabourAllowanceText, recoverMissingLabourLineItem, resolveLabourExportPrice, structuredAllowanceLabourPrice } from "./labour-line-builder"
 import { formatMatchedJmsLineItems, processedQuoteToEditableSections, EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
 import { buildPlantingExportableLines } from "./planting-export-lines"
 import { buildPavingExportableLines } from "./paving-export-lines"
@@ -598,4 +598,133 @@ test("garden tidy exportable labour line carries labourWorkings when structured 
   assert.equal(labourLine?.labourWorkings?.totalHours, 20)
   assert.equal(labourLine?.labourWorkings?.rate, 80)
   assert.equal(labourLine?.unitAmount, 1600)
+})
+
+// ── Labour recovery tests ──────────────────────────────────────────────────────
+
+test("parseLabourAllowanceText parses 'one person for one and a half days' — Michelia word-form allowance", () => {
+  const parsed = parseLabourAllowanceText("one person for one and a half days")
+  assert.ok(parsed, "Should parse word-form people+days allowance")
+  assert.equal(parsed!.people, 1)
+  assert.equal(parsed!.days, 1.5)
+  assert.equal(parsed!.hours, 12)
+})
+
+test("parseLabourAllowanceText parses full Michelia labour_allowance field value", () => {
+  const parsed = parseLabourAllowanceText(
+    "Allow one person for one and a half days because there are roots in the garden bed",
+  )
+  assert.ok(parsed, "Should parse the full Michelia labour_allowance with trailing reason clause")
+  assert.equal(parsed!.people, 1)
+  assert.equal(parsed!.days, 1.5)
+  assert.equal(parsed!.hours, 12)
+})
+
+test("recoverMissingLabourLineItem creates a synthetic labour line when no labour item exists", () => {
+  const quote = {
+    labour_allowance: "one person for one and a half days because there are roots in the garden bed",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [] as Array<{
+      item_code: string; item_name: string; item_type: string; description: string
+      quantity: string | null; unit: string; rate: string | null
+      knowledge_base_rate: string | null; override_rate: string | null
+      final_rate_used: string | null; total: string | null
+      match_confidence: string; match_reason: string; needs_review: boolean; warning: string
+    }>,
+  }
+
+  const result = recoverMissingLabourLineItem(quote, undefined, "110")
+
+  assert.equal(result.line_items.length, 1, "Should have created exactly one labour line item")
+  const item = result.line_items[0]!
+  assert.equal(item.item_type, "labour")
+  assert.equal(item.quantity, "12", "Quantity should be total hours (12)")
+  assert.equal(item.unit, "hours")
+  assert.equal(item.knowledge_base_rate, "110")
+  assert.equal(item.final_rate_used, "110")
+  assert.equal(item.total, "1320", "Total should be 12 × $110 = $1,320")
+  assert.match(item.match_reason, /Deterministic labour allowance calculated from spoken days/i)
+})
+
+test("recoverMissingLabourLineItem does nothing when a labour item already exists", () => {
+  const quote = {
+    labour_allowance: "one person for one and a half days",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [
+      {
+        item_code: "LAB-001", item_name: "Landscaping Labour", item_type: "labour",
+        description: "Already exists", quantity: "12", unit: "hours",
+        rate: "110", knowledge_base_rate: "110", override_rate: null, final_rate_used: "110",
+        total: "1320", match_confidence: "high",
+        match_reason: "Trade-aware labour", needs_review: false, warning: "",
+      },
+    ],
+  }
+
+  const result = recoverMissingLabourLineItem(quote, undefined, "110")
+  assert.equal(result.line_items.length, 1, "Should not add a second labour item")
+})
+
+test("recoverMissingLabourLineItem does nothing when labour_allowance is not parseable", () => {
+  const quote = {
+    labour_allowance: "TBD — awaiting site assessment",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [] as typeof emptyLineItems,
+  }
+  type EmptyLineItem = { item_code: string; item_name: string; item_type: string; description: string; quantity: string | null; unit: string; rate: string | null; knowledge_base_rate: string | null; override_rate: string | null; final_rate_used: string | null; total: string | null; match_confidence: string; match_reason: string; needs_review: boolean; warning: string }
+  const emptyLineItems: EmptyLineItem[] = []
+  const result = recoverMissingLabourLineItem({ ...quote, line_items: emptyLineItems }, undefined, "110")
+  assert.equal(result.line_items.length, 0, "Should not add a line when allowance is unparseable")
+})
+
+test("recoverMissingLabourLineItem clears stale 'Quantity missing' warning when item gets quantity", () => {
+  // Simulates the exact Michelia failure mode:
+  // normalizeLineItemWarnings ran early and flagged a labour item with no quantity.
+  // recoverMissingLabourLineItem should SKIP (item already exists), but the caller
+  // must then use clearStaleLabourWarningsAfterRecovery to remove the stale warning.
+  // Here we test that the recovered item itself does not carry quantity-missing warning.
+  const quote = {
+    labour_allowance: "one person for one and a half days because there are roots in the garden bed",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [] as Array<{
+      item_code: string; item_name: string; item_type: string; description: string
+      quantity: string | null; unit: string; rate: string | null
+      knowledge_base_rate: string | null; override_rate: string | null
+      final_rate_used: string | null; total: string | null
+      match_confidence: string; match_reason: string; needs_review: boolean; warning: string
+    }>,
+  }
+  const result = recoverMissingLabourLineItem(quote, undefined, "110")
+  const item = result.line_items[0]!
+  assert.equal(item.warning, "", "Recovered labour item must not carry a warning when rate is available")
+  assert.equal(item.needs_review, false, "Recovered labour item must not need review when rate is available")
+})
+
+test("structuredAllowanceLabourPrice returns $1320 for Michelia recovered labour item", () => {
+  // Simulates the state AFTER recoverMissingLabourLineItem has run and KB rate is set.
+  const quote = {
+    labour_allowance: "one person for one and a half days because there are roots in the garden bed",
+    primary_quote: { scope: [], notes: [] },
+    line_items: [
+      {
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "hours",
+        quantity: "12",
+        final_rate_used: "110",
+        rate: "110",
+        knowledge_base_rate: "110",
+        total: "1320",
+        match_reason: "Deterministic labour allowance calculated from spoken days — recovered",
+      },
+    ],
+    pricing_facts: [],
+  }
+
+  const result = structuredAllowanceLabourPrice(quote as Parameters<typeof structuredAllowanceLabourPrice>[0])
+  assert.ok(result, "Should return a structured allowance price")
+  assert.equal(result!.amount, 1320)
+  assert.equal(result!.allowanceWorkings?.people, 1)
+  assert.equal(result!.allowanceWorkings?.days, 1.5)
+  assert.equal(result!.allowanceWorkings?.totalHours, 12)
 })

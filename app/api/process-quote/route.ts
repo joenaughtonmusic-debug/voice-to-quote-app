@@ -32,7 +32,7 @@ import {
   transcriptMentionsRecurringWork,
 } from "@/lib/quote-classification"
 import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "@/lib/core/labour-allowance-extraction"
-import { normaliseDaysLabourLineItem } from "@/lib/export/labour-line-builder"
+import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "@/lib/export/labour-line-builder"
 import { auditProcessedQuote } from "@/lib/quote-auditor"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -1032,6 +1032,64 @@ function attachMatchedLineItemMetadata(
       gst_rate: lineItem.gst_rate ?? metadata.gst_rate,
     }
   })
+
+  return quote
+}
+
+/**
+ * After recoverMissingLabourLineItem and normaliseDaysLabourLineItem have run
+ * (both flat steps, outside the nested pipeline chain), labour line items that
+ * previously had no quantity/rate may now have valid values. The stale
+ * "Quantity missing" / "Rate missing" warnings set by normalizeLineItemWarnings
+ * (which runs inside the chain, before recovery) must be cleared, and the
+ * corresponding "labour quantity/hours" / "labour rate" entries removed from
+ * missing_information.
+ */
+function clearStaleLabourWarningsAfterRecovery(quote: z.infer<typeof processedQuoteSchema>) {
+  let anyLabourWarningCleared = false
+
+  quote.line_items = quote.line_items.map((item) => {
+    if (!hasLabourSignals(item)) return item
+
+    const qtyOk = hasLineItemQuantity(item)
+    const rateOk = hasLineItemRate(item)
+    const staleQuantityWarning = /quantity\s+missing/i.test(item.warning)
+    const staleRateWarning = /rate\s+missing/i.test(item.warning)
+
+    if ((staleQuantityWarning && qtyOk) || (staleRateWarning && rateOk)) {
+      const newWarning =
+        staleQuantityWarning && qtyOk && staleRateWarning && !rateOk
+          ? "Rate missing"
+          : staleRateWarning && rateOk && staleQuantityWarning && !qtyOk
+            ? "Quantity missing"
+            : ""
+
+      const newNeedsReview = newWarning !== "" || item.needs_review
+      anyLabourWarningCleared = true
+      return {
+        ...item,
+        warning: newWarning,
+        needs_review: newNeedsReview && !qtyOk,
+      }
+    }
+
+    return item
+  })
+
+  if (anyLabourWarningCleared) {
+    const anyLabourItemStillMissingQty = quote.line_items.some(
+      (item) => hasLabourSignals(item) && /quantity\s+missing/i.test(item.warning),
+    )
+    const anyLabourItemStillMissingRate = quote.line_items.some(
+      (item) => hasLabourSignals(item) && /rate\s+missing/i.test(item.warning),
+    )
+
+    quote.missing_information = (quote.missing_information ?? []).filter((entry) => {
+      if (/^labour\s+quantity/i.test(entry)) return anyLabourItemStillMissingQty
+      if (/^labour\s+rate/i.test(entry)) return anyLabourItemStillMissingRate
+      return true
+    })
+  }
 
   return quote
 }
@@ -3088,8 +3146,29 @@ export async function POST(request: Request) {
       applyRetainingBillOptions(quote, transcript, knowledgeItemContext)
       applyPavingBillOptions(quote, transcript, knowledgeItemContext)
       applyPlantingMaterialOptions(quote, transcript, knowledgeItemContext)
+
+      // Deterministic labour recovery — fires when the AI omitted a labour line and
+      // all earlier deterministic paths (applyDeterministicLabourAllowances,
+      // applyPerTaskHourAllowances) also produced no labour item.
+      // Handles word-form allowances ("one person for one and a half days") that the
+      // numeric-digit extractors cannot match.
+      const recoveryBestLabourItem = findBestLabourItem(knowledgeItemContext, transcript, classification)
+      const recoveryBestRate =
+        recoveryBestLabourItem?.sell_price === null || recoveryBestLabourItem?.sell_price === undefined
+          ? null
+          : String(recoveryBestLabourItem.sell_price)
+      recoverMissingLabourLineItem(quote, transcript, recoveryBestRate)
+
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       normaliseDaysLabourLineItem(quote, transcript)
+
+      // Clear stale "Quantity missing" / "Rate missing" warnings on labour items
+      // that were set by normalizeLineItemWarnings (which runs inside the nested
+      // pipeline chain, before recoverMissingLabourLineItem and
+      // normaliseDaysLabourLineItem run as flat steps). After normalisation the
+      // item may now have a valid quantity/rate/total, so the stale warning must
+      // be removed and needs_review recalculated.
+      clearStaleLabourWarningsAfterRecovery(quote)
 
       // Deterministic Quote Auditor — runs after all pipeline steps so it sees
       // the final line_items, labour_allowance, and plant_calculator_results.

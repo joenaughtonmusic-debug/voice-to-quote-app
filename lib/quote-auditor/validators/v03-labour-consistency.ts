@@ -1,5 +1,5 @@
 import type { AuditContext, AuditIssue } from "../types"
-import { structuredAllowanceLabourPrice } from "../../export/labour-line-builder"
+import { structuredAllowanceLabourPrice, parseLabourAllowanceText } from "../../export/labour-line-builder"
 import type { XeroPayloadQuote } from "../../export/xero/types"
 
 const TOLERANCE = 0.02 // 2 cents rounding tolerance
@@ -41,8 +41,36 @@ function labourPanelTotal(ctx: AuditContext): number | null {
   return structured.amount > 0 ? structured.amount : null
 }
 
+function hasAnyLabourLineItem(ctx: AuditContext): boolean {
+  return ctx.processedQuote.line_items.some(
+    (item) =>
+      /\blabou?r\b/i.test(item.item_type) || /\blabou?r\b/i.test(item.item_name),
+  )
+}
+
 export function v03LabourConsistency(ctx: AuditContext): AuditIssue[] {
   const issues: AuditIssue[] = []
+
+  // ── 0. Labour allowance parseable but no labour export/JMS line exists ────
+  const labourAllowance = ctx.processedQuote.labour_allowance ?? ""
+  if (labourAllowance.trim()) {
+    const parsed = parseLabourAllowanceText(labourAllowance)
+    if (parsed && parsed.hours > 0 && !hasAnyLabourLineItem(ctx)) {
+      issues.push({
+        id: "V03-missing-labour-export-line",
+        severity: "error",
+        category: "labour",
+        message:
+          "Labour allowance is present and parseable but no labour export/JMS line item was created. Internal View will show no Labour Pricing and no labour in Matched JMS Line Items.",
+        evidence: `labour_allowance: "${labourAllowance}"`,
+        expected: `A labour line item for ${parsed.hours} hours at the KB rate`,
+        actual: "No labour line item in line_items",
+        suggested_fix:
+          "recoverMissingLabourLineItem should have created a synthetic labour item. Check that it runs after all deterministic paths and before attachMatchedLineItemMetadata.",
+        can_auto_correct: false,
+      })
+    }
+  }
 
   // ── 1. Check for combined-unit nonsense in labour line item ───────────────
   const labourItem = ctx.processedQuote.line_items.find(
