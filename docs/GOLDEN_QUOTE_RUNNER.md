@@ -59,6 +59,24 @@ extraction. It does **not** yet prove the route produces good extraction. Golden
 Quote 3 (Adam) is hand-authored to the **current broken** output and asserts the
 bugs persist, so the suite turns red the moment the pipeline improves.
 
+### Adam/Titirangi auditor coverage (QA-2)
+
+The deterministic Quote Auditor now **detects** the Adam failures (detection
+only — the quote is still wrong). The Adam fixture asserts these fire:
+
+| Issue id | Catches |
+|---|---|
+| `V04-decking-on-non-decking` | decking calculator output on a non-decking transcript |
+| `V06-decking-scope-leak` | `Deck area 1` / `Decking boards` in customer scope |
+| `V06-missing-topsoil-lawn-scope` | topsoil/lawn establishment spoken but absent from the preview |
+| `V06-missing-lawn-seed` (warning) | lawn seed spoken but omitted |
+| `V06-optional-hedge-unwarned` (warning) | optional Ficus hedge present but never calculated/warned |
+| `V08-suburb-missing` (warning) | `20 Lemnos Street in Titirangi` → suburb dropped |
+
+Adam's audit status is therefore `needs_review`. Still **undetected / unfixed**
+(future batches): topsoil volume calculation (5.04m³), preserving the `$129` lawn
+seed price on a line item, and actually calculating the optional hedge.
+
 ## Route-extraction plan (to make the REAL pipeline testable end-to-end)
 
 Today the transcript→ProcessedQuote pipeline only exists inside the Next.js POST

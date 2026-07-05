@@ -52,16 +52,24 @@ test("Golden Quote 3 — Adam/Titirangi: current BROKEN state is captured (locke
   assertReportPasses(adamTitirangi)
 })
 
-test("Golden Quote 3 — Adam/Titirangi: auditor does NOT yet detect the classification/address bugs", () => {
-  // Documents the validator gap: V04 (classification) and V08 (address) are not
-  // implemented, so the auditor cannot flag the decking misclassification or the
-  // dropped suburb. This is the explicit backlog for a future batch.
+test("Golden Quote 3 — Adam/Titirangi: auditor now DETECTS the classification/customer-preview/address bugs", () => {
+  // QA-2: the deterministic auditor now flags the known Adam failures. The quote
+  // is still wrong (not fixed), but the safety net catches it.
   const { projection } = runGoldenQuote(adamTitirangi)
   const ids = projection.audit.issues.map((i) => i.id)
+  const categories = projection.audit.issues.map((i) => i.category)
+
+  assert.ok(ids.includes("V04-decking-on-non-decking"), `Expected V04 decking flag; got [${ids.join(", ")}]`)
+  assert.ok(ids.includes("V08-suburb-missing"), `Expected V08 suburb flag; got [${ids.join(", ")}]`)
   assert.ok(
-    !ids.some((id) => /V04|classification|V08|address|suburb/i.test(id)),
-    `Expected NO classification/address validator yet, but auditor produced: [${ids.join(", ")}]`,
+    ids.some((id) => id.startsWith("V06-")),
+    `Expected a V06 customer-preview flag; got [${ids.join(", ")}]`,
   )
+  // At least one calculator/classification issue, one customer_preview issue, one address issue.
+  assert.ok(categories.includes("calculator"), "Expected a calculator/classification issue")
+  assert.ok(categories.includes("customer_preview"), "Expected a customer_preview issue")
+  assert.ok(categories.includes("address"), "Expected an address issue")
+  assert.notEqual(projection.audit.audit_status, "pass", "Adam audit status must not be 'pass'")
 })
 
 test("every fixture documents its mocked boundary", () => {

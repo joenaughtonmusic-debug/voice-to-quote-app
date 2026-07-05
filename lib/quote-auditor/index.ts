@@ -2,11 +2,21 @@ import type { AuditContext, AuditIssue, AuditResult } from "./types"
 import { v01UnitSanity } from "./validators/v01-unit-sanity"
 import { v02PricingFacts } from "./validators/v02-pricing-facts"
 import { v03LabourConsistency } from "./validators/v03-labour-consistency"
+import { v04ClassificationConflicts } from "./validators/v04-classification-conflicts"
+import { v06CustomerPreviewSafety } from "./validators/v06-customer-preview-safety"
+import { v08Address } from "./validators/v08-address"
 
 export type { AuditContext, AuditIssue, AuditResult } from "./types"
 export type { AuditStatus, AuditSeverity, AuditCategory } from "./types"
 
-const VALIDATORS = [v01UnitSanity, v02PricingFacts, v03LabourConsistency]
+const VALIDATORS = [
+  v01UnitSanity,
+  v02PricingFacts,
+  v03LabourConsistency,
+  v04ClassificationConflicts,
+  v06CustomerPreviewSafety,
+  v08Address,
+]
 
 function deriveStatus(issues: AuditIssue[]): AuditResult["audit_status"] {
   if (issues.some((i) => i.severity === "error")) return "needs_review"

@@ -123,19 +123,26 @@ export const adamTitirangi: GoldenQuoteFixture = {
       mustContain: ["Decking boards", "100.8"],
     },
   ],
-  // The auditor cannot yet catch these (no V04 classification / V08 address
-  // validators). We assert only that the existing V01-V03 do not spuriously fire.
+  // The Quote Auditor now DETECTS these failures (QA-2): V04 flags the false
+  // decking path, V06 flags the decking-scope leak + missing topsoil/lawn scope,
+  // V08 flags the dropped suburb. Detection ≠ fix — the quote is still wrong.
   expectedAudit: {
     kind: "issues",
+    mustInclude: [
+      "V04-decking-on-non-decking",
+      "V06-decking-scope-leak",
+      "V06-missing-topsoil-lawn-scope",
+      "V08-suburb-missing",
+    ],
     mustNotInclude: ["V03-missing-labour-export-line"],
+    statusIsNot: "pass",
   },
   knownFailures: [
-    "Should be classified as general landscaping / lawn levelling with a retaining component — currently 'decking'. Needs auditor V04 (classification conflicts).",
-    "Suburb 'Titirangi' should be captured in the address. Needs auditor V08 (address/suburb).",
-    "Topsoil volume 6 × 16.8 × 0.05 = 5.04m³ should be calculated — currently absent. Needs a topsoil/soil-volume calculator.",
-    "Lawn seed spoken price $129 should be preserved. Needs pricing-fact → line-item mapping.",
-    "Optional Ficus Tuffi hedge should be calculated with a plant-count/spacing warning. Needs a warning validator.",
-    "'Deck area 1' / 'Decking boards' should never appear — needs V04 wrong-calculator-active detection.",
+    "DETECTED (V04): decking output on a lawn/retaining transcript — still needs the classifier fixed so it never fires.",
+    "DETECTED (V08): suburb 'Titirangi' dropped from the address — still needs address extraction to capture it.",
+    "DETECTED (V06): topsoil/lawn establishment absent — still needs a topsoil/soil-volume calculator (5.04m³) and scope.",
+    "PARTIAL (V06): lawn seed omitted is flagged, but spoken price $129 still needs pricing-fact → line-item mapping.",
+    "PARTIAL (V06): optional Ficus hedge flagged as un-warned, but still needs an actual plant-count/spacing calculation.",
   ],
   buildProcessedQuote,
 }
