@@ -125,6 +125,91 @@ function buildProcessedQuote(): ProcessedQuote {
   return quote
 }
 
+// ── Pipeline-backed inputs (QA-5) ────────────────────────────────────────────
+// Raw knowledge-item context as the API route receives it: plant fields are at
+// the TOP level (the pipeline's getKnowledgeItemContext reads them there, unlike
+// the KnowledgePlantRow.raw_import shape used by the fixture path above). Includes
+// a per-hour labour item so recoverMissingLabourLineItem finds the $110 rate.
+const MICHELIA_KNOWLEDGE_ITEMS = [
+  {
+    item_code: "PLANT-114",
+    item_name: "Michelia 'Gracepies' 14L",
+    item_type: "plant",
+    category: "Hedge",
+    sell_price: 68.75,
+    plant_name: "Michelia gracipes",
+    plant_size: "14L",
+    pot_size: "14L",
+    spacing_mm: 600,
+    aliases: ["Michelia gracipes", "14L"],
+    supplier: "Main Nursery",
+    stock_status: "In stock",
+  },
+  {
+    item_code: "PLANT-125",
+    item_name: "Michelia 'Gracepies' 25L",
+    item_type: "plant",
+    category: "Hedge",
+    sell_price: 95.0,
+    plant_name: "Michelia gracipes",
+    plant_size: "25L",
+    pot_size: "25L",
+    spacing_mm: 600,
+    aliases: ["Michelia gracipes", "25L"],
+    supplier: "Main Nursery",
+    stock_status: "In stock",
+  },
+  {
+    item_code: "LAB-001",
+    item_name: "Landscaping Labour",
+    item_type: "labour",
+    unit: "hours",
+    sell_price: 110,
+    aliases: ["labour", "landscaping labour"],
+  },
+]
+
+// Mocked AI extraction (raw output, BEFORE deterministic post-processing).
+// Deliberately imperfect: no plant_calculator_results and NO labour line item —
+// so the real pipeline must run the planting calculator and recover the labour.
+function micheliaExtractedQuote() {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Stephanie",
+    site_address: "10 Cotswold Lane, Mount Wellington",
+    quote_title: "Planting Quote",
+    job_type: "planting",
+    primary_quote: {
+      quote_title: "Planting Quote",
+      job_type: "planting",
+      cadence: "",
+      scope: [
+        "Supply and plant Michelia gracipes hedge to the agreed planting area.",
+        "Planting area approximately 14.2 metres long.",
+        "Plants to be spaced at approximately 50cm centres.",
+      ],
+      notes: [],
+    },
+    optional_quotes: [
+      {
+        quote_title: "Optional timber board border",
+        job_type: "planting",
+        cadence: "",
+        scope: ["Install a 150x50 timber board border around the planting area."],
+        notes: [],
+      },
+    ],
+    customer_scope: [
+      "Supply and plant Michelia gracipes hedge to the agreed planting area.",
+      "Planting area approximately 14.2 metres long.",
+      "Plants to be spaced at approximately 50cm centres.",
+    ],
+    materials: ["5 bags of garden mix"],
+    labour_allowance: "one person for one and a half days because there are roots in the garden bed",
+    line_items: [],
+  }
+}
+
 export const micheliaPlanting: GoldenQuoteFixture = {
   name: "Golden Quote 1 — Michelia planting",
   transcript: TRANSCRIPT,
@@ -194,4 +279,9 @@ export const micheliaPlanting: GoldenQuoteFixture = {
     "Customer preview text does not currently surface '14.2 metres' or '50cm centres' verbatim (they are routed to internal review notes, not the customer scope text). Golden doc expects them in the customer scope.",
   ],
   buildProcessedQuote,
+  pipeline: {
+    extractedQuote: micheliaExtractedQuote(),
+    knowledgeItems: MICHELIA_KNOWLEDGE_ITEMS,
+    classification: { specialist: "planting", reason: "test-injected planting classification" },
+  },
 }

@@ -1,21 +1,22 @@
+import type { ProcessedQuote } from "../processed-quote"
 import { buildCustomerPreviewQuoteInput } from "../customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "../customer-preview-render"
 import { buildCustomerQuotePreview } from "../customer-quote-preview"
 import { formatMatchedJmsLineItems, processedQuoteToEditableSections } from "../processed-quote"
+import { processTranscriptToQuote } from "../pipeline/process-transcript"
 import { auditProcessedQuote } from "../quote-auditor"
 import { evaluateContract, type ContractReport, type GoldenProjection, type GoldenQuoteFixture } from "./contracts"
 
 /**
- * Builds every real output-layer projection for a golden quote fixture using the
+ * Builds every real output-layer projection from a ProcessedQuote using the
  * app's own functions. This is the single place the harness touches production
- * code — it must never reimplement customer-preview, audit, or JMS logic.
+ * projection code — it must never reimplement customer-preview, audit, or JMS
+ * logic. Shared by both the fixture path and the pipeline path.
  */
-export function buildProjection(fixture: GoldenQuoteFixture): GoldenProjection {
-  const quote = fixture.buildProcessedQuote()
-
+export function buildProjectionFromQuote(quote: ProcessedQuote, transcript: string): GoldenProjection {
   const previewInput = buildCustomerPreviewQuoteInput({
     processedQuote: quote,
-    rawTranscript: fixture.transcript,
+    rawTranscript: transcript,
   })
   const customerPreview = buildCustomerQuotePreview(previewInput, {
     includeDeckingScope: true,
@@ -24,12 +25,12 @@ export function buildProjection(fixture: GoldenQuoteFixture): GoldenProjection {
   const previewModel = buildCustomerDraftPreviewModel({
     processedQuote: quote,
     customerPreview,
-    rawTranscript: fixture.transcript,
+    rawTranscript: transcript,
     selectedTemplate: previewInput.selected_template,
   })
   const customerText = renderCustomerDraftPreviewText(previewModel)
 
-  const audit = auditProcessedQuote({ rawTranscript: fixture.transcript, processedQuote: quote })
+  const audit = auditProcessedQuote({ rawTranscript: transcript, processedQuote: quote })
 
   const jmsLines = formatMatchedJmsLineItems(quote.line_items)
   const internalSections = processedQuoteToEditableSections(quote)
@@ -48,8 +49,47 @@ export function buildProjection(fixture: GoldenQuoteFixture): GoldenProjection {
   }
 }
 
+/** Fixture path: builds the projection from the hand-authored ProcessedQuote. */
+export function buildProjection(fixture: GoldenQuoteFixture): GoldenProjection {
+  return buildProjectionFromQuote(fixture.buildProcessedQuote(), fixture.transcript)
+}
+
 export function runGoldenQuote(fixture: GoldenQuoteFixture): { projection: GoldenProjection; report: ContractReport } {
   const projection = buildProjection(fixture)
+  const report = evaluateContract(fixture, projection)
+  return { projection, report }
+}
+
+/**
+ * Pipeline path: drives the transcript through the REAL extracted pipeline
+ * (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no
+ * browser — then asserts the same fixture contract against the real result.
+ */
+export async function runGoldenQuoteThroughPipeline(
+  fixture: GoldenQuoteFixture,
+): Promise<{ projection: GoldenProjection; report: ContractReport }> {
+  if (!fixture.pipeline) {
+    throw new Error(`${fixture.name} has no pipeline inputs; cannot run the pipeline-backed path.`)
+  }
+  const { extractedQuote, knowledgeItems, classification } = fixture.pipeline
+
+  const result = await processTranscriptToQuote(
+    { transcript: fixture.transcript, knowledgeItemContext: knowledgeItems },
+    {
+      classify: async () => classification as never,
+      extractQuote: async () =>
+        ({
+          quote: extractedQuote,
+          elapsedMs: 0,
+          promptLength: 0,
+          responseLength: 0,
+          reliabilityMetric: "first_pass_success",
+        }) as never,
+      logger: { log: () => {}, warn: () => {}, error: () => {} },
+    },
+  )
+
+  const projection = buildProjectionFromQuote(result.quote, fixture.transcript)
   const report = evaluateContract(fixture, projection)
   return { projection, report }
 }

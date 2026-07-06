@@ -123,22 +123,40 @@ processTranscriptToQuote(
   and `extractQuote` (the extraction that returns the raw `ProcessedQuote`). Tests
   inject both via `deps`. Everything after extraction is real.
 
-### Calling it from a golden fixture (future step)
+### Pipeline-backed golden quotes (QA-5)
 
-Golden fixtures still use hand-authored `buildProcessedQuote()`. They can now be
-migrated one at a time to run the real pipeline with a **recorded extraction**:
+A fixture can now be driven through the **real** pipeline instead of its
+hand-authored `buildProcessedQuote()`. Add a `pipeline` block to the fixture:
 
 ```ts
-const { quote } = await processTranscriptToQuote(
-  { transcript, knowledgeItemContext },
-  { classify: async () => recordedClassification,
-    extractQuote: async () => ({ quote: recordedExtraction, elapsedMs: 0, promptLength: 0, responseLength: 0, reliabilityMetric: "first_pass_success" }) },
-)
+pipeline: {
+  extractedQuote,   // raw AI output (imperfect on purpose — e.g. no labour line)
+  knowledgeItems,   // KB context: plant rows + labour item (top-level fields)
+  classification,   // { specialist, reason }
+}
 ```
 
-This batch deliberately does **not** migrate the golden fixtures (kept stable); it
-only makes the pipeline callable. Migrating each fixture to a recorded extraction
-is the natural next step.
+`runGoldenQuoteThroughPipeline(fixture)` (in `runner.ts`) calls
+`processTranscriptToQuote` with those mocked deps, then asserts the **same**
+declarative contract against the real result via the shared
+`buildProjectionFromQuote`.
+
+**Michelia is now pipeline-backed.** The golden suite has a test
+("Golden Quote 1 — Michelia planting (PIPELINE-BACKED)") that runs the Michelia
+transcript through `processTranscriptToQuote` with a mocked extraction that has
+**no plant results and no labour line**, and proves the real pipeline computes
+plant count 30 / spacing 500mm, recovers labour to 12h/$1,320, attaches
+`audit_result`, keeps the timber border optional, and produces no `long hedge` /
+`metres long. The` — all with no live OpenAI and no browser.
+
+| Golden quote | Fixture-path test | Pipeline-backed test |
+|---|---|---|
+| Michelia planting | ✅ | ✅ (QA-5) |
+| Garden bed renovation | ✅ | — still fixture-only |
+| Adam/Titirangi | ✅ | — still fixture-only |
+
+Migrating Garden Bed and Adam to pipeline-backed runs (recording their
+extractions) is the natural next step.
 
 ## Adding a new golden quote
 

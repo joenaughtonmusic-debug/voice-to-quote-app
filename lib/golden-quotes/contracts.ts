@@ -73,6 +73,21 @@ export type GoldenQuoteFixture = {
   knownFailures: string[]
   /** Builds the post-extraction ProcessedQuote (see mockingNotes). */
   buildProcessedQuote: () => ProcessedQuote
+  /**
+   * Optional inputs for running this quote through the REAL extracted pipeline
+   * (lib/pipeline/process-transcript.ts) with mocked OpenAI deps, instead of the
+   * hand-authored buildProcessedQuote(). When present, the golden runner can
+   * drive the transcript through processTranscriptToQuote and assert the same
+   * contract against the real deterministic processing. See runGoldenQuoteThroughPipeline.
+   */
+  pipeline?: {
+    /** Raw AI-extraction result (before deterministic post-processing). */
+    extractedQuote: unknown
+    /** Raw knowledge-item context (plant library rows + labour item, top-level fields). */
+    knowledgeItems: unknown[]
+    /** Mocked classification result. */
+    classification: { specialist: string; reason: string }
+  }
 }
 
 export type ContractCheck = {
