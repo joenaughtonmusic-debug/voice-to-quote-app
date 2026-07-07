@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/quote-overseer-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./index.ts",
+    "./types.ts",
+    "./reviewers/o2-customer-preview-leaks-labour.ts",
+    "./reviewers/o4-export-mapping-incomplete.ts",
+    "./reviewers/o5-customer-preview-missing-scope.ts",
+    "./reviewers/o7-customer-copy-not-ready.ts",
+    "../processed-quote.ts",
+    "../export/map-to-xero.ts",
+    "../export/xero/types.ts",
+    "../export/xero/helpers.ts",
+    "../export/exportable-line.ts"
+  ]
+}

@@ -6,6 +6,7 @@ import { adamTitirangi } from "./fixtures/adam-titirangi"
 import { gardenBedRenovation } from "./fixtures/garden-bed-renovation"
 import { micheliaPlanting } from "./fixtures/michelia-planting"
 import { formatContractReport, runGoldenQuote, runGoldenQuoteThroughPipeline } from "./runner"
+import { reviewQuote } from "../quote-overseer"
 
 /**
  * Golden Quote Runner — headless regression harness.
@@ -232,6 +233,31 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
     !projection.quote.line_items.some((i) => /lawn seed/i.test(i.item_name) && i.rate === "5"),
     "5kg must not be misread as a $5 rate",
   )
+})
+
+test("Quote Overseer produces no customer-preview findings on the good golden quotes", () => {
+  // MVP smoke test: the deterministic Overseer must not raise O2/O5/O7 findings on
+  // the three known-good golden projections. xeroExportLines are intentionally NOT
+  // supplied, so O4's known KB/item-mapping gaps never fail this customer-preview
+  // sanity check (O4 has its own positive test in lib/quote-overseer/index.test.ts).
+  for (const fixture of FIXTURES) {
+    const { projection } = runGoldenQuote(fixture)
+    const result = reviewQuote({
+      quote: projection.quote,
+      customerPreviewText: projection.customerText,
+      rendererPath: projection.rendererPath,
+      matchedJmsLines: projection.jmsLines,
+      rawTranscript: fixture.transcript,
+    })
+    const customerPreviewFindings = result.findings.filter((f) =>
+      ["customer_preview_leaks_labour", "customer_preview_missing_scope", "customer_copy_not_ready"].includes(f.check),
+    )
+    assert.equal(
+      customerPreviewFindings.length,
+      0,
+      `${fixture.name}: Overseer raised unexpected customer-preview findings:\n${JSON.stringify(customerPreviewFindings, null, 2)}`,
+    )
+  }
 })
 
 test("every fixture documents its mocked boundary", () => {
