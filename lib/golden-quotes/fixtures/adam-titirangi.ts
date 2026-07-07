@@ -126,15 +126,14 @@ function buildProcessedQuote(): ProcessedQuote {
 // material line items (still supplied by the recorded extraction — wiring those
 // calculators into the LIVE pipeline is QA-8, not QA-7).
 //
-// IMPORTANT — this is a PARTIAL pipeline-backed fixture. QA-8 fixed two of the three
-// original divergences from the QA-3 hand-built desired state: the live pipeline now
-// keeps job_type `general_landscaping` (retaining is only a sub-component) and
-// preserves the `Titirangi` suburb. ONE divergence remains (see knownFailures + the
-// pipeline-backed test, which asserts only the subset the live pipeline gets right):
-//   - the customer preview is still taken over by the planting renderer and drops the
-//     polythene/lawn-seed scope, because the planting calculator fabricates an area
-//     from the optional Ficus hedge. That is QA-9 (optional hedge handling), not a
-//     test gap.
+// This pipeline-backed fixture now reaches full parity with the QA-3 hand-built
+// desired state. QA-8 kept job_type `general_landscaping` (retaining is only a
+// sub-component) and preserved the `Titirangi` suburb; QA-9 stopped the planting
+// calculator fabricating a planting area from the retaining wall's "16.8m", so the
+// customer preview uses the mixed-landscaping assembly renderer (retaining wall,
+// polythene, topsoil, lawn seed all present) and the optional Ficus hedge stays as
+// optional scope text with no fabricated plant count. See the pipeline-backed test,
+// which asserts the full contract passes.
 function adamExtractedQuote() {
   const { topsoil, lawnSeed } = calculateLawnEstablishment(TRANSCRIPT)
   return {
@@ -318,9 +317,8 @@ export const adamTitirangi: GoldenQuoteFixture = {
   },
   knownFailures: [
     "Topsoil + lawn seed lines carry the computed quantity/price but have no KB item mapping (needs_review) — resolved when the KB/price-list batch lands.",
-    "Optional Ficus hedge has no plant-count/spacing calculation yet (V06-optional-hedge-unwarned still fires by design).",
+    "Optional Ficus hedge has no plant-count/spacing calculation yet (kept as optional scope text; no fabricated count by design).",
     "Retaining post spacing / drainage requirement not yet captured or warned.",
-    "PIPELINE PATH (QA-9, deferred): the live customer preview is still taken over by the planting renderer (rendererPath `planting-presentation`) and drops the polythene/lawn-seed scope from the customer-facing text, because the planting calculator fabricates a planting area from the optional Ficus hedge / the retaining wall's 16.8m length. Fixing this is QA-9 (optional hedge handling). NOTE: QA-8 fixed the earlier retaining-classification and dropped-Titirangi divergences, so those are no longer listed.",
   ],
   buildProcessedQuote,
   pipeline: {

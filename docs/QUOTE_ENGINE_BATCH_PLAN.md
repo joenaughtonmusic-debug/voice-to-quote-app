@@ -76,21 +76,20 @@ Goal:
 - Keep known remaining warnings for optional Ficus hedge, topsoil/lawn seed KB mapping, retaining drainage/post spacing.
 - Do not require live OpenAI.
 
-**Status: done as a partial pipeline-backed test; two of its three captured
-divergences were then fixed by QA-8.**
+**Status: done — landed as a partial pipeline-backed test; all three captured
+divergences were then fixed by QA-8 (classification + address) and QA-9 (preview).**
 
-Adam/Titirangi is now driven through the real `processTranscriptToQuote` via a
-**partial** pipeline-backed test ("Golden Quote 3 — Adam/Titirangi
-(PIPELINE-BACKED, PARTIAL)"). QA-7 landed the test and captured three runtime
-divergences from the QA-3 desired contract; QA-8 then fixed two of them:
+Adam/Titirangi is driven through the real `processTranscriptToQuote` via a
+pipeline-backed test ("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED)") that now
+holds the **full** contract. QA-7 landed the test and captured three runtime
+divergences from the QA-3 desired contract; QA-8 and QA-9 fixed all three:
 
 1. ✅ **Classification (fixed by QA-8)** — previously normalised to `retaining`; now
    stays `general_landscaping` (retaining is treated as a sub-component). This also
    resolved `V06-missing-topsoil-lawn-scope` / `V06-missing-lawn-seed`.
-2. ⚠️ **Customer preview (still open — QA-9)** — taken over by the planting renderer
-   (`planting-presentation`); drops the polythene / lawn-seed scope from the
-   customer-facing text because the planting calculator fabricates an area from the
-   optional Ficus hedge. Deferred to QA-9 (optional hedge handling).
+2. ✅ **Customer preview (fixed by QA-9)** — no longer taken over by the planting
+   renderer; the mixed-landscaping assembly renderer surfaces the real scope
+   (retaining wall / polythene / topsoil / lawn seed). See QA-9 below.
 3. ✅ **Address (fixed by QA-8)** — previously dropped the `Titirangi` suburb; now
    preserved as `20 Lemnos Street, Titirangi` (`V08-suburb-missing` no longer fires).
 
@@ -122,15 +121,35 @@ Verified: `test:golden-quotes`, `test:retaining`, `test:general-landscaping-mvp`
 **live** pipeline so topsoil (100.8m²/5.04m³) and the lawn-seed bag ($129) are computed
 by the pipeline rather than supplied by the recorded extraction. Tracked as a follow-up.
 
-### QA-9 — Optional Ficus hedge warning/calculation
+### QA-9 — Optional Ficus hedge: stop the customer-preview planting takeover
 Goal:
-- Preserve the optional Ficus hedge as optional.
-- If spacing/length is insufficient, produce a clear warning.
-- If enough information exists, calculate plant count.
-- Preserve labour: 2 people × 1 day = **16h**.
-- Do not force a fake plant count.
+- Preserve the optional Ficus hedge as optional scope text.
+- Do not fabricate a plant count / hedge length / planting area when the optional
+  hedge lacks enough detail.
+- Fix the customer-preview planting takeover on Adam/Titirangi without touching the
+  renderer or suppressing planting intent globally.
 
-**Status: pending**
+**Status: done.**
+
+Root cause: the planting calculator's `lengthPattern` read "16.8m for the retaining
+wall" and `isLikelyPlantName` accepted "the retaining wall" as a plant name, so a
+bogus 16.8 m planting request was created → `plant_calculator_results` populated →
+customer-preview renderer flipped to `planting-presentation` and dropped the
+polythene/lawn-seed scope.
+
+Fix (one focused edit): `lib/calculators/planting/index.ts` `isLikelyPlantName` now
+rejects structural landscaping nouns (`retaining|wall|fence|posts?|polythene|topsoil`),
+so `addRequest` drops the fabricated request. No renderer changes, no planting-intent
+suppression, no Adam hard-coding. The optional Ficus hedge stays as optional scope text
+with no invented count (it has no explicit count/row length).
+
+Result: the Adam/Titirangi pipeline path now uses the mixed-landscaping assembly
+renderer and the pipeline-backed golden test holds the **full** contract. Locked by a
+unit test in `lib/calculators/planting/index.test.ts` and the upgraded golden test.
+
+Deferred (unchanged): calculating a real hedge plant count when enough detail exists,
+and the "2 people × 1 day = 16h" optional labour, remain future work — QA-9 only
+removes the fabrication, it does not add a real hedge calculation.
 
 ### QA-10 — Computed facts source of truth (design only)
 Goal:

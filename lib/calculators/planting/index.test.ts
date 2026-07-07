@@ -262,3 +262,38 @@ Include hardfill/removal of old soil at a cost of $154.`)
   assert.equal(requests[1].length_m, 13.7)
   assert.deepEqual(requests[1].requested_option_sizes, ["25l", "45l"])
 })
+
+// QA-9: structural landscaping phrases must never be treated as plant names, so a
+// retaining-wall length sentence cannot fabricate a planting request/area. This is
+// what caused the Adam/Titirangi customer preview to be taken over by the planting
+// renderer (it read "16.8m for the retaining wall" as a 16.8m planting row).
+test("does not create a plant calculator request from '16.8m for the retaining wall'", () => {
+  const requests = extractPlantCalculatorRequestsFromText(
+    "And the length is going to be 16.8m for the retaining wall.",
+  )
+  assert.deepEqual(requests, [])
+})
+
+test("'the retaining wall' is not accepted as a plant name (no request, and never as a plant_name)", () => {
+  const requests = extractPlantCalculatorRequestsFromText(
+    "The area is approximately 6m by 16.8m. And the length is going to be 16.8m for the retaining wall.",
+  )
+  assert.ok(
+    !requests.some((r) => /retain|wall|fence|post|polythene|topsoil/i.test(r.plant_name ?? "")),
+    `No request may carry a structural noun as a plant name. Got: ${JSON.stringify(requests)}`,
+  )
+})
+
+test("Adam-style optional Ficus hedge without a count/length produces no fabricated planting request", () => {
+  const requests = extractPlantCalculatorRequestsFromText(
+    "It would be great to also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the length is going to be 16.8m for the retaining wall.",
+  )
+  assert.deepEqual(requests, [])
+})
+
+test("still extracts a genuine plant request (regression guard for the structural-noun filter)", () => {
+  const [request] = extractPlantCalculatorRequestsFromText("11.5m Ficus Tuffi hedge")
+  assert.ok(request, "a real plant length sentence must still produce a request")
+  assert.equal(request.plant_name, "Ficus Tuffi")
+  assert.equal(request.length_m, 11.5)
+})

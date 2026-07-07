@@ -152,6 +152,13 @@ function isLikelyPlantName(value: string) {
   ) {
     return false
   }
+  // Structural landscaping nouns are never plant names. They appear in length
+  // sentences like "16.8m for the retaining wall", where lengthPattern would
+  // otherwise capture "the retaining wall" as a plant-name candidate and fabricate
+  // a planting request/area from a retaining/fence measurement.
+  if (/\b(retaining|wall|fence|posts?|polythene|topsoil)\b/.test(text)) {
+    return false
+  }
   return /[a-z]/i.test(text)
 }
 

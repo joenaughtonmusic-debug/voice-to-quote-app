@@ -164,38 +164,48 @@ test("Golden Quote 3 — Adam/Titirangi: decking + suburb audit issues resolved 
   }
 })
 
-test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED, PARTIAL): the real pipeline preserves the parts it gets right", async () => {
-  // QA-7/QA-8: drives the Adam/Titirangi transcript through the REAL extracted
+test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline holds the full mixed-landscaping contract", async () => {
+  // QA-7/QA-8/QA-9: drives the Adam/Titirangi transcript through the REAL extracted
   // pipeline (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no
   // browser.
   //
-  // This is a PARTIAL pipeline-backed test on purpose. QA-8 fixed two of the three
-  // original divergences: the pipeline now keeps job_type `general_landscaping`
-  // (retaining is only a sub-component) and preserves the `Titirangi` suburb. ONE
-  // documented divergence remains (see the fixture's knownFailures): the customer
-  // preview is still taken over by the planting renderer and drops the polythene /
-  // lawn-seed scope, because the planting calculator fabricates an area from the
-  // optional Ficus hedge. Fixing that is QA-9 (optional hedge handling), so this test
-  // still does not claim full customer-preview parity. The fixture-path tests above
-  // continue to assert the full desired contract against the hand-built ProcessedQuote.
-  const { projection } = await runGoldenQuoteThroughPipeline(adamTitirangi)
+  // This started as a PARTIAL test. QA-8 fixed the retaining-classification and
+  // dropped-Titirangi divergences; QA-9 fixed the last one — the planting calculator
+  // no longer fabricates a planting area from the retaining wall's "16.8m", so the
+  // customer preview uses the mixed-landscaping assembly renderer instead of being
+  // taken over by the planting presentation. The pipeline path now satisfies the
+  // FULL declarative contract, so this asserts zero failing checks plus explicit
+  // QA-8/QA-9 guarantees.
+  const { projection, report } = await runGoldenQuoteThroughPipeline(adamTitirangi)
+  const failing = report.checks.filter((c) => !c.passed)
+  assert.equal(
+    failing.length,
+    0,
+    `Adam/Titirangi pipeline-backed run has failing contract checks:\n${formatContractReport(report)}`,
+  )
+
   const jms = projection.jmsLines.join("\n")
   const auditIds = projection.audit.issues.map((i) => i.id)
 
   // Runs headlessly and attaches a deterministic audit result.
   assert.ok(projection.quote.audit_result, "audit_result must exist")
-
-  // Client name is recovered by the real lead extractor.
   assert.equal(projection.quote.client_name, "Adam")
 
-  // QA-8 fix #1 — retaining is only a sub-component; the job stays general landscaping
-  // (not taken over as a Retaining Wall Quote).
+  // QA-8 fix #1 — retaining is only a sub-component; the job stays general landscaping.
   assert.match(projection.quote.job_type, /general_landscaping|landscaping/i)
   assert.ok(!/retain/i.test(projection.quote.job_type), "must not be classified as retaining")
 
   // QA-8 fix #3 — the "in Titirangi" suburb is preserved and V08 no longer fires.
   assert.match(projection.quote.site_address, /20 Lemnos Street, Titirangi/)
   assert.ok(!auditIds.includes("V08-suburb-missing"), `V08-suburb-missing must not fire; got [${auditIds.join(", ")}]`)
+
+  // QA-9 fix — no fabricated planting area from the retaining wall, so the customer
+  // preview uses the mixed-landscaping assembly renderer and surfaces the real scope.
+  assert.notEqual(projection.rendererPath, "planting-presentation", "must not be taken over by the planting renderer")
+  assert.deepEqual(projection.quote.plant_calculator_results ?? [], [], "no fabricated plant calculator results")
+  for (const needle of ["retaining wall", "polythene", "topsoil", "lawn seed"]) {
+    assert.match(projection.customerText, new RegExp(needle, "i"), `customer preview must include "${needle}"`)
+  }
 
   // Decking gate stays closed (QA-3 fix) — no decking line items or artefacts.
   assert.ok(
@@ -205,7 +215,7 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED, PARTIAL): the real pip
   assert.ok(!/Deck area|Decking boards/i.test(jms), "no decking artefacts in JMS lines")
   assert.ok(!/Deck area|Decking boards/i.test(projection.customerText), "no decking artefacts in customer preview")
 
-  // Optional Ficus hedge stays optional (not merged into the primary scope).
+  // Optional Ficus hedge stays optional scope text (not fabricated into a plant count).
   assert.ok(
     projection.quote.optional_quotes.some((o) => /ficus/i.test(`${o.quote_title} ${o.scope.join(" ")}`)),
     "optional Ficus hedge remains optional",
