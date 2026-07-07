@@ -76,44 +76,51 @@ Goal:
 - Keep known remaining warnings for optional Ficus hedge, topsoil/lawn seed KB mapping, retaining drainage/post spacing.
 - Do not require live OpenAI.
 
-**Status: partial — captured, not fully fixed.**
+**Status: done as a partial pipeline-backed test; two of its three captured
+divergences were then fixed by QA-8.**
 
 Adam/Titirangi is now driven through the real `processTranscriptToQuote` via a
 **partial** pipeline-backed test ("Golden Quote 3 — Adam/Titirangi
-(PIPELINE-BACKED, PARTIAL)"). Unlike Michelia (QA-5) and Garden Bed (QA-6), the live
-pipeline does **not** reproduce the full QA-3 desired contract for this transcript, so
-the test asserts only the subset the pipeline genuinely gets right (runs headlessly
-with an `audit_result`, recovers client `Adam`, keeps the decking gate closed, keeps
-the Ficus hedge optional, and preserves the topsoil/lawn-seed material lines through to
-JMS). No live OpenAI. No runtime logic changed.
+(PIPELINE-BACKED, PARTIAL)"). QA-7 landed the test and captured three runtime
+divergences from the QA-3 desired contract; QA-8 then fixed two of them:
 
-Three runtime divergences are **captured** (documented in the fixture `knownFailures`
-and `docs/GOLDEN_QUOTE_RUNNER.md`), not fixed:
+1. ✅ **Classification (fixed by QA-8)** — previously normalised to `retaining`; now
+   stays `general_landscaping` (retaining is treated as a sub-component). This also
+   resolved `V06-missing-topsoil-lawn-scope` / `V06-missing-lawn-seed`.
+2. ⚠️ **Customer preview (still open — QA-9)** — taken over by the planting renderer
+   (`planting-presentation`); drops the polythene / lawn-seed scope from the
+   customer-facing text because the planting calculator fabricates an area from the
+   optional Ficus hedge. Deferred to QA-9 (optional hedge handling).
+3. ✅ **Address (fixed by QA-8)** — previously dropped the `Titirangi` suburb; now
+   preserved as `20 Lemnos Street, Titirangi` (`V08-suburb-missing` no longer fires).
 
-1. **Classification** — the live pipeline normalises this transcript to job_type
-   `retaining` (the retaining component takes over the lawn-levelling primary) instead
-   of `general_landscaping`.
-2. **Customer preview** — taken over by the retaining/planting renderer; it drops the
-   polythene / topsoil / lawn-seed scope (`V06-missing-topsoil-lawn-scope` and
-   `V06-missing-lawn-seed` fire).
-3. **Address** — the real lead extractor drops the `Titirangi` suburb
-   (`V08-suburb-missing` fires).
-
-These are broader than QA-8 (which only wires the lawn calculators). Fixing the
-classification, renderer takeover, and suburb extraction is a future runtime batch and
-should land before the AI Quote Overseer reviews this quote.
-
-### QA-8 — Wire lawn-establishment calculators into the live pipeline
+### QA-8 — Fix Adam/Titirangi mixed-landscaping pipeline path (classification + address)
 Goal:
-- Use `lib/calculators/soil-volume.ts` and `lib/calculators/lawn-establishment.ts` in the real deterministic pipeline.
-- Make the Adam/Titirangi live pipeline calculate:
-  - 100.8m² lawn area
-  - 5.04m³ topsoil
-  - 5kg lawn seed bag
-  - $129 spoken price
-- Keep scope narrow.
+- Keep Adam/Titirangi as `general_landscaping` when the primary work is lawn
+  levelling/topsoil/lawn seed and retaining is only a sub-component.
+- Preserve the `Titirangi` suburb: "20 Lemnos Street in Titirangi" → "20 Lemnos
+  Street, Titirangi".
+- Do NOT change planting-calculator behaviour or artificially force the renderer
+  (customer-preview takeover stays a knownFailure, deferred to QA-9).
 
-**Status: pending**
+**Status: done.**
+
+Two small, focused production fixes:
+- `lib/retaining-processing.ts` — `isRetainingTranscript` gains
+  `LANDSCAPING_PRIMARY_OVER_RETAINING_PATTERN`, so a lawn-levelling-primary transcript
+  with a sub-component retaining wall is no longer rebuilt as a retaining quote.
+- `lib/address-extraction.ts` — `addressCandidatePattern` accepts an
+  "in &lt;suburb&gt;" clause and `cleanCandidate` normalises it to the comma form.
+
+Verified: `test:golden-quotes`, `test:retaining`, `test:general-landscaping-mvp`,
+`test:core` (+ `test:retaining-mvp`, `test:fencing-mvp`, `test:pipeline`) and
+`npm run build`. The Adam pipeline-backed partial test now additionally asserts
+`general_landscaping` and the preserved `Titirangi` suburb.
+
+**Still deferred (was the original QA-8 goal):** wiring
+`lib/calculators/soil-volume.ts` + `lib/calculators/lawn-establishment.ts` into the
+**live** pipeline so topsoil (100.8m²/5.04m³) and the lawn-seed bag ($129) are computed
+by the pipeline rather than supplied by the recorded extraction. Tracked as a follow-up.
 
 ### QA-9 — Optional Ficus hedge warning/calculation
 Goal:

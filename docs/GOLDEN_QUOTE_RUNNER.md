@@ -153,36 +153,45 @@ plant count 30 / spacing 500mm, recovers labour to 12h/$1,320, attaches
 |---|---|---|
 | Michelia planting | ✅ | ✅ (QA-5) |
 | Garden bed renovation | ✅ | ✅ (QA-6) |
-| Adam/Titirangi | ✅ | ⚠️ partial (QA-7) — see below |
+| Adam/Titirangi | ✅ | ⚠️ partial (QA-7 + QA-8) — see below |
 
-### Partial pipeline-backed Adam/Titirangi (QA-7)
+### Partial pipeline-backed Adam/Titirangi (QA-7, then QA-8)
 
-Adam/Titirangi is now driven through the **real** `processTranscriptToQuote`, but its
+Adam/Titirangi is driven through the **real** `processTranscriptToQuote`, but its
 pipeline-backed test ("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED, PARTIAL)")
-is deliberately **partial**. Unlike Michelia and Garden Bed — where the live pipeline
-reproduces the full desired contract — the Adam transcript currently **diverges** from
-the QA-3 hand-built desired state in three ways when run through the live pipeline:
+is deliberately **partial**. QA-7 first landed it as partial with three documented
+runtime divergences from the QA-3 hand-built desired state; **QA-8 fixed two of them**:
 
-1. **Classification** — job_type is normalised to `retaining` (the retaining
-   component takes over the lawn-levelling primary) instead of `general_landscaping`.
-2. **Customer preview** — taken over by the retaining/planting renderer; it renders a
-   "Retaining Wall Quote" and **drops** the polythene / topsoil / lawn-seed scope
-   (so `V06-missing-topsoil-lawn-scope` and `V06-missing-lawn-seed` fire).
-3. **Address** — the real lead extractor drops the `Titirangi` suburb
-   (`V08-suburb-missing` fires); only `20 Lemnos Street` survives.
+1. ✅ **Classification (QA-8 fix)** — job_type now stays `general_landscaping`. A new
+   guard in `isRetainingTranscript` (`LANDSCAPING_PRIMARY_OVER_RETAINING_PATTERN`)
+   recognises that when the primary work is lawn levelling/establishment, a retaining
+   wall is only a sub-component and must not take over the classification. Fixing this
+   also stopped the retaining normalizer from stripping topsoil/lawn seed from the
+   quote's scope, so `V06-missing-topsoil-lawn-scope` and `V06-missing-lawn-seed` no
+   longer fire.
+2. ✅ **Address (QA-8 fix)** — the suburb is preserved as `20 Lemnos Street, Titirangi`.
+   `addressCandidatePattern` now accepts an "in &lt;suburb&gt;" clause (not just a
+   comma), and `cleanCandidate` normalises "in Titirangi" → ", Titirangi", so
+   `V08-suburb-missing` no longer fires.
+3. ⚠️ **Customer preview (still open — deferred to QA-9)** — the preview is still taken
+   over by the planting renderer (`rendererPath: planting-presentation`) and drops the
+   polythene / lawn-seed scope from the customer-facing text, because the planting
+   calculator fabricates a planting area from the optional Ficus hedge / the retaining
+   wall's 16.8 m length. Fixing this is QA-9 (optional hedge handling) and was
+   intentionally **not** attempted in QA-8 (no planting-calculator or renderer changes).
 
 These are **runtime gaps, not test gaps** — the fixture-path test masks them by
-hand-building the target `ProcessedQuote`. They are recorded in the fixture's
-`knownFailures` and are broader than QA-8 (which only wires the lawn calculators):
-fixing the retaining-vs-landscaping classification, the renderer takeover, and the
-suburb extraction is a future runtime batch.
+hand-building the target `ProcessedQuote`. The remaining one is recorded in the
+fixture's `knownFailures`.
 
-The QA-7 pipeline-backed test therefore asserts **only the subset the live pipeline
-genuinely gets right**: it runs headlessly with an `audit_result`, recovers the client
-name (`Adam`), keeps the decking gate closed (no decking line items/artefacts), keeps
-the optional Ficus hedge optional, and preserves the supplied topsoil (`Qty 5.04 m3`)
-and lawn-seed (`Qty 1 bag`, `Total 129`, no `$5` misread) material lines through to the
-JMS panel. The fixture-path tests still assert the full desired contract.
+The pipeline-backed test asserts the subset the live pipeline now gets right: it runs
+headlessly with an `audit_result`, keeps job_type `general_landscaping` (QA-8),
+preserves `20 Lemnos Street, Titirangi` with no `V08-suburb-missing` (QA-8), recovers
+the client name (`Adam`), keeps the decking gate closed (no decking line
+items/artefacts), keeps the optional Ficus hedge optional, and preserves the supplied
+topsoil (`Qty 5.04 m3`) and lawn-seed (`Qty 1 bag`, `Total 129`, no `$5` misread)
+material lines through to the JMS panel. The fixture-path tests still assert the full
+desired contract.
 
 ### Pipeline-backed Garden Bed renovation (QA-6)
 

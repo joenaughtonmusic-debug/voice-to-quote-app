@@ -165,26 +165,37 @@ test("Golden Quote 3 — Adam/Titirangi: decking + suburb audit issues resolved 
 })
 
 test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED, PARTIAL): the real pipeline preserves the parts it gets right", async () => {
-  // QA-7: drives the Adam/Titirangi transcript through the REAL extracted pipeline
-  // (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no browser.
+  // QA-7/QA-8: drives the Adam/Titirangi transcript through the REAL extracted
+  // pipeline (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no
+  // browser.
   //
-  // This is a PARTIAL pipeline-backed test on purpose. On this transcript the live
-  // pipeline currently diverges from the QA-3 hand-built desired state in three
-  // documented ways (see the fixture's knownFailures): it normalises job_type to
-  // `retaining`, the customer preview is taken over by the retaining/planting
-  // renderer (dropping polythene/topsoil/lawn-seed scope), and the address extractor
-  // drops the Titirangi suburb. Those are runtime gaps for a future batch, so this
-  // test asserts ONLY the subset the real pipeline genuinely gets right and does not
-  // claim full contract parity. The fixture-path tests above still assert the full
-  // desired contract against the hand-built ProcessedQuote.
+  // This is a PARTIAL pipeline-backed test on purpose. QA-8 fixed two of the three
+  // original divergences: the pipeline now keeps job_type `general_landscaping`
+  // (retaining is only a sub-component) and preserves the `Titirangi` suburb. ONE
+  // documented divergence remains (see the fixture's knownFailures): the customer
+  // preview is still taken over by the planting renderer and drops the polythene /
+  // lawn-seed scope, because the planting calculator fabricates an area from the
+  // optional Ficus hedge. Fixing that is QA-9 (optional hedge handling), so this test
+  // still does not claim full customer-preview parity. The fixture-path tests above
+  // continue to assert the full desired contract against the hand-built ProcessedQuote.
   const { projection } = await runGoldenQuoteThroughPipeline(adamTitirangi)
   const jms = projection.jmsLines.join("\n")
+  const auditIds = projection.audit.issues.map((i) => i.id)
 
   // Runs headlessly and attaches a deterministic audit result.
   assert.ok(projection.quote.audit_result, "audit_result must exist")
 
   // Client name is recovered by the real lead extractor.
   assert.equal(projection.quote.client_name, "Adam")
+
+  // QA-8 fix #1 — retaining is only a sub-component; the job stays general landscaping
+  // (not taken over as a Retaining Wall Quote).
+  assert.match(projection.quote.job_type, /general_landscaping|landscaping/i)
+  assert.ok(!/retain/i.test(projection.quote.job_type), "must not be classified as retaining")
+
+  // QA-8 fix #3 — the "in Titirangi" suburb is preserved and V08 no longer fires.
+  assert.match(projection.quote.site_address, /20 Lemnos Street, Titirangi/)
+  assert.ok(!auditIds.includes("V08-suburb-missing"), `V08-suburb-missing must not fire; got [${auditIds.join(", ")}]`)
 
   // Decking gate stays closed (QA-3 fix) — no decking line items or artefacts.
   assert.ok(

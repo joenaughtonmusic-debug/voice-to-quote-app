@@ -13,6 +13,17 @@ const RETAINING_SUPPORT_PATTERN = /\b(drainage|draincoil|novaflow|scoria|backfil
  */
 const RETAINING_NEGATION_PATTERN = /\bnot\s+a\s+retaining\s+wall\b|\bgarden\s+bed\s+renovation\b|\btimber\s+(?:border|edging)\s+job\b/i
 
+/**
+ * Signals that a wider landscaping job — lawn levelling / establishment — is the
+ * PRIMARY work and any retaining wall is only a sub-component. Per the reliability
+ * contract, "retaining is allowed inside a wider landscaping quote" and must not
+ * take over the classification. This is distinct from RETAINING_NEGATION_PATTERN:
+ * here a retaining wall is genuinely present, but it is subordinate to lawn works,
+ * so the job stays general_landscaping rather than being rebuilt as a retaining quote.
+ */
+const LANDSCAPING_PRIMARY_OVER_RETAINING_PATTERN =
+  /\bmain\s+job\s+is\s+level(?:l)?ing\b|\blevel(?:l)?ing\s+the\s+(?:back\s+)?lawn\b|\blawn\s+levelling\b/i
+
 function retainingPatternMatch(transcript: string): boolean {
   if (RETAINING_NEGATION_PATTERN.test(transcript)) return false
   return RETAINING_PATTERN.test(transcript)
@@ -21,6 +32,9 @@ function retainingPatternMatch(transcript: string): boolean {
 export function isRetainingTranscript(transcript: string) {
   if (isFencingTranscript(transcript)) return false
   if (RETAINING_NEGATION_PATTERN.test(transcript)) return false
+  // Lawn levelling/establishment is the primary job; the retaining wall is only a
+  // sub-component and must not take over the quote classification.
+  if (LANDSCAPING_PRIMARY_OVER_RETAINING_PATTERN.test(transcript)) return false
   const detection = detectRetainingFromText(transcript)
   return retainingPatternMatch(transcript) || (detection.is_retaining && RETAINING_SUPPORT_PATTERN.test(transcript))
 }
