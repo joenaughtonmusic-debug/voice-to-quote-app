@@ -119,11 +119,81 @@ function extractedPriceAmounts(): number[] {
     .filter((amount): amount is number => typeof amount === "number")
 }
 
+// ── Pipeline-backed inputs (QA-6) ────────────────────────────────────────────
+// Raw knowledge-item context as the API route receives it. Only a per-hour
+// landscaping labour item is needed: the real pipeline's applyPerTaskHourAllowances
+// finds it, sums the 7h/2h/8h allowances to 17h, and prices at $110 → $1,870.
+const GARDEN_BED_KNOWLEDGE_ITEMS = [
+  {
+    item_code: "LAB-001",
+    item_name: "Landscaping Labour",
+    item_type: "labour",
+    unit: "hours",
+    sell_price: LABOUR_RATE,
+    aliases: ["labour", "landscaping labour"],
+  },
+]
+
+// Mocked AI extraction (raw output, BEFORE deterministic post-processing).
+// Deliberately imperfect: NO labour line item — so the real pipeline must run
+// applyPerTaskHourAllowances to recover the 17h/$1,870 labour line itself. Garden
+// mix and mulch are kept out of `materials` and only in optional_quotes, and the
+// "not a retaining wall" note is carried in internal_notes to prove it never leaks
+// into the customer preview.
+function gardenBedExtractedQuote() {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Stephanie",
+    site_address: "10 Cotswold Lane, Mount Wellington",
+    quote_title: "Garden Bed Renovation",
+    job_type: "general_landscaping",
+    primary_quote: {
+      quote_title: "Garden Bed Renovation",
+      job_type: "general_landscaping",
+      cadence: "",
+      scope: [
+        "Remove the existing keystone edging.",
+        "Remove the existing mandarin tree.",
+        "Install new 200x50 timber garden bed borders.",
+        "Garden bed area approximately 10 square metres.",
+        "New border comes out approximately 900mm from the fence.",
+      ],
+      notes: [],
+    },
+    optional_quotes: [
+      {
+        quote_title: "Optional works",
+        job_type: "general_landscaping",
+        cadence: "",
+        scope: [
+          "Remove weed species from the garden bed.",
+          "Remove apple tree stump.",
+          "Replenish the garden bed with garden mix and mulch.",
+        ],
+        notes: [],
+      },
+    ],
+    customer_scope: [
+      "Remove the existing keystone edging.",
+      "Remove the existing mandarin tree.",
+      "Install new 200x50 timber garden bed borders.",
+    ],
+    internal_notes: [
+      "This is a small garden bed renovation / timber border job, not a retaining wall.",
+      "Keep optional works separate from the main quote.",
+    ],
+    materials: ["200x50 timber", "Timber pegs", "Bugle screws and fixings"],
+    labour_allowance:
+      "Allow 7 hours to remove the keystone edging. Allow 2 hours to remove the mandarin tree. Allow 8 hours to install the new timber garden bed border.",
+    line_items: [],
+  }
+}
+
 export const gardenBedRenovation: GoldenQuoteFixture = {
   name: "Golden Quote 2 — Garden bed renovation",
   transcript: TRANSCRIPT,
   mockingNotes:
-    "AI classification/scope/materials/optional fields are stubbed. Per-task hour extraction (17h), pricing extraction (no $7/$2/$8), and all projection layers are real code under test.",
+    "AI classification/scope/materials/optional fields are stubbed. Per-task hour extraction (17h), pricing extraction (no $7/$2/$8), and all projection layers are real code under test. QA-6: also runnable pipeline-backed — the mocked extraction has NO labour line, so the real processTranscriptToQuote recovers 17h/$1,870 via applyPerTaskHourAllowances.",
   expectedClassification: /general_landscaping|garden_bed_renovation/i,
   customerPreviewContains: ["timber", "Remove"],
   customerPreviewMustNotContain: [
@@ -137,13 +207,17 @@ export const gardenBedRenovation: GoldenQuoteFixture = {
   ],
   internalFacts: [
     {
+      // Numeric compare so both paths pass: the fixture path hand-sets "17" and the
+      // pipeline path (applyPerTaskHourAllowances → calculateLineItemTotal) sets "17".
       label: "labour total hours is 17 (7+2+8)",
-      assert: (p) => p.labourLine?.quantity === "17",
+      assert: (p) => Number(p.labourLine?.quantity) === 17,
       actual: (p) => `quantity=${p.labourLine?.quantity}`,
     },
     {
+      // Numeric compare: fixture path totals "1870"; pipeline path totals "1870.00"
+      // (calculateLineItemTotal uses toFixed(2)). Both are 17 × $110 = $1,870.
       label: "labour total is 1870 (17 × $110)",
-      assert: (p) => p.labourLine?.total === "1870",
+      assert: (p) => Number(p.labourLine?.total) === 1870,
       actual: (p) => `total=${p.labourLine?.total}`,
     },
     {
@@ -179,4 +253,9 @@ export const gardenBedRenovation: GoldenQuoteFixture = {
   },
   knownFailures: [],
   buildProcessedQuote,
+  pipeline: {
+    extractedQuote: gardenBedExtractedQuote(),
+    knowledgeItems: GARDEN_BED_KNOWLEDGE_ITEMS,
+    classification: { specialist: "landscaping", reason: "test-injected landscaping classification" },
+  },
 }

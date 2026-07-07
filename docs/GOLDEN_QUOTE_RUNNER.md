@@ -152,11 +152,29 @@ plant count 30 / spacing 500mm, recovers labour to 12h/$1,320, attaches
 | Golden quote | Fixture-path test | Pipeline-backed test |
 |---|---|---|
 | Michelia planting | ✅ | ✅ (QA-5) |
-| Garden bed renovation | ✅ | — still fixture-only |
+| Garden bed renovation | ✅ | ✅ (QA-6) |
 | Adam/Titirangi | ✅ | — still fixture-only |
 
-Migrating Garden Bed and Adam to pipeline-backed runs (recording their
-extractions) is the natural next step.
+Migrating Adam/Titirangi to a pipeline-backed run (recording its extraction) is
+the natural next step.
+
+### Pipeline-backed Garden Bed renovation (QA-6)
+
+**Garden Bed is now pipeline-backed.** The golden suite has a test
+("Golden Quote 2 — Garden bed renovation (PIPELINE-BACKED)") that runs the Garden
+Bed transcript through `processTranscriptToQuote` with a mocked extraction that has
+**no labour line item**, and proves the real pipeline's `applyPerTaskHourAllowances`
+sums the per-task allowances (7h + 2h + 8h) to **17h** and prices them at $110/hr →
+**$1,870** (`Qty 17 hours`, `Total 1870` in the JMS panel), attaches `audit_result`,
+classifies as `general_landscaping` (not retaining), keeps garden mix/mulch in
+optional works only (never in required materials), produces **no** `$7` / `$2` / `$8`
+pricing facts, and yields a customer preview with no `Title:` / `Job type:` /
+`Cadence:` leak and no Retaining/Planting/One-Off Garden Tidy takeover — all with no
+live OpenAI and no browser.
+
+The fixture's two labour internal-facts compare `Number(...)` (not exact strings) so
+the same contract passes on both paths: the fixture path hand-sets `"1870"`, while
+the pipeline path totals `"1870.00"` (`calculateLineItemTotal` uses `toFixed(2)`).
 
 ## Adding a new golden quote
 

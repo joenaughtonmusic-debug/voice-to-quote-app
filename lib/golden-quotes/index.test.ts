@@ -85,6 +85,63 @@ test("Golden Quote 2 — Garden bed renovation: contract holds across all layers
   assertReportPasses(gardenBedRenovation)
 })
 
+test("Golden Quote 2 — Garden bed renovation (PIPELINE-BACKED): contract holds through the real processTranscriptToQuote", async () => {
+  // QA-6: drives the Garden Bed transcript through the REAL extracted pipeline
+  // (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no
+  // browser. The mocked extraction has NO labour line, so the real pipeline must
+  // recover 17h/$1,870 via applyPerTaskHourAllowances. Same contract asserted.
+  const { projection, report } = await runGoldenQuoteThroughPipeline(gardenBedRenovation)
+
+  const failing = report.checks.filter((c) => !c.passed)
+  assert.equal(
+    failing.length,
+    0,
+    `Garden bed pipeline-backed run has failing contract checks:\n${formatContractReport(report)}`,
+  )
+
+  // Explicit QA-6 assertions against the real pipeline output.
+  assert.ok(projection.quote.audit_result, "audit_result must exist")
+  assert.match(projection.quote.job_type, /general_landscaping|garden_bed_renovation/i)
+  assert.ok(!/retain/i.test(projection.quote.job_type), "must not be classified as retaining")
+  assert.equal(projection.quote.client_name, "Stephanie")
+  assert.match(projection.quote.site_address, /10 Cotswold Lane, Mount Wellington/)
+
+  // Labour recovered deterministically to 17h / $1,870 (7 + 2 + 8, at $110/hr).
+  assert.equal(projection.labourLine?.quantity, "17", "labour recovered to 17 hours")
+  assert.equal(projection.labourLine?.unit, "hours")
+  assert.equal(Number(projection.labourLine?.total), 1870, "17 × $110 = $1,870")
+
+  const jms = projection.jmsLines.join("\n")
+  assert.ok(jms.includes("Qty 17 hours"), "JMS labour line shows Qty 17 hours")
+  assert.ok(jms.includes("Total 1870"), "JMS labour line shows Total 1870")
+
+  // No false pricing facts: the "7 hours / 2 hours / 8 hours" allowances must
+  // never surface as $7 / $2 / $8 anywhere in the customer preview.
+  assert.ok(!/\$7\b/.test(projection.customerText), "no $7 pricing fact")
+  assert.ok(!/\$2\b/.test(projection.customerText), "no $2 pricing fact")
+  assert.ok(!/\$8\b/.test(projection.customerText), "no $8 pricing fact")
+
+  // Optional works remain optional — garden mix/mulch are NOT required materials.
+  assert.ok(
+    !projection.quote.materials.some((m) => /garden mix|mulch/i.test(m)),
+    "garden mix/mulch must not be in required materials",
+  )
+  assert.ok(
+    projection.quote.optional_quotes.some((o) => o.scope.some((s) => /garden mix|mulch/i.test(s))),
+    "garden mix/mulch must remain in optional works only",
+  )
+
+  // Customer preview must not leak internal metadata or be taken over by the
+  // wrong template (Retaining / Planting / One-Off Garden Tidy).
+  for (const leak of ["Title:", "Job type:", "Cadence:"]) {
+    assert.ok(!projection.customerText.includes(leak), `customer preview must not show "${leak}"`)
+  }
+  assert.ok(!/retaining wall/i.test(projection.customerText), "customer preview not taken over by Retaining")
+  assert.ok(!/Planting Quote|Supply and plant/i.test(projection.customerText), "customer preview not taken over by Planting")
+  assert.ok(!/One-Off Garden Tidy/i.test(projection.customerText), "customer preview not taken over by One-Off Garden Tidy")
+  assert.ok(projection.customerText.includes("timber"), "customer preview keeps the timber scope")
+})
+
 test("Golden Quote 3 — Adam/Titirangi: routed as landscaping, no decking output (QA-3 fix)", () => {
   assertReportPasses(adamTitirangi)
 })
