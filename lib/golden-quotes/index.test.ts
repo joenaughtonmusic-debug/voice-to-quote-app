@@ -164,6 +164,55 @@ test("Golden Quote 3 — Adam/Titirangi: decking + suburb audit issues resolved 
   }
 })
 
+test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED, PARTIAL): the real pipeline preserves the parts it gets right", async () => {
+  // QA-7: drives the Adam/Titirangi transcript through the REAL extracted pipeline
+  // (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no browser.
+  //
+  // This is a PARTIAL pipeline-backed test on purpose. On this transcript the live
+  // pipeline currently diverges from the QA-3 hand-built desired state in three
+  // documented ways (see the fixture's knownFailures): it normalises job_type to
+  // `retaining`, the customer preview is taken over by the retaining/planting
+  // renderer (dropping polythene/topsoil/lawn-seed scope), and the address extractor
+  // drops the Titirangi suburb. Those are runtime gaps for a future batch, so this
+  // test asserts ONLY the subset the real pipeline genuinely gets right and does not
+  // claim full contract parity. The fixture-path tests above still assert the full
+  // desired contract against the hand-built ProcessedQuote.
+  const { projection } = await runGoldenQuoteThroughPipeline(adamTitirangi)
+  const jms = projection.jmsLines.join("\n")
+
+  // Runs headlessly and attaches a deterministic audit result.
+  assert.ok(projection.quote.audit_result, "audit_result must exist")
+
+  // Client name is recovered by the real lead extractor.
+  assert.equal(projection.quote.client_name, "Adam")
+
+  // Decking gate stays closed (QA-3 fix) — no decking line items or artefacts.
+  assert.ok(
+    !projection.quote.line_items.some((i) => /deck/i.test(`${i.item_name} ${i.description}`)),
+    "no decking line items",
+  )
+  assert.ok(!/Deck area|Decking boards/i.test(jms), "no decking artefacts in JMS lines")
+  assert.ok(!/Deck area|Decking boards/i.test(projection.customerText), "no decking artefacts in customer preview")
+
+  // Optional Ficus hedge stays optional (not merged into the primary scope).
+  assert.ok(
+    projection.quote.optional_quotes.some((o) => /ficus/i.test(`${o.quote_title} ${o.scope.join(" ")}`)),
+    "optional Ficus hedge remains optional",
+  )
+
+  // The pipeline preserves the supplied topsoil + lawn-seed material lines and
+  // formats them for JMS (spoken $129 kept; 5kg never misread as a $5 rate).
+  assert.ok(jms.includes("Topsoil") && jms.includes("Qty 5.04 m3"), "topsoil volume line preserved")
+  assert.ok(
+    jms.includes("Lawn seed (5kg bag)") && jms.includes("Qty 1 bag") && jms.includes("Total 129"),
+    "lawn seed line preserved with spoken $129",
+  )
+  assert.ok(
+    !projection.quote.line_items.some((i) => /lawn seed/i.test(i.item_name) && i.rate === "5"),
+    "5kg must not be misread as a $5 rate",
+  )
+})
+
 test("every fixture documents its mocked boundary", () => {
   for (const fixture of FIXTURES) {
     assert.ok(

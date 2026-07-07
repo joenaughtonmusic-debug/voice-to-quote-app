@@ -120,6 +120,114 @@ function buildProcessedQuote(): ProcessedQuote {
   }
 }
 
+// ── Pipeline-backed inputs (QA-7) ────────────────────────────────────────────
+// Mocked AI extraction (raw output, BEFORE deterministic post-processing) for the
+// pipeline-backed path. It carries the mixed-landscaping scope + the topsoil/lawn
+// material line items (still supplied by the recorded extraction — wiring those
+// calculators into the LIVE pipeline is QA-8, not QA-7).
+//
+// IMPORTANT — this is a PARTIAL pipeline-backed fixture. When driven through the
+// real processTranscriptToQuote, this transcript currently DIVERGES from the QA-3
+// hand-built desired state in three ways (see knownFailures + the pipeline-backed
+// test, which asserts only the subset the live pipeline gets right):
+//   1. classification is normalised to `retaining` (the retaining component takes
+//      over the lawn-levelling primary),
+//   2. the customer preview is taken over by the retaining/planting renderer and
+//      drops the polythene/topsoil/lawn-seed scope,
+//   3. the real address extractor drops the "Titirangi" suburb (V08 fires).
+// Those are runtime gaps, not test gaps; fixing them is a future runtime batch.
+function adamExtractedQuote() {
+  const { topsoil, lawnSeed } = calculateLawnEstablishment(TRANSCRIPT)
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Adam",
+    site_address: "20 Lemnos Street, Titirangi",
+    quote_title: "Back Lawn Levelling Quote",
+    job_type: "general_landscaping",
+    primary_quote: {
+      quote_title: "Back Lawn Levelling Quote",
+      job_type: "general_landscaping",
+      cadence: "",
+      scope: [
+        "Construct a small timber retaining wall approximately 400mm high using 200x50 retaining timbers and 100x100 timber posts.",
+        "Install polythene along the fence behind the retaining wall to help protect the fence.",
+        "Import and spread topsoil across the lawn area.",
+        "Fine-grade the area ready for lawn establishment.",
+        "Sow lawn seed to establish the new lawn.",
+        "Tidy the work area on completion.",
+      ],
+      notes: [],
+    },
+    optional_quotes: [
+      {
+        quote_title: "Optional Ficus Tuffi hedge",
+        job_type: "planting",
+        cadence: "",
+        scope: ["Plant a Ficus Tuffi hedge along the fence, roughly 1m plants."],
+        notes: [],
+      },
+    ],
+    customer_scope: [
+      "Construct a small timber retaining wall approximately 400mm high using 200x50 retaining timbers and 100x100 timber posts.",
+      "Install polythene along the fence behind the retaining wall to help protect the fence.",
+      "Import and spread topsoil across the lawn area.",
+      "Fine-grade the area ready for lawn establishment.",
+      "Sow lawn seed to establish the new lawn.",
+      "Tidy the work area on completion.",
+    ],
+    materials: [
+      "200x50 retaining timber",
+      "100x100 timber posts",
+      "Polythene",
+      "Topsoil",
+      "Lawn seed — 5kg bag",
+    ],
+    internal_notes: [
+      "Retaining wall: approximately 400mm high, 16.8m long, set out approximately 900mm off the fence.",
+      "Retaining timber: two 200x50 horizontal retaining timbers with 100x100 timber posts.",
+      `Topsoil area: 6m x 16.8m = ${topsoil?.areaM2 ?? "?"}m²; depth 50mm; volume ${topsoil?.volumeM3 ?? "?"}m³ before waste/rounding.`,
+      `Lawn seed: ${lawnSeed?.size ?? "?"} bag; spoken price $${lawnSeed?.rate ?? "?"}.`,
+      "Optional Ficus Tuffi hedge along fence; roughly 1m plants; optional labour 2 people x 1 day.",
+    ],
+    line_items: [
+      {
+        item_code: "",
+        item_name: "Topsoil",
+        item_type: "material",
+        description: `Import and spread topsoil — ${topsoil?.areaM2 ?? "?"}m² × 50mm`,
+        quantity: topsoil ? String(topsoil.volumeM3) : null,
+        unit: "m3",
+        rate: null,
+        knowledge_base_rate: null,
+        override_rate: null,
+        final_rate_used: null,
+        total: null,
+        match_confidence: "none",
+        match_reason: "Topsoil volume calculated from area × depth; no KB item matched.",
+        needs_review: true,
+        warning: "Rate missing — no KB topsoil item matched",
+      },
+      {
+        item_code: "",
+        item_name: `Lawn seed (${lawnSeed?.size ?? "5kg"} bag)`,
+        item_type: "material",
+        description: "Lawn seed — cheap grade, spoken price preserved",
+        quantity: "1",
+        unit: "bag",
+        rate: lawnSeed?.rate != null ? String(lawnSeed.rate) : null,
+        knowledge_base_rate: null,
+        override_rate: null,
+        final_rate_used: lawnSeed?.rate != null ? String(lawnSeed.rate) : null,
+        total: lawnSeed?.rate != null ? String(lawnSeed.rate) : null,
+        match_confidence: "low",
+        match_reason: "Spoken bag price preserved; no KB lawn seed item matched.",
+        needs_review: true,
+        warning: "Item mapping missing — spoken price used",
+      },
+    ],
+  }
+}
+
 export const adamTitirangi: GoldenQuoteFixture = {
   name: "Golden Quote 3 — Adam / Titirangi (mixed landscaping)",
   mockingNotes:
@@ -213,6 +321,14 @@ export const adamTitirangi: GoldenQuoteFixture = {
     "Topsoil + lawn seed lines carry the computed quantity/price but have no KB item mapping (needs_review) — resolved when the KB/price-list batch lands.",
     "Optional Ficus hedge has no plant-count/spacing calculation yet (V06-optional-hedge-unwarned still fires by design).",
     "Retaining post spacing / drainage requirement not yet captured or warned.",
+    "PIPELINE PATH (QA-7): the live processTranscriptToQuote normalises this transcript to job_type `retaining` (the retaining component takes over the lawn-levelling primary). The fixture path (hand-built) still asserts the desired `general_landscaping`; the pipeline-backed test asserts only the subset the pipeline gets right.",
+    "PIPELINE PATH (QA-7): the live customer preview is taken over by the retaining/planting renderer and drops the polythene/topsoil/lawn-seed scope (V06-missing-topsoil-lawn-scope / V06-missing-lawn-seed fire). Fixing renderer selection for mixed landscaping is future runtime work.",
+    "PIPELINE PATH (QA-7): the live address extractor drops the `Titirangi` suburb on this transcript (V08-suburb-missing fires); the fixture path hand-sets the full `20 Lemnos Street, Titirangi`.",
   ],
   buildProcessedQuote,
+  pipeline: {
+    extractedQuote: adamExtractedQuote(),
+    knowledgeItems: [],
+    classification: { specialist: "landscaping", reason: "test-injected landscaping classification" },
+  },
 }

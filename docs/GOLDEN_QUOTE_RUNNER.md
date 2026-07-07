@@ -153,10 +153,36 @@ plant count 30 / spacing 500mm, recovers labour to 12h/$1,320, attaches
 |---|---|---|
 | Michelia planting | ✅ | ✅ (QA-5) |
 | Garden bed renovation | ✅ | ✅ (QA-6) |
-| Adam/Titirangi | ✅ | — still fixture-only |
+| Adam/Titirangi | ✅ | ⚠️ partial (QA-7) — see below |
 
-Migrating Adam/Titirangi to a pipeline-backed run (recording its extraction) is
-the natural next step.
+### Partial pipeline-backed Adam/Titirangi (QA-7)
+
+Adam/Titirangi is now driven through the **real** `processTranscriptToQuote`, but its
+pipeline-backed test ("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED, PARTIAL)")
+is deliberately **partial**. Unlike Michelia and Garden Bed — where the live pipeline
+reproduces the full desired contract — the Adam transcript currently **diverges** from
+the QA-3 hand-built desired state in three ways when run through the live pipeline:
+
+1. **Classification** — job_type is normalised to `retaining` (the retaining
+   component takes over the lawn-levelling primary) instead of `general_landscaping`.
+2. **Customer preview** — taken over by the retaining/planting renderer; it renders a
+   "Retaining Wall Quote" and **drops** the polythene / topsoil / lawn-seed scope
+   (so `V06-missing-topsoil-lawn-scope` and `V06-missing-lawn-seed` fire).
+3. **Address** — the real lead extractor drops the `Titirangi` suburb
+   (`V08-suburb-missing` fires); only `20 Lemnos Street` survives.
+
+These are **runtime gaps, not test gaps** — the fixture-path test masks them by
+hand-building the target `ProcessedQuote`. They are recorded in the fixture's
+`knownFailures` and are broader than QA-8 (which only wires the lawn calculators):
+fixing the retaining-vs-landscaping classification, the renderer takeover, and the
+suburb extraction is a future runtime batch.
+
+The QA-7 pipeline-backed test therefore asserts **only the subset the live pipeline
+genuinely gets right**: it runs headlessly with an `audit_result`, recovers the client
+name (`Adam`), keeps the decking gate closed (no decking line items/artefacts), keeps
+the optional Ficus hedge optional, and preserves the supplied topsoil (`Qty 5.04 m3`)
+and lawn-seed (`Qty 1 bag`, `Total 129`, no `$5` misread) material lines through to the
+JMS panel. The fixture-path tests still assert the full desired contract.
 
 ### Pipeline-backed Garden Bed renovation (QA-6)
 

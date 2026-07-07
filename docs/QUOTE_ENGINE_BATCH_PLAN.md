@@ -60,7 +60,14 @@ Goal:
 - Prove optional works remain optional.
 - Do not change runtime logic unless the pipeline-backed test exposes a blocker.
 
-**Status: pending**
+**Status: done** (commit `434b0e3` — "Add pipeline-backed garden bed golden quote coverage").
+
+Garden Bed is now driven through the real `processTranscriptToQuote` via the test
+"Golden Quote 2 — Garden bed renovation (PIPELINE-BACKED)". The mocked extraction has
+**no labour line**, so the live pipeline's `applyPerTaskHourAllowances` recovers
+7h + 2h + 8h = **17h** at $110/hr → **$1,870**, with no `$7`/`$2`/`$8` pricing facts,
+garden mix/mulch kept optional-only, and no customer-preview metadata leak or template
+takeover. No runtime logic changed.
 
 ### QA-7 — Pipeline-backed Adam/Titirangi golden quote
 Goal:
@@ -69,7 +76,32 @@ Goal:
 - Keep known remaining warnings for optional Ficus hedge, topsoil/lawn seed KB mapping, retaining drainage/post spacing.
 - Do not require live OpenAI.
 
-**Status: pending**
+**Status: partial — captured, not fully fixed.**
+
+Adam/Titirangi is now driven through the real `processTranscriptToQuote` via a
+**partial** pipeline-backed test ("Golden Quote 3 — Adam/Titirangi
+(PIPELINE-BACKED, PARTIAL)"). Unlike Michelia (QA-5) and Garden Bed (QA-6), the live
+pipeline does **not** reproduce the full QA-3 desired contract for this transcript, so
+the test asserts only the subset the pipeline genuinely gets right (runs headlessly
+with an `audit_result`, recovers client `Adam`, keeps the decking gate closed, keeps
+the Ficus hedge optional, and preserves the topsoil/lawn-seed material lines through to
+JMS). No live OpenAI. No runtime logic changed.
+
+Three runtime divergences are **captured** (documented in the fixture `knownFailures`
+and `docs/GOLDEN_QUOTE_RUNNER.md`), not fixed:
+
+1. **Classification** — the live pipeline normalises this transcript to job_type
+   `retaining` (the retaining component takes over the lawn-levelling primary) instead
+   of `general_landscaping`.
+2. **Customer preview** — taken over by the retaining/planting renderer; it drops the
+   polythene / topsoil / lawn-seed scope (`V06-missing-topsoil-lawn-scope` and
+   `V06-missing-lawn-seed` fire).
+3. **Address** — the real lead extractor drops the `Titirangi` suburb
+   (`V08-suburb-missing` fires).
+
+These are broader than QA-8 (which only wires the lawn calculators). Fixing the
+classification, renderer takeover, and suburb extraction is a future runtime batch and
+should land before the AI Quote Overseer reviews this quote.
 
 ### QA-8 — Wire lawn-establishment calculators into the live pipeline
 Goal:
