@@ -49,9 +49,25 @@ Design notes:
 - Reviewers are pure `(input) => finding[]` functions composed in `index.ts`; one
   throwing is surfaced as an `info` finding and never crashes the layer.
 
+## Internal panel wiring
+
+`reviewQuote(...)` is surfaced in the **internal view of `components/quote-review.tsx`**,
+directly after the `QuoteAuditCard`, as a `QuoteOverseerCard`. It is **display only** —
+it does not mutate the quote, change the renderer, or affect the customer-facing copy.
+
+- The input is assembled by `buildOverseerInputFromReview` (`lib/quote-overseer/from-review.ts`),
+  which renders the customer-preview *text* with the same pure functions the customer
+  draft uses, so the Overseer reviews exactly the copy the customer would see.
+- **No `xeroExportLines` are passed from the UI**, so O4 stays dormant there (known
+  KB/item-mapping gaps never surface as UI findings in this batch).
+- The card always renders in the internal view: with no findings it shows
+  "✅ Quote Overseer: no customer-preview issues found."; otherwise it lists each
+  finding's severity, id, message, evidence, and suggestion.
+- It is **not** wired into `QuoteDraft` or the pipeline/route.
+
 ## Status / next
 
-- **Not wired into the pipeline or route yet** — MVP is the library + tests only.
+- Wired into the internal review panel only (above). Not wired into the pipeline/route.
 - Future reviewers: O1 unit mismatch, O3 labour-total consistency, O6 renderer-path
   mismatch. An AI/OpenAI review pass is explicitly out of scope for this MVP.
 

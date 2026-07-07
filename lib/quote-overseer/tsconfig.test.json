@@ -14,7 +14,9 @@
   },
   "include": [
     "./index.test.ts",
+    "./from-review.test.ts",
     "./index.ts",
+    "./from-review.ts",
     "./types.ts",
     "./reviewers/o2-customer-preview-leaks-labour.ts",
     "./reviewers/o4-export-mapping-incomplete.ts",
@@ -24,6 +26,9 @@
     "../export/map-to-xero.ts",
     "../export/xero/types.ts",
     "../export/xero/helpers.ts",
-    "../export/exportable-line.ts"
+    "../export/exportable-line.ts",
+    "../customer-preview-flow.ts",
+    "../customer-quote-preview.ts",
+    "../customer-preview-render.ts"
   ]
 }

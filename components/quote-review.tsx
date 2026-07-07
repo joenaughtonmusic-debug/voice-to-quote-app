@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/utils"
 import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerQuotePreview } from "@/lib/customer-quote-preview"
+import { reviewQuote, type QuoteOverseerResult } from "@/lib/quote-overseer"
+import { buildOverseerInputFromReview } from "@/lib/quote-overseer/from-review"
 import {
   buildQuoteHandoffForDraftPreview,
   editableSectionsToProcessedQuote,
@@ -137,6 +139,19 @@ export function QuoteReview({
     pricingFacts,
   })
   const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true, includeRetainingScope: true })
+  // Deterministic Quote Overseer — reviews the rendered customer copy for
+  // cross-layer issues. Internal display only: it never mutates the quote and no
+  // Xero export lines are passed (O4 stays dormant here).
+  const overseerResult = reviewQuote(
+    buildOverseerInputFromReview({
+      processedQuote: editedQuoteForReview,
+      customerPreview,
+      rawTranscript,
+      originalTranscript,
+      selectedTemplate,
+      pricingFacts,
+    }),
+  )
   const quoteFacts = quoteFactsFromProcessedQuote(editedQuoteForReview)
   const deckingReview = deckingReviewFromQuoteFacts(quoteFacts)
   const retainingReview = retainingReviewFromQuoteFacts(quoteFacts)
@@ -503,6 +518,7 @@ export function QuoteReview({
           {view === "internal" && processedQuote.audit_result && (
             <QuoteAuditCard auditResult={processedQuote.audit_result} />
           )}
+          {view === "internal" && <QuoteOverseerCard result={overseerResult} />}
 
           {view === "customer" && (
             <TemplatePreviewControls
@@ -973,6 +989,74 @@ function QuoteAuditCard({ auditResult }: { auditResult: NonNullable<ProcessedQuo
           )
         })}
       </div>
+    </section>
+  )
+}
+
+function QuoteOverseerCard({ result }: { result: QuoteOverseerResult }) {
+  const statusColour =
+    result.status === "blocked"
+      ? "bg-destructive/10 text-destructive border-destructive/30"
+      : result.status === "review"
+        ? "bg-warning/10 text-warning-foreground border-warning/30"
+        : "bg-green-50 text-green-800 border-green-200"
+
+  const statusLabel = result.status === "blocked" ? "Blocked" : result.status === "review" ? "Review" : "OK"
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Quote Overseer</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Deterministic post-generation review of the rendered customer copy. Internal only — does not affect the quote.
+          </p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusColour}`}>{statusLabel}</span>
+      </div>
+
+      {result.findings.length === 0 ? (
+        <p className="text-sm text-green-800">✅ Quote Overseer: no customer-preview issues found.</p>
+      ) : (
+        <div className="grid gap-2">
+          {result.findings.map((finding, index) => {
+            const severityColour =
+              finding.severity === "error"
+                ? "border-destructive/40 bg-destructive/5"
+                : finding.severity === "warning"
+                  ? "border-warning/40 bg-warning/5"
+                  : "border-border bg-secondary/30"
+            return (
+              <div key={`${finding.id}-${index}`} className={`rounded-xl border p-3 ${severityColour}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-mono font-semibold text-muted-foreground">{finding.id}</span>
+                  <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {finding.layer.replace("_", " ")}
+                  </span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      finding.severity === "error"
+                        ? "bg-destructive/20 text-destructive"
+                        : finding.severity === "warning"
+                          ? "bg-warning/20 text-warning-foreground"
+                          : "bg-secondary text-muted-foreground"
+                    }`}
+                  >
+                    {finding.severity}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-sm text-foreground">{finding.message}</p>
+                {finding.evidence && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <span className="font-semibold">Evidence:</span> {finding.evidence}
+                  </p>
+                )}
+                {finding.suggestion && <p className="mt-1 text-xs italic text-muted-foreground">{finding.suggestion}</p>}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }
