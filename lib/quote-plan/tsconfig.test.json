@@ -15,8 +15,11 @@
   "include": [
     "./build-plan.test.ts",
     "./build-plan.ts",
+    "./optional-priced-works.test.ts",
+    "./optional-priced-works.ts",
     "./types.ts",
     "../processed-quote.ts",
+    "../quote-options.ts",
     "../calculators/planting/index.ts",
     "../core/labour-allowance-extraction.ts",
     "../export/labour-line-builder.ts"

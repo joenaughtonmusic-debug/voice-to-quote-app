@@ -57,6 +57,12 @@ export type ProcessedQuote = {
   line_items: QuoteLineItem[]
   plant_calculator_results?: PlantCalculatorResult[]
   quote_options?: QuoteOption[]
+  /**
+   * Priceable optional works derived from the QuotePlan's optional buckets
+   * (QuotePlan Slice 3a). Kept separate from quote_options so customer preview and
+   * Xero export do not pick it up yet — it is internal-only in this slice.
+   */
+  optional_priced_works?: QuoteOption[]
   audit_result?: import("@/lib/quote-auditor/types").AuditResult
 }
 

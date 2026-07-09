@@ -92,10 +92,38 @@ line + internal note; Michelia still recovers 12h) and the Adam/Titirangi
 pipeline-backed golden test (no 16h main line; optional Ficus labour surfaced; full
 contract still holds).
 
+## Slice 3a — optional works become priceable (internal-only) (done)
+
+Optional-bucket labour is now a **priceable** optional work in the output model, via a
+new additive field on `ProcessedQuote`:
+
+```ts
+optional_priced_works?: QuoteOption[]
+```
+
+- It reuses the existing `QuoteOption` type (`category: "labour"`, `source:
+  "ai_extraction"`) but is stored on this **separate** field — deliberately **not**
+  `quote_options` — because the customer options card renders any priced
+  `quote_options` entry (`customerOption()` doesn't filter `labour`). Keeping it
+  separate means customer preview, the customer options card, and Xero export do not
+  surface it in this slice.
+- Built by the pure `buildOptionalPricedWorks(plan, rate)` (`lib/quote-plan/optional-priced-works.ts`),
+  reusing the pipeline's main-labour recovery rate. When no rate is available the
+  subtotal is `0` with a "Rate missing" warning — a rate is never fabricated.
+- Displayed internal-only via `OptionalPricedWorksCard` in `quote-review.tsx`
+  (`view === "internal"`). The Slice 2 `internal_notes` line is kept for now.
+
+Not changed: `quote_options` semantics, customer preview, Xero/JMS export, calculators,
+templates, the Quote Overseer, or `recoverMissingLabourLineItem`.
+
+Staged rollout: **3a** = model + internal display (this slice); **3b** = customer
+preview; **3c** = Xero/JMS export.
+
 ## Next slice (not implemented)
 
-Give optional labour a first-class representation (an optional line item / optional
-labour allocation) so it can be priced, not just noted — a `ProcessedQuote` model
-extension. Then progressively move the remaining scope-blind labour paths
-(`applyDeterministicLabourAllowances`, `applyPerTaskHourAllowances`) and classification
-correction behind the plan. Each is a separate, approved batch.
+- **Slice 3b** — render optional priced works in the customer preview.
+- **Slice 3c** — include optional priced works in Xero/JMS export.
+- Then progressively move the remaining scope-blind paths
+  (`applyDeterministicLabourAllowances`, `applyPerTaskHourAllowances`, materials,
+  measurements, classification/template selection) behind the plan. Each is a
+  separate, approved batch.

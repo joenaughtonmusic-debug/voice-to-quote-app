@@ -34,6 +34,7 @@ import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "..
 import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "../export/labour-line-builder"
 import { auditProcessedQuote } from "../quote-auditor"
 import { buildQuotePlan } from "../quote-plan/build-plan"
+import { buildOptionalPricedWorks } from "../quote-plan/optional-priced-works"
 import type { BuildQuotePlanInput, QuotePlan } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
 import type { ResolvableItem } from "../items/resolve-bill"
@@ -3225,6 +3226,15 @@ export async function processTranscriptToQuote(
           const note = `Optional works labour (review/price separately): ${bucket.title} — ${detail}.`
           if (!quote.internal_notes.includes(note)) quote.internal_notes.push(note)
         }
+      }
+
+      // QuotePlan Slice 3a — make optional-bucket labour PRICEABLE in the output
+      // model. Stored on optional_priced_works (NOT quote_options), so customer
+      // preview and Xero export do not surface it in this slice. Reuses the same
+      // recovery rate; when absent, subtotal is 0 with a warning (no fabricated rate).
+      const optionalPricedWorks = buildOptionalPricedWorks(quotePlan, recoveryBestRate)
+      if (optionalPricedWorks.length > 0) {
+        quote.optional_priced_works = [...(quote.optional_priced_works ?? []), ...optionalPricedWorks]
       }
 
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)

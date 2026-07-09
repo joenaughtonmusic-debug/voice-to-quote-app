@@ -191,4 +191,16 @@ test("processTranscriptToQuote does not turn optional hedge labour into a main l
   )
   assert.ok(optionalNote, `optional hedge labour must be surfaced in internal_notes, got ${JSON.stringify(quote.internal_notes)}`)
   assert.match(optionalNote!, /2 people × 1 day = 16h/)
+
+  // QuotePlan Slice 3a — optional labour is priceable on optional_priced_works,
+  // and must NOT be pushed onto quote_options (which feeds customer preview / Xero).
+  const priced = quote.optional_priced_works ?? []
+  const buxusOption = priced.find((o) => /buxus/i.test(`${o.label} ${o.title}`))
+  assert.ok(buxusOption, `optional Buxus labour must be a priceable optional work, got ${JSON.stringify(priced)}`)
+  assert.equal(buxusOption!.category, "labour")
+  assert.equal(buxusOption!.lineItems[0]?.quantity, 16)
+  assert.ok(
+    !(quote.quote_options ?? []).some((o) => o.category === "labour" || /buxus/i.test(`${o.label} ${o.title}`)),
+    "optional labour must not leak into quote_options",
+  )
 })

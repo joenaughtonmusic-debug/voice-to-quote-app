@@ -519,6 +519,9 @@ export function QuoteReview({
             <QuoteAuditCard auditResult={processedQuote.audit_result} />
           )}
           {view === "internal" && <QuoteOverseerCard result={overseerResult} />}
+          {view === "internal" && (editedQuoteForReview.optional_priced_works?.length ?? 0) > 0 && (
+            <OptionalPricedWorksCard works={editedQuoteForReview.optional_priced_works!} />
+          )}
 
           {view === "customer" && (
             <TemplatePreviewControls
@@ -1057,6 +1060,47 @@ function QuoteOverseerCard({ result }: { result: QuoteOverseerResult }) {
           })}
         </div>
       )}
+    </section>
+  )
+}
+
+function OptionalPricedWorksCard({ works }: { works: NonNullable<ProcessedQuote["optional_priced_works"]> }) {
+  const money = (value: number) =>
+    Number.isFinite(value) ? `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-foreground">Optional Works (priceable)</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Optional works with their own labour, derived from the quote plan. Internal only — not shown to the customer or exported yet; review and price before sending.
+        </p>
+      </div>
+
+      <div className="grid gap-2">
+        {works.map((work) => {
+          const needsRate = (work.warnings ?? []).some((w) => /rate missing/i.test(w))
+          return (
+            <div key={work.id} className={`rounded-xl border p-3 ${needsRate ? "border-warning/40 bg-warning/5" : "border-border bg-secondary/30"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-foreground">{work.title}</span>
+                <span className="text-sm font-semibold text-foreground">{needsRate ? "Rate missing" : money(work.subtotal)}</span>
+              </div>
+              {work.lineItems.map((line, index) => (
+                <p key={`${work.id}-${index}`} className="mt-1 text-xs text-muted-foreground">
+                  {line.itemName}: {line.quantity} {line.unit}
+                  {needsRate ? "" : ` × ${money(line.unitPrice)} = ${money(line.total)}`}
+                </p>
+              ))}
+              {(work.warnings ?? []).map((warning, index) => (
+                <p key={`${work.id}-w-${index}`} className="mt-1 text-xs italic text-warning-foreground">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }
