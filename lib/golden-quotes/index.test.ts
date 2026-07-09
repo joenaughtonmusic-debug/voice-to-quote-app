@@ -222,6 +222,21 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
     "optional Ficus hedge remains optional",
   )
 
+  // QuotePlan Slice 2 — the optional hedge's "2 people × 1 day" must NOT become a main
+  // labour line, and must be surfaced internally for review/pricing.
+  assert.ok(
+    !projection.quote.line_items.some(
+      (i) => (/\blabou?r\b/i.test(i.item_type) || /\blabou?r\b/i.test(i.item_name)) && i.quantity === "16",
+    ),
+    `optional hedge labour must not create a 16h main labour line, got ${JSON.stringify(projection.quote.line_items.map((i) => ({ n: i.item_name, q: i.quantity })))}`,
+  )
+  assert.ok(
+    projection.quote.internal_notes.some((n) => /optional works labour/i.test(n) && /ficus/i.test(n)),
+    `optional Ficus hedge labour must be surfaced in internal_notes, got ${JSON.stringify(projection.quote.internal_notes)}`,
+  )
+  // And it must not leak into the customer-facing preview.
+  assert.ok(!/optional works labour/i.test(projection.customerText), "optional-labour note must stay internal")
+
   // The pipeline preserves the supplied topsoil + lawn-seed material lines and
   // formats them for JMS (spoken $129 kept; 5kg never misread as a $5 rate).
   assert.ok(jms.includes("Topsoil") && jms.includes("Qty 5.04 m3"), "topsoil volume line preserved")

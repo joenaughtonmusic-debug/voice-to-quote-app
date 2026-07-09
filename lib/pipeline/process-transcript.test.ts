@@ -128,3 +128,67 @@ test("processTranscriptToQuote does not turn '5 bags of garden mix' into a $5 li
   )
   assert.equal(bogus, false, "5 bags must never become a $5 rate/total")
 })
+
+// ── QuotePlan Slice 2: optional-only labour must not become main labour ───────
+const OPTIONAL_LABOUR_TRANSCRIPT =
+  "Quote for a garden at 12 Test Road. The main job is to lay a new lawn across the back garden. " +
+  "And it would be great if you could also do an optional price for planting a Buxus hedge along the fence, and the labour for that being two people one day."
+
+function optionalLabourDeps(): ProcessTranscriptDeps {
+  return {
+    classify: async () => ({ specialist: "landscaping", reason: "test-injected classification" }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extractQuote: async () =>
+      ({
+        quote: {
+          ...EMPTY_PROCESSED_QUOTE,
+          client_name: "Test",
+          site_address: "12 Test Road",
+          quote_title: "Landscaping Quote",
+          job_type: "general_landscaping",
+          primary_quote: {
+            quote_title: "Landscaping Quote",
+            job_type: "general_landscaping",
+            cadence: "",
+            scope: ["Lay a new lawn across the back garden."],
+            notes: [],
+          },
+          optional_quotes: [
+            {
+              quote_title: "Optional Buxus hedge",
+              job_type: "planting",
+              cadence: "",
+              scope: ["Plant a Buxus hedge along the fence."],
+              notes: [],
+            },
+          ],
+          customer_scope: ["Lay a new lawn across the back garden."],
+          labour_allowance: "",
+          line_items: [],
+        },
+        elapsedMs: 0,
+        promptLength: 0,
+        responseLength: 0,
+        reliabilityMetric: "first_pass_success",
+      }) as any,
+    logger: { log: () => {}, warn: () => {}, error: () => {} },
+  }
+}
+
+test("processTranscriptToQuote does not turn optional hedge labour into a main labour line", async () => {
+  const { quote } = await processTranscriptToQuote(
+    { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    optionalLabourDeps(),
+  )
+
+  const labourLine = quote.line_items.find(
+    (item) => /\blabou?r\b/i.test(item.item_type) || /\blabou?r\b/i.test(item.item_name),
+  )
+  assert.equal(labourLine, undefined, `optional hedge labour must not become a main labour line, got ${JSON.stringify(labourLine)}`)
+
+  const optionalNote = quote.internal_notes.find(
+    (note) => /optional works labour/i.test(note) && /buxus/i.test(note),
+  )
+  assert.ok(optionalNote, `optional hedge labour must be surfaced in internal_notes, got ${JSON.stringify(quote.internal_notes)}`)
+  assert.match(optionalNote!, /2 people × 1 day = 16h/)
+})

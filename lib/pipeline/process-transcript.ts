@@ -33,6 +33,8 @@ import {
 import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "../core/labour-allowance-extraction"
 import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "../export/labour-line-builder"
 import { auditProcessedQuote } from "../quote-auditor"
+import { buildQuotePlan } from "../quote-plan/build-plan"
+import type { BuildQuotePlanInput, QuotePlan } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
 import type { ResolvableItem } from "../items/resolve-bill"
 
@@ -3049,6 +3051,12 @@ export type ProcessTranscriptDeps = {
   classify?: (transcript: string, primaryTrade: PrimaryTrade) => Promise<QuoteClassification>
   /** OpenAI-backed extraction. Injectable so tests can run headlessly. */
   extractQuote?: (context: QuoteExtractionContext) => Promise<QuoteExtractionAttempt>
+  /**
+   * Deterministic QuotePlan builder (QuotePlan Slice 2). Injectable for tests /
+   * a future AI planner; defaults to the deterministic buildQuotePlan. Currently
+   * used only to scope the fallback labour-recovery text to main-bucket work.
+   */
+  planQuote?: (input: BuildQuotePlanInput) => QuotePlan
   logger?: Pick<Console, "log" | "warn" | "error">
 }
 
@@ -3074,6 +3082,7 @@ export async function processTranscriptToQuote(
   const log = deps.logger ?? console
   const classify = deps.classify ?? classifyTranscript
   const extractQuote = deps.extractQuote ?? extractQuoteWithRetry
+  const planQuote = deps.planQuote ?? buildQuotePlan
 
   const transcript = input.transcript.trim()
   const templateContext = getTemplateContext(input.templateContext)
@@ -3193,7 +3202,30 @@ export async function processTranscriptToQuote(
         recoveryBestLabourItem?.sell_price === null || recoveryBestLabourItem?.sell_price === undefined
           ? null
           : String(recoveryBestLabourItem.sell_price)
-      recoverMissingLabourLineItem(quote, transcript, recoveryBestRate)
+      // QuotePlan Slice 2 — scope the fallback labour-recovery text to MAIN work.
+      // recoverMissingLabourLineItem prefers labour_allowance/notes/scope, then falls
+      // back to this text; passing the plan's main-bucket sourceText (optional
+      // sentences removed) stops optional labour (e.g. an optional hedge's
+      // "two people one day") being recovered as the main structured labour line.
+      const quotePlan = planQuote({ extraction: quote, transcript, classification })
+      recoverMissingLabourLineItem(quote, quotePlan.main.sourceText, recoveryBestRate)
+
+      // Surface any optional-bucket labour internally for review/pricing. internal_notes
+      // is internal-only (never rendered in the customer preview); ProcessedQuote is
+      // not changed. A first-class optional labour line item is a later slice.
+      quote.internal_notes = Array.isArray(quote.internal_notes) ? quote.internal_notes : []
+      for (const bucket of quotePlan.optional) {
+        for (const labour of bucket.labour) {
+          const detail =
+            labour.people != null && labour.days != null
+              ? `${labour.people} ${labour.people === 1 ? "person" : "people"} × ${labour.days} ${labour.days === 1 ? "day" : "days"}${labour.hours != null ? ` = ${labour.hours}h` : ""}`
+              : labour.hours != null
+                ? `${labour.hours}h`
+                : labour.raw
+          const note = `Optional works labour (review/price separately): ${bucket.title} — ${detail}.`
+          if (!quote.internal_notes.includes(note)) quote.internal_notes.push(note)
+        }
+      }
 
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       normaliseDaysLabourLineItem(quote, transcript)

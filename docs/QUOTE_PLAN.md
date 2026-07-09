@@ -67,10 +67,35 @@ extractions (no OpenAI):
 - **Garden tidy:** `quoteType: one_off_tidy`, main labour stays main, no fabricated
   optional/planting bucket.
 
+## Slice 2 — first runtime wiring (done)
+
+`buildQuotePlan` is now wired into `processTranscriptToQuote` behind a **dormant,
+injectable `planQuote` dep** (defaults to `buildQuotePlan`; deterministic, no OpenAI).
+It has exactly one runtime effect:
+
+- The plan is built just before `recoverMissingLabourLineItem`, and the recovery's
+  **fallback** text is scoped to `quotePlan.main.sourceText` (optional sentences
+  removed) instead of the whole transcript. Recovery still prefers
+  `labour_allowance`/notes/scope first, so legit main labour is unaffected; only
+  *optional-only* labour (e.g. an optional hedge's "two people one day") is no longer
+  recovered as the **main** structured labour line.
+- Each optional bucket's labour is surfaced in `internal_notes` for review/pricing,
+  e.g. `Optional works labour (review/price separately): Optional Ficus Tuffi hedge —
+  2 people × 1 day = 16h.` (`internal_notes` is internal-only — never customer-facing.)
+
+Not changed: `ProcessedQuote`, `recoverMissingLabourLineItem` internals,
+`applyDeterministicLabourAllowances`/`applyPerTaskHourAllowances`, calculators,
+rendering, Xero export, templates, and the Quote Overseer.
+
+Covered by: `lib/pipeline/process-transcript.test.ts` (optional-only labour → no main
+line + internal note; Michelia still recovers 12h) and the Adam/Titirangi
+pipeline-backed golden test (no 16h main line; optional Ficus labour surfaced; full
+contract still holds).
+
 ## Next slice (not implemented)
 
-Wire `buildQuotePlan` into `processTranscriptToQuote` as a **dormant, injectable
-`planQuote` dep**, and make one consumer read it: feed `plan.main` labour text (not the
-whole transcript) into `recoverMissingLabourLineItem`, and emit optional-bucket labour
-as an optional line item. That is the first real behaviour change (fixes Adam's hedge
-in the live pipeline) — a separate, approved batch.
+Give optional labour a first-class representation (an optional line item / optional
+labour allocation) so it can be priced, not just noted — a `ProcessedQuote` model
+extension. Then progressively move the remaining scope-blind labour paths
+(`applyDeterministicLabourAllowances`, `applyPerTaskHourAllowances`) and classification
+correction behind the plan. Each is a separate, approved batch.
