@@ -64,6 +64,20 @@ export type ProcessedQuote = {
    */
   optional_priced_works?: QuoteOption[]
   audit_result?: import("@/lib/quote-auditor/types").AuditResult
+  /**
+   * QuotePlan-derived customer-render intent (Milestone 2). Captured from the plan
+   * BEFORE the output normalisers mutate `job_type` (which can flip a mixed
+   * landscaping job to "Hedge Planting"/"retaining" once an optional planting item is
+   * calculated). This is the stable signal renderer/assembler selection uses to decide
+   * the customer presentation, so an optional/secondary planting or retaining component
+   * can never collapse a mixed landscaping quote into the wrong presentation.
+   */
+  render_intent?: {
+    /** The plan's quoteType (classification specialist), e.g. "landscaping" | "planting". */
+    primaryTrade: string
+    /** True only when the MAIN/primary work bucket is genuinely planting. */
+    mainIsPlanting: boolean
+  }
 }
 
 export type EditableQuoteSection = {

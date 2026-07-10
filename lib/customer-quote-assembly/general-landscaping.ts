@@ -207,10 +207,25 @@ function prettifyJobType(jobType: string): string {
 
 function inferTitle(input: CustomerQuoteAssemblyInput): string {
   const title = input.quote.quote_title?.trim()
-  // Pass through human-readable titles that aren't retaining or raw slugs
-  if (title && !/\bretaining\b/i.test(title) && !isRawJobTypeSlug(title)) return title
-  // Raw slug or retaining title — derive a readable label from job_type
+  // Milestone 2 — when the QuotePlan confirms the primary work is NOT planting, a
+  // planting/hedge-flavoured title (left behind after the output normalisers mutated a
+  // mixed landscaping job's job_type/quote_title) must not be shown to the customer.
+  const primaryIsNotPlanting = input.quote.render_intent?.mainIsPlanting === false
+  const titleLooksPlanting = /\b(planting|hedge)\b/i.test(title ?? "")
+  // Pass through human-readable titles that aren't retaining, planting-mislabelled, or raw slugs
+  if (
+    title &&
+    !/\bretaining\b/i.test(title) &&
+    !(primaryIsNotPlanting && titleLooksPlanting) &&
+    !isRawJobTypeSlug(title)
+  ) {
+    return title
+  }
+  // Raw slug / retaining / planting-mislabelled title — derive a readable label. When we
+  // know the primary work is landscaping, prefer the general landscaping label over a
+  // mutated planting/retaining job_type.
   const jobType = input.quote.job_type?.trim() ?? ""
+  if (primaryIsNotPlanting || input.quote.render_intent?.primaryTrade === "landscaping") return "General Landscaping"
   if (jobType) return prettifyJobType(jobType)
   // Final fallback: prettify the raw title if it happens to be a job_type slug
   if (title && isRawJobTypeSlug(title)) return prettifyJobType(title)

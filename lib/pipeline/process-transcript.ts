@@ -3288,6 +3288,16 @@ export async function processTranscriptToQuote(
         quote.optional_priced_works = [...(quote.optional_priced_works ?? []), ...optionalPricedWorks]
       }
 
+      // QuotePlan Milestone 2 — record the PRE-mutation primary intent from the plan
+      // built off the raw extraction (preCalculationPlan), so customer renderer/assembler
+      // selection follows the genuine primary work. Output normalisers may have since
+      // flipped `job_type` to "Hedge Planting"/"retaining" because an OPTIONAL planting
+      // component was calculated; render_intent is immune to that.
+      quote.render_intent = {
+        primaryTrade: preCalculationPlan.quoteType,
+        mainIsPlanting: isPlantingBucket(preCalculationPlan.main, preCalculationPlan.quoteType),
+      }
+
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)
       normaliseDaysLabourLineItem(quote, transcript)
 

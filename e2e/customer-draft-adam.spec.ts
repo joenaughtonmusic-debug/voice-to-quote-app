@@ -43,6 +43,9 @@ test("Adam/Titirangi customer draft renders deterministically with de-duplicated
   const optionalWorksCount = (text.match(/optional works/gi) ?? []).length
   expect(optionalWorksCount, "exactly one Optional works section").toBe(1)
 
+  // ── Milestone 2: mixed landscaping must not collapse to a planting quote ──
+  expect(text.toLowerCase(), "Adam is a mixed landscaping quote, not a Planting Quote").not.toContain("planting quote")
+
   // ── Must NOT include (internal detail / labour leak / fabricated options) ─
   const forbidden = [
     "Labour Included only",

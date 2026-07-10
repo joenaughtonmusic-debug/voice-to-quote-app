@@ -8,6 +8,7 @@ import { micheliaPlanting } from "./fixtures/michelia-planting"
 import { buildProjectionFromQuote, formatContractReport, runGoldenQuote, runGoldenQuoteThroughPipeline } from "./runner"
 import { reviewQuote } from "../quote-overseer"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
+import { processTranscriptToQuote, type ProcessTranscriptDeps } from "../pipeline/process-transcript"
 
 /**
  * Golden Quote Runner — headless regression harness.
@@ -77,6 +78,9 @@ test("Golden Quote 1 — Michelia planting (PIPELINE-BACKED): contract holds thr
   assert.ok(/Michelia/.test(projection.customerText), "customer preview includes Michelia")
   assert.ok(!/long hedge/i.test(projection.customerText), "no 'long hedge'")
   assert.ok(!/metres long\. The/i.test(projection.customerText), "no 'metres long. The'")
+  // Milestone 2 — a TRUE planting quote still uses the planting presentation.
+  assert.equal(projection.quote.render_intent?.mainIsPlanting, true, "Michelia primary work is planting")
+  assert.equal(projection.rendererPath, "planting-presentation", "true planting quote uses planting presentation")
   // Slice 3b regression: no optional_priced_works → no empty optional works section.
   assert.ok(!/not included in the main quote/i.test(projection.customerText), "no spurious optional works section")
 })
@@ -208,7 +212,15 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
   // QA-9 fix — no fabricated planting area from the retaining wall, so the customer
   // preview uses the mixed-landscaping assembly renderer and surfaces the real scope.
   assert.notEqual(projection.rendererPath, "planting-presentation", "must not be taken over by the planting renderer")
+  assert.equal(projection.rendererPath, "assembly", "mixed landscaping uses the customer assembly renderer")
   assert.deepEqual(projection.quote.plant_calculator_results ?? [], [], "no fabricated plant calculator results")
+  // Milestone 2 — the QuotePlan primary intent is landscaping (not planting), and the
+  // customer quote title must not collapse to a planting title.
+  assert.equal(projection.quote.render_intent?.mainIsPlanting, false, "Adam primary work is not planting")
+  assert.ok(
+    !/planting quote/i.test(projection.customerText),
+    `customer quote title must not collapse to a planting quote:\n${projection.customerText.slice(0, 200)}`,
+  )
   // Slice 4 — the retaining/topsoil measurements ("16.8m for the retaining wall",
   // "6m by 16.8m") must never be fabricated into a planting option/line/name.
   assert.ok(
@@ -417,6 +429,83 @@ test("Slice 3b: rendered customer draft shows exactly one optional works section
   ]) {
     assert.ok(!new RegExp(forbidden, "i").test(customerText), `customer copy must not contain "${forbidden}"`)
   }
+})
+
+test("Milestone 2: a mixed landscaping quote with an OPTIONAL (calculated) hedge does not collapse into the planting presentation", async () => {
+  // Mixed landscaping MAIN work (lawn + topsoil) with an OPTIONAL Griselinia hedge that
+  // HAS a length + spacing, so Milestone 1's calculator produces plant_calculator_results
+  // for the optional bucket. The output normalisers then flip job_type to a planting
+  // label — but render_intent must keep the quote landscaping-first.
+  const transcript =
+    "Landscaping for Ann. Lay a new lawn and spread topsoil, plus lawn seed. " +
+    "Optional: plant a 12m Griselinia hedge along the boundary at 500mm spacing."
+  const deps: ProcessTranscriptDeps = {
+    classify: async () => ({ specialist: "landscaping", reason: "test-injected classification" }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extractQuote: async () =>
+      ({
+        quote: {
+          ...EMPTY_PROCESSED_QUOTE,
+          client_name: "Ann",
+          site_address: "3 Test Rise",
+          quote_title: "Lawn & Topsoil",
+          job_type: "general_landscaping",
+          primary_quote: {
+            quote_title: "Lawn & Topsoil",
+            job_type: "general_landscaping",
+            cadence: "",
+            scope: ["Lay a new lawn", "Spread topsoil", "Sow lawn seed"],
+            notes: [],
+          },
+          optional_quotes: [
+            {
+              quote_title: "Optional Griselinia hedge",
+              job_type: "planting",
+              cadence: "",
+              scope: ["Plant a 12m Griselinia hedge along the boundary at 500mm spacing."],
+              notes: [],
+            },
+          ],
+          customer_scope: ["Lay a new lawn", "Spread topsoil", "Sow lawn seed"],
+          materials: ["Topsoil", "Lawn seed"],
+        },
+        elapsedMs: 0,
+        promptLength: 0,
+        responseLength: 0,
+        reliabilityMetric: "first_pass_success",
+      }) as any,
+    logger: { log: () => {}, warn: () => {}, error: () => {} },
+  }
+
+  const knowledgeItemContext = [
+    {
+      item_code: "GRIS-2L",
+      item_name: "Griselinia 2L",
+      item_type: "plant",
+      plant_name: "Griselinia",
+      plant_size: "2L",
+      pot_size: "2L",
+      spacing_mm: 500,
+      sell_price: 12,
+      unit: "each",
+      aliases: ["griselinia"],
+    },
+  ]
+
+  const { quote } = await processTranscriptToQuote({ transcript, knowledgeItemContext }, deps)
+  const projection = buildProjectionFromQuote(quote, transcript)
+
+  // render_intent stays landscaping even though job_type was mutated to a planting label.
+  assert.equal(quote.render_intent?.primaryTrade, "landscaping")
+  assert.equal(quote.render_intent?.mainIsPlanting, false, `job_type is now "${quote.job_type}" but the primary work is landscaping`)
+
+  // The customer quote renders through the mixed-landscaping assembly, not planting.
+  assert.equal(projection.rendererPath, "assembly", "mixed job must use the assembly renderer")
+  assert.ok(!/planting quote/i.test(projection.customerText), "title must not collapse to Planting Quote")
+  assert.match(projection.customerText, /topsoil/i, "main landscaping scope (topsoil) must survive")
+  assert.match(projection.customerText, /lawn/i, "main landscaping scope (lawn) must survive")
+  // No fabricated retaining-wall/structural plant option (Milestone 1 guarantee holds).
+  assert.ok(!/retaining wall\s+\d/i.test(projection.customerText), "no fabricated sized plant option")
 })
 
 test("every fixture documents its mocked boundary", () => {
