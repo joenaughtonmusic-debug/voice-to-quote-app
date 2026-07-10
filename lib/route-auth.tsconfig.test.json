@@ -1,0 +1,23 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/route-auth-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "./route-auth.test.ts",
+    "../app/api/process-quote/route.ts",
+    "../app/api/transcribe/route.ts",
+    "../app/api/correct-transcript/route.ts",
+    "../app/api/export-xero-quote/route.ts"
+  ]
+}

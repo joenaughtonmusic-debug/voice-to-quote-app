@@ -1,6 +1,6 @@
 import pdf from "pdf-parse/lib/pdf-parse.js"
-import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
+import { createAuthedSupabaseClient, getBearerToken } from "@/lib/api-auth"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const ANALYSIS_MODEL = process.env.OPENAI_QUOTE_ANALYSIS_MODEL ?? "gpt-4o-mini"
@@ -205,22 +205,6 @@ type TemplateSchema = {
   trade_vocabulary: string[]
   terms_conditions: string[]
   ai_prompt_rules: string[]
-}
-
-function getBearerToken(request: Request) {
-  const authorization = request.headers.get("authorization")
-  if (!authorization?.toLowerCase().startsWith("bearer ")) return null
-  return authorization.slice("bearer ".length).trim()
-}
-
-function createAuthedSupabaseClient(accessToken: string) {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  })
 }
 
 function getOutputText(result: any) {

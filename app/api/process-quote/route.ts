@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
 import { processTranscriptToQuote } from "@/lib/pipeline/process-transcript"
+import { authenticateRequest } from "@/lib/api-auth"
 
 // Thin HTTP wrapper over the shared, headless-callable pipeline in
 // lib/pipeline/process-transcript.ts. All quote-processing logic lives there so
 // tests can exercise it without a NextRequest, browser, or live OpenAI call.
 export async function POST(request: Request) {
   try {
+    const auth = await authenticateRequest(request)
+    if (!auth.ok) return auth.response
+
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OpenAI API key is not configured." }, { status: 500 })
     }

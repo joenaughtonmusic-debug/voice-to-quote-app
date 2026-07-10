@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { authenticateRequest } from "@/lib/api-auth"
 
 const OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
 const TRANSCRIPTION_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe"
@@ -12,6 +13,9 @@ function getAudioFileName(file: File) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await authenticateRequest(request)
+    if (!auth.ok) return auth.response
+
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: "OpenAI API key is not configured." }, { status: 500 })
     }
