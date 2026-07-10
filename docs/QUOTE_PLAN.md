@@ -188,10 +188,80 @@ notes, and verify the customer draft shows one "Optional works" section with
 `Optional price: $1,760`, retaining wall / polythene / topsoil, and no labour hours / raw
 labour phrase; and the internal view shows the "Optional Works (priceable)" card.
 
-## Next slice (not implemented)
+## Milestone 1 — planting calculator owns its inputs (done)
 
-- **Slice 3c** — include optional priced works in Xero/JMS export.
-- Then progressively move the remaining scope-blind paths
-  (`applyDeterministicLabourAllowances`, `applyPerTaskHourAllowances`, materials,
-  measurements, classification/template selection) behind the plan. Each is a
-  separate, approved batch.
+The planting calculator now reads plant requests/measurements from the QuotePlan's
+**planting buckets only** (`plantingScopeTextFromPlan`), not the raw transcript, and the
+plan is built **before** the calculator step. A retaining-wall or topsoil measurement
+lives in a non-planting bucket and can never be scavenged into a planting length/count,
+so fabricated options like "the retaining wall 16.8M" are gone. `WorkBucket.measurements`
+gained additive `provenance`, and `isStructuralNonPlantLabel` (exported from the planting
+calculator) is a defensive guard on the two transcript-blind extractors.
+
+## Milestone 2 — renderer/assembler follows QuotePlan intent (done)
+
+Customer renderer/assembler selection follows the plan's **primary intent**, not a
+`job_type` the output normalisers may have flipped to "Hedge Planting"/"retaining" once an
+optional planting/retaining component was calculated. The pipeline records an additive
+`ProcessedQuote.render_intent = { primaryTrade, mainIsPlanting }` from the pre-mutation
+plan; `selectCustomerRendererPath` / `isPrimaryPlantingQuote` (in
+`lib/customer-renderer-intent.ts`) gate the planting presentation and the planting
+assembler on the MAIN work being genuinely planting, and route mixed landscaping to the
+general assembly. True planting quotes (Michelia) still use the planting presentation.
+
+## Milestone 3 — QuotePlan validation & AI-planner preparation (done)
+
+`lib/quote-plan/validate.ts` adds the **deterministic gate an AI planner will sit behind**.
+No live OpenAI, no keys, no env vars in this batch.
+
+### How the AI planner will plug in
+
+A future AI QuotePlan Planner emits a QuotePlan-shaped **draft** (untrusted). The pipeline
+already has the dormant seam: `ProcessTranscriptDeps.draftPlanner?: (input) => unknown`.
+When provided, the plan is resolved via:
+
+```
+resolveQuotePlan({ draft: draftPlanner(input), fallbackInput: input }).plan
+```
+
+Today `draftPlanner` is undefined in production, so `planQuote` stays the deterministic
+`buildQuotePlan` and **runtime behaviour is unchanged** — the seam is exercised only by
+injected tests.
+
+### Why AI output is draft-only
+
+Raw model output must never drive pricing/rendering. `resolveQuotePlan` returns
+`{ plan, status, findings }`:
+
+- **accepted** — draft normalised cleanly with no coercions and no error findings.
+- **normalised** — safe coercions/drops were applied (e.g. string `"16"` → `16`), no
+  error findings.
+- **fallback** — any **error** finding (or an unusable draft) → the deterministic
+  `buildQuotePlan` is used instead. Invalid AI output can never corrupt the quote.
+
+`validateQuotePlan` checks (errors force fallback): quoteType present (unknown → warning);
+main bucket exists with `kind: "main"`; optional buckets are `kind: "optional"`; unique
+ids / no bucket both main+optional; labour people/days/hours finite & positive;
+measurements finite, positive, and plausible (out-of-range → warning); material
+quantities not negative; **optional labour not mis-attributed to main**; and **a planting
+length never attributed to a structural bucket** (retaining wall / fence / topsoil).
+
+### What stays deterministic forever
+
+Calculators, pricing/quantity math, KB/JMS/Xero mapping, renderer/assembler assembly, the
+QuotePlan validation itself, and the Quote Overseer/Auditor. AI is confined to producing a
+draft plan (understanding) and later advisory review — never final numbers or output.
+
+### Next batch recommendation
+
+**Slice 3c** — include optional priced works in Xero/JMS export. Then progressively move
+the remaining scope-blind paths (`applyDeterministicLabourAllowances`,
+`applyPerTaskHourAllowances`, materials/measurements ownership) behind the plan, and only
+then wire a live AI `draftPlanner` (gated by `resolveQuotePlan`, behind an explicit
+env/flag), starting in shadow mode where its plan is compared to `buildQuotePlan` but not
+yet used. Each is a separate, approved batch.
+
+## Superseded notes (kept for history)
+
+- **Slice 3c** — include optional priced works in Xero/JMS export (still pending).
+- The "Known issue — retaining wall 6M/16.8M" above was fixed in Milestone 1.

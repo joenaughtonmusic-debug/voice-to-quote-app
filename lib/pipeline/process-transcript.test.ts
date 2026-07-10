@@ -3,6 +3,7 @@ import test from "node:test"
 
 import { EMPTY_PROCESSED_QUOTE } from "../processed-quote"
 import { processTranscriptToQuote, type ProcessTranscriptDeps } from "./process-transcript"
+import { buildQuotePlan } from "../quote-plan/build-plan"
 
 const MICHELIA_TRANSCRIPT = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
 
@@ -300,4 +301,55 @@ test("processTranscriptToQuote does not turn optional hedge labour into a main l
     !(quote.quote_options ?? []).some((o) => o.category === "labour" || /buxus/i.test(`${o.label} ${o.title}`)),
     "optional labour must not leak into quote_options",
   )
+})
+
+// ── QuotePlan Milestone 3: the dormant draftPlanner seam is validated & safe ──
+test("processTranscriptToQuote: an injected draftPlanner producing a VALID plan is used (accepted)", async () => {
+  let calls = 0
+  const deps: ProcessTranscriptDeps = {
+    ...optionalLabourDeps(),
+    // A valid draft plan (the deterministic plan itself) → resolveQuotePlan accepts it.
+    draftPlanner: (input) => {
+      calls += 1
+      return buildQuotePlan(input)
+    },
+  }
+  const { quote } = await processTranscriptToQuote(
+    { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    deps,
+  )
+
+  assert.ok(calls >= 1, "the draftPlanner seam must be invoked")
+  // Behaviour is correct: optional hedge labour still stays out of the main labour line.
+  const labourLine = quote.line_items.find(
+    (item) => /\blabou?r\b/i.test(item.item_type) || /\blabou?r\b/i.test(item.item_name),
+  )
+  assert.equal(labourLine, undefined, "optional labour must not become a main labour line")
+})
+
+test("processTranscriptToQuote: an injected draftPlanner producing INVALID output falls back safely", async () => {
+  let calls = 0
+  const deps: ProcessTranscriptDeps = {
+    ...optionalLabourDeps(),
+    // Garbage draft (no main bucket) → resolveQuotePlan falls back to buildQuotePlan;
+    // raw AI output can never corrupt the quote.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    draftPlanner: () => {
+      calls += 1
+      return { bogus: true, main: null } as any
+    },
+  }
+  const { quote } = await processTranscriptToQuote(
+    { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    deps,
+  )
+
+  assert.ok(calls >= 1, "the draftPlanner seam must be invoked")
+  // Fallback to the deterministic plan keeps the correct behaviour.
+  const labourLine = quote.line_items.find(
+    (item) => /\blabou?r\b/i.test(item.item_type) || /\blabou?r\b/i.test(item.item_name),
+  )
+  assert.equal(labourLine, undefined, "fallback plan must still keep optional labour out of the main line")
+  const optionalNote = quote.internal_notes.find((note) => /optional works labour/i.test(note) && /buxus/i.test(note))
+  assert.ok(optionalNote, "fallback plan must still surface the optional Buxus labour internally")
 })

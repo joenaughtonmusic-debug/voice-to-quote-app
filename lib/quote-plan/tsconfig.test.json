@@ -17,6 +17,8 @@
     "./build-plan.ts",
     "./optional-priced-works.test.ts",
     "./optional-priced-works.ts",
+    "./validate.test.ts",
+    "./validate.ts",
     "./types.ts",
     "../processed-quote.ts",
     "../quote-options.ts",

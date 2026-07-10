@@ -35,6 +35,7 @@ import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "..
 import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "../export/labour-line-builder"
 import { auditProcessedQuote } from "../quote-auditor"
 import { buildQuotePlan } from "../quote-plan/build-plan"
+import { resolveQuotePlan } from "../quote-plan/validate"
 import { buildOptionalPricedWorks } from "../quote-plan/optional-priced-works"
 import type { BuildQuotePlanInput, QuotePlan, WorkBucket } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
@@ -3098,6 +3099,14 @@ export type ProcessTranscriptDeps = {
    * used only to scope the fallback labour-recovery text to main-bucket work.
    */
   planQuote?: (input: BuildQuotePlanInput) => QuotePlan
+  /**
+   * DORMANT SEAM (QuotePlan Milestone 3) — a future AI QuotePlan Planner. When
+   * provided, its (untrusted) draft plan is passed through `resolveQuotePlan`, which
+   * deterministically validates/normalises it and FALLS BACK to `buildQuotePlan` on any
+   * error, so raw AI output can never corrupt the quote. Undefined in production today,
+   * so runtime behaviour is unchanged; exercised only by injected tests (no live AI).
+   */
+  draftPlanner?: (input: BuildQuotePlanInput) => unknown
   logger?: Pick<Console, "log" | "warn" | "error">
 }
 
@@ -3123,7 +3132,14 @@ export async function processTranscriptToQuote(
   const log = deps.logger ?? console
   const classify = deps.classify ?? classifyTranscript
   const extractQuote = deps.extractQuote ?? extractQuoteWithRetry
-  const planQuote = deps.planQuote ?? buildQuotePlan
+  // QuotePlan Milestone 3 — plan resolution order:
+  //   explicit planQuote override  →  draftPlanner (validated/normalised, safe fallback)
+  //   →  deterministic buildQuotePlan (production default; behaviour unchanged).
+  const planQuote: (input: BuildQuotePlanInput) => QuotePlan =
+    deps.planQuote ??
+    (deps.draftPlanner
+      ? (input) => resolveQuotePlan({ draft: deps.draftPlanner!(input), fallbackInput: input }).plan
+      : buildQuotePlan)
 
   const transcript = input.transcript.trim()
   const templateContext = getTemplateContext(input.templateContext)

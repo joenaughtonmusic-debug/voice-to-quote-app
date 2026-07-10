@@ -34,7 +34,7 @@
     "test:export-mapper": "tsc --project lib/export/tsconfig.test.json && node --test .tmp/export-mapper-tests/lib/export/map-to-xero.test.js",
     "test:quote-auditor": "tsc --project lib/quote-auditor/tsconfig.test.json && node --test .tmp/quote-auditor-tests/lib/quote-auditor/index.test.js",
     "test:quote-overseer": "tsc --project lib/quote-overseer/tsconfig.test.json && node --test .tmp/quote-overseer-tests/lib/quote-overseer/index.test.js .tmp/quote-overseer-tests/lib/quote-overseer/from-review.test.js",
-    "test:quote-plan": "tsc --project lib/quote-plan/tsconfig.test.json && node --test .tmp/quote-plan-tests/lib/quote-plan/build-plan.test.js .tmp/quote-plan-tests/lib/quote-plan/optional-priced-works.test.js",
+    "test:quote-plan": "tsc --project lib/quote-plan/tsconfig.test.json && node --test .tmp/quote-plan-tests/lib/quote-plan/build-plan.test.js .tmp/quote-plan-tests/lib/quote-plan/optional-priced-works.test.js .tmp/quote-plan-tests/lib/quote-plan/validate.test.js",
     "test:customer-optional-works": "tsc --project lib/customer-optional-works.tsconfig.test.json && node --test .tmp/customer-optional-works-tests/lib/customer-optional-works.test.js",
     "test:renderer-intent": "tsc --project lib/customer-renderer-intent.tsconfig.test.json && node --test .tmp/customer-renderer-intent-tests/lib/customer-renderer-intent.test.js",
     "test:golden-quotes": "tsc --project lib/golden-quotes/tsconfig.test.json && node --test .tmp/golden-quotes-tests/lib/golden-quotes/index.test.js",
