@@ -14,6 +14,8 @@
   },
   "include": [
     "./process-transcript.test.ts",
-    "./process-transcript.ts"
+    "./process-transcript.ts",
+    "../quote-plan/shadow.ts",
+    "../quote-plan/ai-planner.ts"
   ]
 }

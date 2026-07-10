@@ -353,3 +353,75 @@ test("processTranscriptToQuote: an injected draftPlanner producing INVALID outpu
   const optionalNote = quote.internal_notes.find((note) => /optional works labour/i.test(note) && /buxus/i.test(note))
   assert.ok(optionalNote, "fallback plan must still surface the optional Buxus labour internally")
 })
+
+// ── QuotePlan Milestone 4: shadow-mode AI planner never drives output ─────────
+test("processTranscriptToQuote: an injected shadowPlanner reports but never changes the quote", async () => {
+  const input = { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS }
+
+  // Baseline: no shadow planner.
+  const baseline = await processTranscriptToQuote(input, optionalLabourDeps())
+
+  // A DIFFERENT (but valid) shadow draft — divergent from the deterministic plan.
+  const divergentDraft = {
+    quoteType: "planting",
+    quoteTypeConfidence: "high",
+    main: {
+      id: "main",
+      title: "Different main",
+      kind: "main",
+      scope: ["totally", "different", "scope"],
+      labour: [{ raw: "one person one day", people: 1, days: 1, hours: 8, determinacy: "explicit" }],
+      materials: [],
+      sourceText: "different",
+    },
+    optional: [
+      { id: "optional-1", title: "Extra", kind: "optional", scope: ["x"], labour: [], materials: [], sourceText: "x" },
+      { id: "optional-2", title: "Extra 2", kind: "optional", scope: ["y"], labour: [], materials: [], sourceText: "y" },
+    ],
+    exclusions: [],
+    uncertainties: [],
+  }
+
+  let reportCount = 0
+  let lastReport: import("../quote-plan/shadow").ShadowPlannerReport | null = null
+  const withShadow = await processTranscriptToQuote(input, {
+    ...optionalLabourDeps(),
+    shadowPlanner: () => divergentDraft,
+    onShadowReport: (report) => {
+      reportCount += 1
+      lastReport = report
+    },
+  })
+
+  assert.ok(reportCount >= 1, "the shadow planner must be invoked and reported")
+  assert.equal(lastReport!.usedForOutput, false, "the shadow candidate must never be used for output")
+  assert.equal(lastReport!.diff.divergent, true, "this shadow draft diverges from the deterministic plan")
+
+  // The divergent shadow draft must NOT have altered the quote at all.
+  assert.deepEqual(withShadow.quote.line_items, baseline.quote.line_items, "line items must be unaffected by shadow")
+  assert.deepEqual(withShadow.quote.quote_options, baseline.quote.quote_options, "quote options must be unaffected by shadow")
+  assert.deepEqual(withShadow.quote.render_intent, baseline.quote.render_intent, "render intent must be unaffected by shadow")
+})
+
+test("processTranscriptToQuote: a throwing shadowPlanner is swallowed and the quote is still produced", async () => {
+  let reportCount = 0
+  const { quote, fallbackUsed } = await processTranscriptToQuote(
+    { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    {
+      ...optionalLabourDeps(),
+      shadowPlanner: () => {
+        throw new Error("shadow boom")
+      },
+      onShadowReport: () => {
+        reportCount += 1
+      },
+    },
+  )
+
+  assert.equal(fallbackUsed, false, "a shadow failure must not force the quote into fallback")
+  assert.equal(reportCount, 0, "a failed shadow run reports nothing")
+  const labourLine = quote.line_items.find(
+    (item) => /\blabou?r\b/i.test(item.item_type) || /\blabou?r\b/i.test(item.item_name),
+  )
+  assert.equal(labourLine, undefined, "the deterministic result is unchanged by the shadow failure")
+})

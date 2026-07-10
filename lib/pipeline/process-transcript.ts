@@ -37,6 +37,8 @@ import { auditProcessedQuote } from "../quote-auditor"
 import { buildQuotePlan } from "../quote-plan/build-plan"
 import { resolveQuotePlan } from "../quote-plan/validate"
 import { buildOptionalPricedWorks } from "../quote-plan/optional-priced-works"
+import { runShadowPlanner, type ShadowPlannerReport } from "../quote-plan/shadow"
+import { buildAiQuotePlanDraft, isShadowPlannerEnabled } from "../quote-plan/ai-planner"
 import type { BuildQuotePlanInput, QuotePlan, WorkBucket } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
 import type { ResolvableItem } from "../items/resolve-bill"
@@ -3107,6 +3109,16 @@ export type ProcessTranscriptDeps = {
    * so runtime behaviour is unchanged; exercised only by injected tests (no live AI).
    */
   draftPlanner?: (input: BuildQuotePlanInput) => unknown
+  /**
+   * SHADOW-MODE AI planner (QuotePlan Milestone 4). When set (production: only when
+   * `ENABLE_QUOTE_PLAN_SHADOW` + an API key are present; tests: injected), its untrusted
+   * draft is resolved through `resolveQuotePlan`, diffed against the deterministic
+   * `buildQuotePlan`, and the report is logged internal-only. It NEVER drives output — the
+   * deterministic plan continues to produce the quote. Failures are swallowed.
+   */
+  shadowPlanner?: (input: BuildQuotePlanInput) => unknown | Promise<unknown>
+  /** Test/observability hook: receives each shadow report (never affects the quote). */
+  onShadowReport?: (report: ShadowPlannerReport) => void
   logger?: Pick<Console, "log" | "warn" | "error">
 }
 
@@ -3140,6 +3152,10 @@ export async function processTranscriptToQuote(
     (deps.draftPlanner
       ? (input) => resolveQuotePlan({ draft: deps.draftPlanner!(input), fallbackInput: input }).plan
       : buildQuotePlan)
+  // QuotePlan Milestone 4 — shadow-mode AI planner. In production it is enabled only behind
+  // the ENABLE_QUOTE_PLAN_SHADOW flag (+ an API key); otherwise undefined, so there is no
+  // OpenAI call and no behavioural change. It NEVER feeds `planQuote`.
+  const shadowPlanner = deps.shadowPlanner ?? (isShadowPlannerEnabled() ? (input: BuildQuotePlanInput) => buildAiQuotePlanDraft(input) : undefined)
 
   const transcript = input.transcript.trim()
   const templateContext = getTemplateContext(input.templateContext)
@@ -3201,6 +3217,22 @@ export async function processTranscriptToQuote(
       // their own plan built from the finished quote below (unchanged).
       const preCalculationPlan = planQuote({ extraction: extraction.quote, transcript, classification })
       const plantingScopeText = plantingScopeTextFromPlan(preCalculationPlan)
+
+      // QuotePlan Milestone 4 — SHADOW comparison. Runs only when a shadow planner is wired
+      // (flag-gated in production). The AI draft is validated + diffed against the deterministic
+      // baseline and logged internal-only; it never touches `quote`. Awaited but fully guarded so
+      // it can add latency but never alter or fail the live quote. Adds one OpenAI call when
+      // enabled — an accepted tradeoff for shadow observability.
+      if (shadowPlanner) {
+        const shadowInput: BuildQuotePlanInput = { extraction: extraction.quote, transcript, classification }
+        await runShadowPlanner({
+          shadowPlanner,
+          fallbackInput: shadowInput,
+          deterministicPlan: buildQuotePlan(shadowInput),
+          logger: log,
+          onReport: deps.onShadowReport,
+        })
+      }
 
       const quote = normalizeFencingProcessedQuote(correctMisclassifiedRetaining(normalizeRetainingProcessedQuote(applyAddressReviewDetails(
         removeCapturedLeadMissingInformation(
