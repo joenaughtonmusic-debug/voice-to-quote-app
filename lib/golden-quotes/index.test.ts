@@ -76,6 +76,8 @@ test("Golden Quote 1 — Michelia planting (PIPELINE-BACKED): contract holds thr
   assert.ok(/Michelia/.test(projection.customerText), "customer preview includes Michelia")
   assert.ok(!/long hedge/i.test(projection.customerText), "no 'long hedge'")
   assert.ok(!/metres long\. The/i.test(projection.customerText), "no 'metres long. The'")
+  // Slice 3b regression: no optional_priced_works → no empty optional works section.
+  assert.ok(!/not included in the main quote/i.test(projection.customerText), "no spurious optional works section")
 })
 
 test("Golden Quote 1 — Michelia planting: contract holds across all layers", () => {
@@ -141,6 +143,8 @@ test("Golden Quote 2 — Garden bed renovation (PIPELINE-BACKED): contract holds
   assert.ok(!/Planting Quote|Supply and plant/i.test(projection.customerText), "customer preview not taken over by Planting")
   assert.ok(!/One-Off Garden Tidy/i.test(projection.customerText), "customer preview not taken over by One-Off Garden Tidy")
   assert.ok(projection.customerText.includes("timber"), "customer preview keeps the timber scope")
+  // Slice 3b regression: no optional_priced_works → no empty optional works section.
+  assert.ok(!/not included in the main quote/i.test(projection.customerText), "no spurious optional works section")
 })
 
 test("Golden Quote 3 — Adam/Titirangi: routed as landscaping, no decking output (QA-3 fix)", () => {
@@ -237,19 +241,36 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
   // And it must not leak into the customer-facing preview.
   assert.ok(!/optional works labour/i.test(projection.customerText), "optional-labour note must stay internal")
 
-  // QuotePlan Slice 3a — the optional Ficus hedge labour is priceable on
-  // optional_priced_works (internal-only), not on quote_options, and not customer-facing.
+  // QuotePlan Slice 3a — the optional Ficus hedge labour is a priceable optional work
+  // on optional_priced_works (16h × $110 = $1,760), never on quote_options.
   const ficusPriced = (projection.quote.optional_priced_works ?? []).find((o) =>
     /ficus/i.test(`${o.label} ${o.title}`),
   )
   assert.ok(ficusPriced, `optional Ficus hedge labour must be a priceable optional work, got ${JSON.stringify(projection.quote.optional_priced_works)}`)
   assert.equal(ficusPriced!.category, "labour")
   assert.equal(ficusPriced!.lineItems[0]?.quantity, 16)
+  assert.equal(ficusPriced!.subtotal, 1760)
   assert.ok(
     !(projection.quote.quote_options ?? []).some((o) => o.category === "labour"),
     "optional labour must not leak into quote_options",
   )
-  assert.ok(!/Optional labour/i.test(projection.customerText), "optional priced labour must not be customer-facing")
+
+  // QuotePlan Slice 3b — the priced optional work is shown customer-facing, clearly
+  // separated from the main quote, with the price only (no labour hours).
+  assert.match(projection.customerText, /Optional works/)
+  assert.match(projection.customerText, /not included in the main quote/i)
+  assert.match(projection.customerText, /Optional Ficus Tuffi hedge/)
+  assert.match(projection.customerText, /Optional price: \$1,760/)
+  // …but internal-only detail must never leak into customer copy.
+  for (const forbidden of ["Optional labour", "ai_extraction", "optional_priced_works", "Rate missing", "16 hours", "optional works labour"]) {
+    assert.ok(!new RegExp(forbidden, "i").test(projection.customerText), `customer copy must not expose "${forbidden}"`)
+  }
+  // The Quote Overseer must not flag the new customer-facing optional works section.
+  const overseer = reviewQuote({ quote: projection.quote, customerPreviewText: projection.customerText })
+  const previewFindings = overseer.findings.filter((f) =>
+    ["customer_preview_leaks_labour", "customer_preview_missing_scope", "customer_copy_not_ready"].includes(f.check),
+  )
+  assert.deepEqual(previewFindings, [], `Overseer must not flag the optional works section: ${JSON.stringify(previewFindings)}`)
 
   // The pipeline preserves the supplied topsoil + lawn-seed material lines and
   // formats them for JMS (spoken $129 kept; 5kg never misread as a $5 rate).

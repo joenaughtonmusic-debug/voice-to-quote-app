@@ -178,6 +178,22 @@ export function QuoteDraft({
             tradeOptions={previewModel.plantingCustomerTradeOptions}
           />
 
+          {previewModel.customerOptionalWorks.length > 0 && (
+            <div className="mt-5 rounded-xl border border-border bg-card p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {previewModel.customerOptionalWorks[0]}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{previewModel.customerOptionalWorks[1]}</p>
+              <div className="mt-2 grid gap-1">
+                {previewModel.customerOptionalWorks.slice(2).map((line, index) => (
+                  <p key={index} className="text-sm text-foreground">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <details className="mt-5 rounded-xl border border-dashed border-border bg-secondary/30 p-3">
             <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Dev diagnostics

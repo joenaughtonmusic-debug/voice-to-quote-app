@@ -1,4 +1,5 @@
 import { assembleCustomerQuote, type CustomerQuoteAssembly } from "./customer-quote-assembly"
+import { buildCustomerOptionalWorksLines } from "./customer-optional-works"
 import type { CustomerQuotePreview } from "./customer-quote-preview"
 import type { ProcessedQuote } from "./processed-quote"
 import {
@@ -46,6 +47,8 @@ export type CustomerDraftPreviewModel = {
   plantingInternalReviewNotes: string[]
   plantingCustomerTradeOptions: CustomerQuoteOptionGroup[]
   rendererPath: "planting-presentation" | "assembly" | "legacy"
+  /** Customer-safe priced optional works block (QuotePlan Slice 3b); [] when none. */
+  customerOptionalWorks: string[]
 }
 
 export type GardenTidyAssemblyInputDebug = {
@@ -162,6 +165,7 @@ export function buildCustomerDraftPreviewModel({
     plantingInternalReviewNotes,
     plantingCustomerTradeOptions,
     rendererPath,
+    customerOptionalWorks: buildCustomerOptionalWorksLines(processedQuote.optional_priced_works),
   }
 }
 
@@ -174,6 +178,7 @@ export function renderCustomerDraftPreviewText(model: CustomerDraftPreviewModel)
       "Quote",
       model.quoteTitle,
       ...renderPlantingCustomerQuoteText(model.plantingCustomerQuote).split("\n"),
+      ...model.customerOptionalWorks,
     ]
       .filter(Boolean)
       .join("\n")
@@ -207,6 +212,7 @@ export function renderCustomerDraftPreviewText(model: CustomerDraftPreviewModel)
     model.quoteTitle,
     model.assembly ? "" : model.jobType,
     ...body,
+    ...model.customerOptionalWorks,
   ]
     .filter(Boolean)
     .join("\n")

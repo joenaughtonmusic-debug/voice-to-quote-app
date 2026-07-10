@@ -323,7 +323,20 @@ export const adamTitirangi: GoldenQuoteFixture = {
   buildProcessedQuote,
   pipeline: {
     extractedQuote: adamExtractedQuote(),
-    knowledgeItems: [],
+    // A per-hour landscaping labour KB item so the optional Ficus hedge labour gets a
+    // rate (recoveryBestRate) and becomes a priced optional work (Slice 3a/3b). It has
+    // no effect on main labour: plan.main.sourceText carries no labour phrase, so no
+    // main labour line is created.
+    knowledgeItems: [
+      {
+        item_code: "LAB-001",
+        item_name: "Landscaping Labour",
+        item_type: "labour",
+        unit: "hours",
+        sell_price: 110,
+        aliases: ["labour", "landscaping labour"],
+      },
+    ],
     classification: { specialist: "landscaping", reason: "test-injected landscaping classification" },
   },
 }

@@ -116,12 +116,34 @@ optional_priced_works?: QuoteOption[]
 Not changed: `quote_options` semantics, customer preview, Xero/JMS export, calculators,
 templates, the Quote Overseer, or `recoverMissingLabourLineItem`.
 
-Staged rollout: **3a** = model + internal display (this slice); **3b** = customer
-preview; **3c** = Xero/JMS export.
+Staged rollout: **3a** = model + internal display; **3b** = customer preview (below);
+**3c** = Xero/JMS export.
+
+## Slice 3b — customer-facing optional works (done)
+
+Priced optional works now render in the **customer-facing** quote preview, clearly
+separated from the main quote and never counted in the main total.
+
+- A pure formatter `buildCustomerOptionalWorksLines` (`lib/customer-optional-works.ts`)
+  produces a customer-safe block, threaded through `CustomerDraftPreviewModel`
+  (`customerOptionalWorks`) and appended by `renderCustomerDraftPreviewText` (all
+  renderer paths) and rendered in `components/quote-draft.tsx`.
+- **Only genuinely priced works are shown** — `subtotal > 0` and no rate-missing
+  warning. Zero-subtotal / rate-missing works stay internal-only.
+- **Price only, no labour hours.** The customer sees the work name and its optional
+  price (e.g. `Optional Ficus Tuffi hedge` / `Optional price: $1,760`) under an
+  "Optional works" heading with: *"The following optional work is not included in the
+  main quote. It can be added if you would like to proceed with it."* Hours are
+  deliberately omitted so the section stays consistent with the customer-preview rule
+  that labour hours are internal — and so the Quote Overseer's O2 check does not flag
+  it. Hours remain on the internal Slice 3a card.
+- **No internal leak:** source/category/warnings/`internal_notes`/`ai_extraction` never
+  appear in customer copy.
+- **Untouched:** `quote_options` semantics, Xero/JMS export, calculators, templates,
+  the Quote Overseer, and `recoverMissingLabourLineItem`.
 
 ## Next slice (not implemented)
 
-- **Slice 3b** — render optional priced works in the customer preview.
 - **Slice 3c** — include optional priced works in Xero/JMS export.
 - Then progressively move the remaining scope-blind paths
   (`applyDeterministicLabourAllowances`, `applyPerTaskHourAllowances`, materials,
