@@ -95,7 +95,17 @@ function materialItems(input: CustomerQuoteAssemblyInput): string[] {
 }
 
 function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
-  const fromOptionalQuotes = input.quote.optional_quotes.flatMap((q) => q.scope)
+  // QuotePlan Slice 3b — an optional work that is now a priced optional work
+  // (optional_priced_works) has its own customer-facing "Optional works" section, so
+  // drop it here to avoid a duplicate optional works section for the same work.
+  const pricedOptionalTitles = new Set(
+    (input.quote.optional_priced_works ?? [])
+      .map((work) => (work.label ?? "").trim().toLowerCase())
+      .filter(Boolean),
+  )
+  const fromOptionalQuotes = input.quote.optional_quotes
+    .filter((q) => !pricedOptionalTitles.has((q.quote_title ?? "").trim().toLowerCase()))
+    .flatMap((q) => q.scope)
 
   // Fallback: scan notes and scope for lines with an "Optional [works]:" prefix — the AI
   // sometimes uses primary_quote.notes instead of optional_quotes, particularly when the
@@ -112,6 +122,9 @@ function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
   const items = unique([...fromOptionalQuotes, ...fromPrefixedLines])
     .filter((item) => !isEmptyOrPlaceholder(item))
     .filter((item) => !/^(?:title|job\s+type|cadence)\s*:/i.test(item))
+    // Labour allowances (e.g. "…two people one day") are never customer-facing optional
+    // scope — they are priced separately via optional_priced_works.
+    .filter((item) => !isLabourLine(item))
     .map(normalizeLine)
     .filter(Boolean)
 

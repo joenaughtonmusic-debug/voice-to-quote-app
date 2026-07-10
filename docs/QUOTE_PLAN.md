@@ -142,6 +142,31 @@ separated from the main quote and never counted in the main total.
 - **Untouched:** `quote_options` semantics, Xero/JMS export, calculators, templates,
   the Quote Overseer, and `recoverMissingLabourLineItem`.
 
+### Slice 3b de-duplication fix
+
+Browser testing revealed a priced optional work was rendering **twice** customer-facing:
+once as old optional scope (the assembly "Optional Works" section) and once as the new
+priced "Optional works" section. Fixed in `lib/customer-quote-assembly/general-landscaping.ts`
+`optionalWorkItems`: it now (1) drops optional_quotes whose title matches an
+`optional_priced_works` label, and (2) filters `isLabourLine` items so a raw labour
+phrase (e.g. "…two people one day") is never customer-facing optional scope. When the
+old section becomes empty it isn't rendered (`section()` returns null), leaving a single
+priced optional works section. Optional-quote details remain intact internally.
+
+### Browser / E2E note
+
+There is **no** automated browser E2E for the customer draft: `POST /api/process-quote`
+hard-requires `OPENAI_API_KEY` and calls live OpenAI, and there is no deterministic
+customer-draft UI path — so the paste→quote flow can't be driven in a browser without
+OpenAI or a production-route test hook (out of scope this batch). The **headless golden
+render test** (`Golden Quote 3 … PIPELINE-BACKED`) exercises the exact renderer chain the
+browser uses (`buildCustomerDraftPreviewModel` → `assembleCustomerQuote` →
+`renderCustomerDraftPreviewText`) and is the browser-equivalent regression. Manual
+browser checklist: run `npm run dev` with an `OPENAI_API_KEY`, paste the Adam/Titirangi
+notes, and verify the customer draft shows one "Optional works" section with
+`Optional price: $1,760`, retaining wall / polythene / topsoil, and no labour hours / raw
+labour phrase; and the internal view shows the "Optional Works (priceable)" card.
+
 ## Next slice (not implemented)
 
 - **Slice 3c** — include optional priced works in Xero/JMS export.

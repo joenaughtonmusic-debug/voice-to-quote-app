@@ -265,6 +265,23 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
   for (const forbidden of ["Optional labour", "ai_extraction", "optional_priced_works", "Rate missing", "16 hours", "optional works labour"]) {
     assert.ok(!new RegExp(forbidden, "i").test(projection.customerText), `customer copy must not expose "${forbidden}"`)
   }
+
+  // De-duplication (browser-reported bug): the priced optional work must NOT also
+  // appear as an old-style optional scope line, and there must be exactly one
+  // optional works section. The raw labour phrase must never be customer-facing.
+  assert.ok(
+    !/Plant a Ficus Tuffi hedge along the fence/i.test(projection.customerText),
+    "old optional hedge scope line must be de-duplicated (priced section only)",
+  )
+  assert.ok(
+    !/two people (?:for )?one day/i.test(projection.customerText),
+    "raw optional labour phrase must never be customer-facing",
+  )
+  assert.equal(
+    (projection.customerText.match(/optional works/gi) ?? []).length,
+    1,
+    `exactly one optional works section expected, got ${(projection.customerText.match(/optional works/gi) ?? []).length}`,
+  )
   // The Quote Overseer must not flag the new customer-facing optional works section.
   const overseer = reviewQuote({ quote: projection.quote, customerPreviewText: projection.customerText })
   const previewFindings = overseer.findings.filter((f) =>
