@@ -5,8 +5,9 @@ import type { GoldenQuoteFixture } from "./contracts"
 import { adamTitirangi } from "./fixtures/adam-titirangi"
 import { gardenBedRenovation } from "./fixtures/garden-bed-renovation"
 import { micheliaPlanting } from "./fixtures/michelia-planting"
-import { formatContractReport, runGoldenQuote, runGoldenQuoteThroughPipeline } from "./runner"
+import { buildProjectionFromQuote, formatContractReport, runGoldenQuote, runGoldenQuoteThroughPipeline } from "./runner"
 import { reviewQuote } from "../quote-overseer"
+import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
 
 /**
  * Golden Quote Runner — headless regression harness.
@@ -324,6 +325,84 @@ test("Quote Overseer produces no customer-preview findings on the good golden qu
       0,
       `${fixture.name}: Overseer raised unexpected customer-preview findings:\n${JSON.stringify(customerPreviewFindings, null, 2)}`,
     )
+  }
+})
+
+test("Slice 3b: rendered customer draft shows exactly one optional works section (both AI paths de-duped)", () => {
+  // Reproduces the browser bug: the optional hedge is present in optional_quotes AND as
+  // an "Optional:"-prefixed note, with a matching priced optional_priced_works entry.
+  // The full customer render (assembly sections + appended priced section) must show a
+  // single optional works section and never leak the old scope line or internal detail.
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Adam",
+    site_address: "20 Lemnos Street, Titirangi",
+    quote_title: "Back Lawn Levelling Quote",
+    job_type: "general_landscaping",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "Back Lawn Levelling Quote",
+      job_type: "general_landscaping",
+      scope: [
+        "Construct a small timber retaining wall approximately 400mm high.",
+        "Install polythene along the fence to protect the fence.",
+        "Import and spread topsoil across the lawn area.",
+      ],
+      notes: ["Optional works: Plant Ficus Tuffi hedge along the fence with roughly one metre sized plants."],
+    },
+    optional_quotes: [
+      {
+        quote_title: "Optional Ficus Tuffi Hedge Planting",
+        job_type: "planting",
+        cadence: "",
+        scope: ["Plant Ficus Tuffi hedge along the fence with roughly one metre sized plants."],
+        notes: [],
+      },
+    ],
+    customer_scope: [
+      "Construct a small timber retaining wall approximately 400mm high.",
+      "Install polythene along the fence to protect the fence.",
+      "Import and spread topsoil across the lawn area.",
+    ],
+    materials: ["Polythene", "Topsoil"],
+    optional_priced_works: [
+      {
+        id: "optional-optional-1-labour-1",
+        label: "Optional Ficus Tuffi Hedge Planting",
+        title: "Optional labour — Optional Ficus Tuffi Hedge Planting",
+        category: "labour",
+        source: "ai_extraction",
+        lineItems: [{ itemName: "Labour", quantity: 16, unit: "hours", unitPrice: 110, total: 1760 }],
+        subtotal: 1760,
+        warnings: [],
+      },
+    ],
+  }
+
+  const { customerText } = buildProjectionFromQuote(quote, "")
+
+  assert.equal(
+    (customerText.match(/optional works/gi) ?? []).length,
+    1,
+    `exactly one optional works section expected, got ${(customerText.match(/optional works/gi) ?? []).length}\n${customerText}`,
+  )
+  assert.match(customerText, /Optional Ficus Tuffi Hedge Planting/)
+  assert.match(customerText, /Optional price: \$1,760/)
+  assert.match(customerText, /not included in the main quote/i)
+  // Main scope preserved.
+  assert.match(customerText, /topsoil/i)
+  assert.match(customerText, /retaining wall/i)
+  // No old scope duplicate, no labour phrase, no internal leaks.
+  for (const forbidden of [
+    "Plant Ficus Tuffi hedge along the fence",
+    "two people one day",
+    "16 hours",
+    "Optional labour",
+    "optional_priced_works",
+    "ai_extraction",
+    "Rate missing",
+  ]) {
+    assert.ok(!new RegExp(forbidden, "i").test(customerText), `customer copy must not contain "${forbidden}"`)
   }
 })
 

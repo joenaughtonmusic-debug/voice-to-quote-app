@@ -1021,3 +1021,94 @@ test("Template recommendation: real retaining job recommends Retaining above Pla
     `Retaining must outscore Planting for a genuine retaining job.\nRetaining: ${retainingScore?.score}\nPlanting: ${plantingScore?.score}`,
   )
 })
+
+// ── QuotePlan Slice 3b: de-dup priced optional works from the assembly (React path) ──
+// The React customer draft renders assembleCustomerQuote(...).sections directly, so a
+// priced optional work must not also appear as an old "Optional Works" assembly section
+// — including when the AI emits it BOTH in optional_quotes AND as an "Optional:"-prefixed
+// notes/scope line. (Regression for the manual-browser duplication bug.)
+function adamLikePricedOptionalHedgeQuote(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Adam",
+    site_address: "20 Lemnos Street, Titirangi",
+    quote_title: "Back Lawn Levelling Quote",
+    job_type: "general_landscaping",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "Back Lawn Levelling Quote",
+      job_type: "general_landscaping",
+      scope: [
+        "Construct a small timber retaining wall approximately 400mm high.",
+        "Install polythene along the fence to protect the fence.",
+        "Import and spread topsoil across the lawn area.",
+      ],
+      // The AI also emitted the optional hedge here as an "Optional:"-prefixed note.
+      notes: ["Optional works: Plant Ficus Tuffi hedge along the fence with roughly one metre sized plants."],
+    },
+    optional_quotes: [
+      {
+        quote_title: "Optional Ficus Tuffi Hedge Planting",
+        job_type: "planting",
+        cadence: "",
+        scope: ["Plant Ficus Tuffi hedge along the fence with roughly one metre sized plants."],
+        notes: [],
+      },
+    ],
+    customer_scope: [
+      "Construct a small timber retaining wall approximately 400mm high.",
+      "Install polythene along the fence to protect the fence.",
+      "Import and spread topsoil across the lawn area.",
+    ],
+    materials: ["Polythene", "Topsoil"],
+    optional_priced_works: [
+      {
+        id: "optional-optional-1-labour-1",
+        label: "Optional Ficus Tuffi Hedge Planting",
+        title: "Optional labour — Optional Ficus Tuffi Hedge Planting",
+        category: "labour",
+        source: "ai_extraction",
+        lineItems: [{ itemName: "Labour", quantity: 16, unit: "hours", unitPrice: 110, total: 1760 }],
+        subtotal: 1760,
+        warnings: [],
+      },
+    ],
+  }
+}
+
+test("Slice 3b: priced optional hedge is de-duplicated from the assembly Optional Works section (both paths)", () => {
+  const assembly = assembleGeneralLandscapingCustomerQuote({ quote: adamLikePricedOptionalHedgeQuote() })
+  const sectionTitles = assembly.sections.map((s) => s.title)
+  const allItems = assembly.sections.flatMap((s) => s.items).join("\n")
+
+  // No old "Optional Works" assembly section for the priced hedge (from either path).
+  assert.ok(!sectionTitles.includes("Optional Works"), `assembly must not render an Optional Works section, got ${JSON.stringify(sectionTitles)}`)
+  assert.ok(!/Ficus Tuffi hedge along the fence/i.test(allItems), "hedge must not appear as old optional scope")
+  assert.ok(!/two people (?:for )?one day/i.test(allItems), "raw labour phrase must not appear")
+
+  // Main scope + materials must be preserved (not over-suppressed).
+  assert.ok(sectionTitles.includes("Scope of Work"), "Scope of Work must remain")
+  assert.ok(/topsoil/i.test(allItems), "topsoil must remain in the customer assembly")
+  assert.ok(/retaining wall/i.test(allItems), "retaining wall scope must remain")
+})
+
+test("Slice 3b: unpriced optional works still render in the assembly Optional Works section", () => {
+  // Guard against over-suppression: with no optional_priced_works, optional scope stays.
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    job_type: "general_landscaping",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "general_landscaping",
+      scope: ["Install new timber garden bed borders."],
+    },
+    customer_scope: ["Install new timber garden bed borders."],
+    optional_quotes: [
+      { quote_title: "Optional works", job_type: "general_landscaping", cadence: "", scope: ["Remove weed species from the garden bed."], notes: [] },
+    ],
+  }
+  const assembly = assembleGeneralLandscapingCustomerQuote({ quote })
+  const optionalSection = assembly.sections.find((s) => s.title === "Optional Works")
+  assert.ok(optionalSection, "unpriced optional works must still render")
+  assert.ok(optionalSection!.items.some((i) => /weed species/i.test(i)), "optional scope preserved")
+})

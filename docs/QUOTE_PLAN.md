@@ -144,14 +144,35 @@ separated from the main quote and never counted in the main total.
 
 ### Slice 3b de-duplication fix
 
-Browser testing revealed a priced optional work was rendering **twice** customer-facing:
-once as old optional scope (the assembly "Optional Works" section) and once as the new
-priced "Optional works" section. Fixed in `lib/customer-quote-assembly/general-landscaping.ts`
-`optionalWorkItems`: it now (1) drops optional_quotes whose title matches an
-`optional_priced_works` label, and (2) filters `isLabourLine` items so a raw labour
-phrase (e.g. "…two people one day") is never customer-facing optional scope. When the
-old section becomes empty it isn't rendered (`section()` returns null), leaving a single
-priced optional works section. Optional-quote details remain intact internally.
+Browser testing revealed a priced optional work rendering **twice** customer-facing:
+once as old optional scope (the assembly "Optional Works" section, which the React draft
+renders directly via `assembleCustomerQuote(...).sections`) and once as the new priced
+"Optional works" section. The live AI emits the optional work through **two** paths — in
+`optional_quotes` *and* as an `Optional:`-prefixed line in `primary_quote.notes`/
+`customer_scope` — so a title-only match was insufficient (it fixed the headless text but
+not the browser).
+
+Fixed in `lib/customer-quote-assembly/general-landscaping.ts` `optionalWorkItems`:
+1. drop optional_quotes whose title matches an `optional_priced_works` label;
+2. filter `isLabourLine` items (a raw labour phrase is never customer-facing scope);
+3. **content-based de-dup** — drop any old optional line that shares ≥2 distinctive
+   tokens (len ≥4, excluding generic words like optional/works/labour/plant/planting/…)
+   with a priced work label. This covers *both* AI paths.
+
+When the old section empties, `section()` returns null → a single priced optional works
+section remains. Optional-quote details stay intact internally. Guarded against
+over-suppression (unpriced optional works still render). Covered by assembly-level tests
+in `general-landscaping-mvp-acceptance.test.ts` and a render-level test in
+`golden-quotes/index.test.ts`.
+
+### Known issue — deferred to next batch (QuotePlan measurements/calculator ownership)
+
+The planting calculator still fabricates bogus plant options from non-plant measurements
+("the retaining wall 6M", "the retaining wall 16.8M") because calculators re-extract
+measurements from the raw transcript rather than from `plan.*.measurements`. This is the
+next migration: **Slice 4/5 — measurements/calculator ownership via QuotePlan** (feed
+calculators from plan buckets so a retaining-wall length can never become a planting
+area). Not fixed in this batch.
 
 ### Browser / E2E note
 

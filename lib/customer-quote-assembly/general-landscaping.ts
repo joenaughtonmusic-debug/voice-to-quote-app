@@ -94,6 +94,53 @@ function materialItems(input: CustomerQuoteAssemblyInput): string[] {
     .filter(Boolean)
 }
 
+// Generic words that carry no dedup signal — a shared "optional"/"labour"/"plant"
+// must not count towards matching an old optional line to a priced optional work.
+const GENERIC_OPTIONAL_TOKENS = new Set([
+  "optional",
+  "works",
+  "work",
+  "labour",
+  "labor",
+  "plant",
+  "planting",
+  "quote",
+  "price",
+  "along",
+  "with",
+  "this",
+  "that",
+])
+
+function distinctiveOptionalTokens(text: string): Set<string> {
+  const tokens = new Set<string>()
+  for (const match of text.toLowerCase().matchAll(/[a-zāēīōū]{4,}/gi)) {
+    if (!GENERIC_OPTIONAL_TOKENS.has(match[0])) tokens.add(match[0])
+  }
+  return tokens
+}
+
+/**
+ * True when an old-style optional line clearly refers to the same work as one of the
+ * priced optional works (shares ≥2 distinctive tokens with a priced work label). This
+ * catches BOTH the optional_quotes scope path and the "Optional:"-prefixed notes/scope
+ * path, so a priced optional work never also renders as an old optional scope line.
+ */
+function matchesPricedOptionalWork(item: string, pricedLabelTokenSets: Set<string>[]): boolean {
+  if (pricedLabelTokenSets.length === 0) return false
+  const itemTokens = distinctiveOptionalTokens(item)
+  return pricedLabelTokenSets.some((labelTokens) => {
+    let shared = 0
+    for (const token of itemTokens) {
+      if (labelTokens.has(token)) {
+        shared += 1
+        if (shared >= 2) return true
+      }
+    }
+    return false
+  })
+}
+
 function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
   // QuotePlan Slice 3b — an optional work that is now a priced optional work
   // (optional_priced_works) has its own customer-facing "Optional works" section, so
@@ -103,6 +150,10 @@ function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
       .map((work) => (work.label ?? "").trim().toLowerCase())
       .filter(Boolean),
   )
+  const pricedLabelTokenSets = (input.quote.optional_priced_works ?? [])
+    .map((work) => distinctiveOptionalTokens(work.label ?? ""))
+    .filter((tokens) => tokens.size > 0)
+
   const fromOptionalQuotes = input.quote.optional_quotes
     .filter((q) => !pricedOptionalTitles.has((q.quote_title ?? "").trim().toLowerCase()))
     .flatMap((q) => q.scope)
@@ -125,6 +176,9 @@ function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
     // Labour allowances (e.g. "…two people one day") are never customer-facing optional
     // scope — they are priced separately via optional_priced_works.
     .filter((item) => !isLabourLine(item))
+    // Content-based dedup: drop any old optional line that refers to the same work as a
+    // priced optional work (covers the optional_quotes AND "Optional:"-prefixed paths).
+    .filter((item) => !matchesPricedOptionalWork(item, pricedLabelTokenSets))
     .map(normalizeLine)
     .filter(Boolean)
 
