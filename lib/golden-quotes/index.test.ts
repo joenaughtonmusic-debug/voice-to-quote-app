@@ -209,6 +209,19 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
   // preview uses the mixed-landscaping assembly renderer and surfaces the real scope.
   assert.notEqual(projection.rendererPath, "planting-presentation", "must not be taken over by the planting renderer")
   assert.deepEqual(projection.quote.plant_calculator_results ?? [], [], "no fabricated plant calculator results")
+  // Slice 4 — the retaining/topsoil measurements ("16.8m for the retaining wall",
+  // "6m by 16.8m") must never be fabricated into a planting option/line/name.
+  assert.ok(
+    !(projection.quote.quote_options ?? []).some((o) => /retaining\s*wall/i.test(`${o.title ?? ""} ${o.label ?? ""}`)),
+    `no quote option may be named after the retaining wall, got ${JSON.stringify(projection.quote.quote_options)}`,
+  )
+  assert.ok(
+    !projection.quote.line_items.some((i) => i.item_type === "plant" && /retaining\s*wall/i.test(i.item_name)),
+    "no plant line item may be named after the retaining wall",
+  )
+  for (const forbidden of ["the retaining wall 6", "the retaining wall 16", "retaining wall 6M", "retaining wall 16.8M"]) {
+    assert.ok(!new RegExp(forbidden, "i").test(projection.customerText), `customer preview must not contain fabricated plant option "${forbidden}"`)
+  }
   for (const needle of ["retaining wall", "polythene", "topsoil", "lawn seed"]) {
     assert.match(projection.customerText, new RegExp(needle, "i"), `customer preview must include "${needle}"`)
   }

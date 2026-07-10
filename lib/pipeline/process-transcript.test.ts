@@ -175,6 +175,103 @@ function optionalLabourDeps(): ProcessTranscriptDeps {
   }
 }
 
+// ── QuotePlan Slice 4: a retaining/topsoil measurement must never be fabricated into
+//    a planting option, via either the transcript or a mis-typed "plant" line item. ──
+const RETAINING_FABRICATION_TRANSCRIPT =
+  "Landscaping quote for Dan at 9 Test Lane. Build a small timber retaining wall; the length is going to be 16.8m for the retaining wall. " +
+  "Import topsoil over the 6m by 16.8m area at 50mm. And do an optional price for planting a Griselinia hedge along the boundary."
+
+function retainingFabricationDeps(): ProcessTranscriptDeps {
+  return {
+    classify: async () => ({ specialist: "landscaping", reason: "test-injected classification" }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extractQuote: async () =>
+      ({
+        quote: {
+          ...EMPTY_PROCESSED_QUOTE,
+          client_name: "Dan",
+          site_address: "9 Test Lane",
+          quote_title: "Landscaping Quote",
+          job_type: "general_landscaping",
+          primary_quote: {
+            quote_title: "Landscaping Quote",
+            job_type: "general_landscaping",
+            cadence: "",
+            scope: ["Build a small timber retaining wall.", "Import and spread topsoil."],
+            notes: [],
+          },
+          optional_quotes: [
+            {
+              quote_title: "Optional Griselinia hedge",
+              job_type: "planting",
+              cadence: "",
+              scope: ["Plant a Griselinia hedge along the boundary."],
+              notes: [],
+            },
+          ],
+          customer_scope: ["Build a small timber retaining wall.", "Import and spread topsoil."],
+          // The live fabrication vector: the AI mis-types the retaining wall as a
+          // "plant" line item with a quantity — this previously seeded a plant
+          // calculator request named "Retaining wall".
+          line_items: [
+            {
+              item_code: "",
+              item_name: "Retaining wall 16.8m",
+              item_type: "plant",
+              description: "Retaining wall length",
+              quantity: "1",
+              unit: "each",
+              rate: null,
+              knowledge_base_rate: null,
+              override_rate: null,
+              final_rate_used: null,
+              total: null,
+              match_confidence: "none",
+              match_reason: "",
+              needs_review: true,
+              warning: "",
+            },
+          ],
+        },
+        elapsedMs: 0,
+        promptLength: 0,
+        responseLength: 0,
+        reliabilityMetric: "first_pass_success",
+      }) as any,
+    logger: { log: () => {}, warn: () => {}, error: () => {} },
+  }
+}
+
+test("processTranscriptToQuote never fabricates a 'retaining wall' plant option from a retaining/topsoil measurement", async () => {
+  const { quote } = await processTranscriptToQuote(
+    { transcript: RETAINING_FABRICATION_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    retainingFabricationDeps(),
+  )
+
+  const q = quote as typeof quote & {
+    plant_calculator_results?: Array<{ plant_name?: string; length_m?: number | null }>
+    quote_options?: Array<{ title?: string; label?: string }>
+  }
+
+  const calcResults = q.plant_calculator_results ?? []
+  assert.ok(
+    !calcResults.some((r) => /retaining\s*wall/i.test(r.plant_name ?? "")),
+    `no plant calculator result may be named after the retaining wall, got ${JSON.stringify(calcResults)}`,
+  )
+  assert.ok(
+    !calcResults.some((r) => r.length_m === 16.8 || r.length_m === 6),
+    `retaining/topsoil dimensions must not become a planting length, got ${JSON.stringify(calcResults)}`,
+  )
+  assert.ok(
+    !(q.quote_options ?? []).some((o) => /retaining\s*wall/i.test(`${o.title ?? ""} ${o.label ?? ""}`)),
+    `no quote option may be named after the retaining wall, got ${JSON.stringify(q.quote_options)}`,
+  )
+  assert.ok(
+    !quote.line_items.some((i) => i.item_type === "plant" && /retaining\s*wall/i.test(i.item_name)),
+    `no plant line item may be named after the retaining wall, got ${JSON.stringify(quote.line_items.map((i) => i.item_name))}`,
+  )
+})
+
 test("processTranscriptToQuote does not turn optional hedge labour into a main labour line", async () => {
   const { quote } = await processTranscriptToQuote(
     { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },

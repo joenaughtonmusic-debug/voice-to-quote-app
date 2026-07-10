@@ -52,10 +52,20 @@ test("Adam/Titirangi customer draft renders deterministically with de-duplicated
     "optional_priced_works",
     "ai_extraction",
     "Rate missing",
+    // Slice 4 — fabricated planting options built from the retaining/topsoil measurements.
     "the retaining wall 6M",
     "the retaining wall 16.8M",
+    "retaining wall 6m",
+    "retaining wall 16.8m",
   ]
   for (const needle of forbidden) {
     expect(text.toLowerCase(), `customer draft must not include "${needle}"`).not.toContain(needle.toLowerCase())
   }
+
+  // Slice 4 — the retaining wall must only ever appear as real scope, never as a
+  // planting option (i.e. "retaining wall" is never immediately followed by a size like
+  // "6M" / "16.8M" / a plant option price).
+  expect(text, "the retaining wall must not appear as a plant option with a size").not.toMatch(
+    /retaining wall\s+\d+(?:\.\d+)?\s*m\b/i,
+  )
 })

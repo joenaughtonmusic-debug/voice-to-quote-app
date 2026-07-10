@@ -1,6 +1,15 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { calculatePlantCount, calculatePlantingQuote, extractPlantCalculatorRequestsFromText, extractSpokenSpacingMmFromText } from "./index"
+import { calculatePlantCount, calculatePlantingQuote, extractPlantCalculatorRequestsFromText, extractSpokenSpacingMmFromText, isStructuralNonPlantLabel } from "./index"
+
+test("isStructuralNonPlantLabel flags structural items but not real plants", () => {
+  for (const structural of ["the retaining wall", "retaining wall", "fence", "topsoil", "timber posts", "polythene", "paving", "decking"]) {
+    assert.equal(isStructuralNonPlantLabel(structural), true, `"${structural}" should be a structural non-plant label`)
+  }
+  for (const plant of ["Ficus Tuffi", "Michelia gracipes", "Griselinia", "Buxus", "Lomandra"]) {
+    assert.equal(isStructuralNonPlantLabel(plant), false, `"${plant}" is a real plant name`)
+  }
+})
 
 test("calculates 11m at 800mm spacing", () => {
   const result = calculatePlantCount({ length_m: 11, spoken_spacing_mm: 800 })

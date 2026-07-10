@@ -74,12 +74,25 @@ function labourFromText(sourceText: string): LabourAllocation[] {
 
 function measurementsFromText(sourceText: string): BucketMeasurements | undefined {
   const measurements: BucketMeasurements = {}
+  const provenance: string[] = []
 
+  // Only a length that is explicitly a planting/row length (LENGTH_PATTERN requires a
+  // trailing "long"/"length"/"planting") is captured here. A structural length such as
+  // "16.8m for the retaining wall" does NOT match, so it is never recorded as this
+  // bucket's planting length.
   const lengthMatch = sourceText.match(LENGTH_PATTERN)
-  if (lengthMatch && Number.isFinite(Number(lengthMatch[1]))) measurements.lengthM = Number(lengthMatch[1])
+  if (lengthMatch && Number.isFinite(Number(lengthMatch[1]))) {
+    measurements.lengthM = Number(lengthMatch[1])
+    provenance.push(lengthMatch[0].trim())
+  }
 
   const spacingMm = extractSpokenSpacingMmFromText(sourceText)
-  if (spacingMm !== null) measurements.spacingMm = spacingMm
+  if (spacingMm !== null) {
+    measurements.spacingMm = spacingMm
+    provenance.push(`${spacingMm}mm spacing`)
+  }
+
+  if (provenance.length > 0) measurements.provenance = provenance
 
   return Object.keys(measurements).length > 0 ? measurements : undefined
 }

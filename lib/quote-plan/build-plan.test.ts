@@ -81,6 +81,40 @@ test("Adam/Titirangi — optional Ficus hedge labour is captured on the optional
   )
 })
 
+// ── 1b. Slice 4 — measurement ownership: a retaining-wall length is NOT a planting
+//        length, and no bucket claims "16.8m for the retaining wall" as its planting
+//        measurement. This is the ownership guarantee that stops the planting
+//        calculator fabricating "the retaining wall 16.8M" plant options. ────────────
+test("Slice 4 — retaining-wall length is never captured as a bucket's planting measurement", () => {
+  const plan = buildQuotePlan({
+    extraction: adamExtraction(),
+    transcript: ADAM_TRANSCRIPT,
+    classification: { specialist: "landscaping" },
+  })
+
+  // The transcript contains "16.8m for the retaining wall" and "6m by 16.8m" (topsoil
+  // area) — neither is a planting length, so no bucket may record lengthM 16.8 or 6.
+  for (const bucket of [plan.main, ...plan.optional]) {
+    assert.notEqual(
+      bucket.measurements?.lengthM,
+      16.8,
+      `bucket "${bucket.id}" must not capture the retaining-wall length as a planting length, got ${JSON.stringify(bucket.measurements)}`,
+    )
+    assert.notEqual(
+      bucket.measurements?.lengthM,
+      6,
+      `bucket "${bucket.id}" must not capture the topsoil-area dimension as a planting length, got ${JSON.stringify(bucket.measurements)}`,
+    )
+  }
+
+  // The main (retaining/topsoil) bucket owns no planting length at all.
+  assert.equal(
+    plan.main.measurements?.lengthM,
+    undefined,
+    `main bucket must own no planting length, got ${JSON.stringify(plan.main.measurements)}`,
+  )
+})
+
 // ── 2. Maintenance — quoteType + cadence + greenwaste ────────────────────────
 test("Maintenance — quoteType maintenance, cadence captured, greenwaste is a main material", () => {
   const plan = buildQuotePlan({
@@ -156,6 +190,11 @@ test("Michelia planting — 14.2m/500mm and 12h labour on main; optional border 
 
   assert.equal(plan.main.measurements?.lengthM, 14.2)
   assert.equal(plan.main.measurements?.spacingMm, 500)
+  // Slice 4 — the planting measurements carry provenance back to their own bucket text.
+  assert.ok(
+    plan.main.measurements?.provenance?.some((p) => /14\.2/.test(p)),
+    `expected measurement provenance for the 14.2m planting length, got ${JSON.stringify(plan.main.measurements?.provenance)}`,
+  )
   assert.ok(
     plan.main.labour.some((l) => l.hours === 12 && l.people === 1 && l.days === 1.5),
     `expected 12h main labour, got ${JSON.stringify(plan.main.labour)}`,

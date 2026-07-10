@@ -40,6 +40,13 @@ export type BucketMeasurements = {
   depthMm?: number
   spacingMm?: number
   count?: number
+  /**
+   * Provenance: the transcript phrase(s) each measurement was parsed from, so a
+   * measurement can be traced back to its bucket's own source text. A measurement
+   * that belongs to a non-plant work item (e.g. a retaining-wall length) therefore
+   * stays attributed to that bucket and can never be reused as a planting length.
+   */
+  provenance?: string[]
 }
 
 export type WorkBucket = {

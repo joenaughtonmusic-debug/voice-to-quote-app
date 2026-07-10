@@ -156,10 +156,23 @@ function isLikelyPlantName(value: string) {
   // sentences like "16.8m for the retaining wall", where lengthPattern would
   // otherwise capture "the retaining wall" as a plant-name candidate and fabricate
   // a planting request/area from a retaining/fence measurement.
-  if (/\b(retaining|wall|fence|posts?|polythene|topsoil)\b/.test(text)) {
+  if (isStructuralNonPlantLabel(text)) {
     return false
   }
   return /[a-z]/i.test(text)
+}
+
+/**
+ * True when a candidate plant name is really a structural / non-plant landscaping
+ * item (retaining wall, fence, posts, topsoil, paving, decking …). Such labels must
+ * never become a plant name/length/count — this is what stops a retaining-wall or
+ * topsoil measurement being fabricated into a planting option like
+ * "the retaining wall 16.8M". Shared by the pipeline's transcript-blind extractors
+ * (extractPlantLengthRows / getPlantQuantityRequestsFromLineItems) as a defensive
+ * guard, in addition to QuotePlan scoping the calculator to planting-bucket text.
+ */
+export function isStructuralNonPlantLabel(value: string): boolean {
+  return /\b(retaining|wall|fence|posts?|polythene|topsoil|paving|paver|decking|deck)\b/i.test(value)
 }
 
 function normalisePlantNameKey(value: string | undefined) {

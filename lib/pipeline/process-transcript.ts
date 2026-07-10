@@ -5,6 +5,7 @@ import {
   calculatePlantingQuote,
   extractPlantCalculatorRequestsFromText,
   extractSpokenSpacingMmFromText,
+  isStructuralNonPlantLabel,
   type PlantCalculatorRequest,
   type PlantCalculatorResult,
 } from "../calculators/planting"
@@ -35,7 +36,7 @@ import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "../ex
 import { auditProcessedQuote } from "../quote-auditor"
 import { buildQuotePlan } from "../quote-plan/build-plan"
 import { buildOptionalPricedWorks } from "../quote-plan/optional-priced-works"
-import type { BuildQuotePlanInput, QuotePlan } from "../quote-plan/types"
+import type { BuildQuotePlanInput, QuotePlan, WorkBucket } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
 import type { ResolvableItem } from "../items/resolve-bill"
 
@@ -1509,10 +1510,15 @@ function extractPlantLengthRows(transcript: string) {
   for (const match of transcript.matchAll(pattern)) {
     const length = Number(match[2])
     if (!Number.isFinite(length)) continue
+    const plantText = match[3].trim()
+    // A structural non-plant label (e.g. "the retaining wall" from
+    // "16.8m for the retaining wall") must never become a planting row — otherwise
+    // a retaining/fence/topsoil measurement gets fabricated into a plant option.
+    if (isStructuralNonPlantLabel(plantText)) continue
     rows.push({
       label: match[1] ? `${match[1]} hedge` : "Planting row",
       length_m: length,
-      plant_text: match[3].trim(),
+      plant_text: plantText,
     })
   }
 
@@ -1550,6 +1556,9 @@ function getPlantQuantityRequestsFromLineItems(quote: z.infer<typeof processedQu
       .trim()
 
     if (!cleanPlantName) continue
+    // Defensive: a "plant"-typed line item whose name is really a structural item
+    // (retaining wall, fence, topsoil …) must not seed a plant calculator request.
+    if (isStructuralNonPlantLabel(cleanPlantName)) continue
 
     requests.push({
       plant_name: cleanPlantName,
@@ -1721,12 +1730,43 @@ function removeSupersededPlantOptionWarnings(
   return quote
 }
 
+/** True when a bucket is genuinely about planting (so the planting calculator may
+ * read its measurements). A main bucket of a planting-classified quote always counts;
+ * otherwise the bucket's own title/scope/source text must carry planting intent. This
+ * is how a mixed landscaping quote's retaining/topsoil MAIN bucket is excluded while an
+ * OPTIONAL hedge bucket is included. */
+function isPlantingBucket(bucket: WorkBucket, quoteType: string): boolean {
+  if (bucket.kind === "main" && /plant/i.test(quoteType)) return true
+  return hasPlantingCalculatorIntent([bucket.title, ...bucket.scope, bucket.sourceText].join(" "))
+}
+
+/**
+ * The transcript text the planting calculator is allowed to read: the source text of
+ * the plan's PLANTING buckets only. Feeding the calculator from here (instead of the
+ * whole transcript) means a retaining-wall or topsoil measurement — which lives in a
+ * non-planting bucket — can never be scavenged into a planting length/count/option.
+ */
+function plantingScopeTextFromPlan(plan: QuotePlan): string {
+  return [plan.main, ...plan.optional]
+    .filter((bucket) => isPlantingBucket(bucket, plan.quoteType))
+    .map((bucket) => [bucket.sourceText, ...bucket.scope].join(" "))
+    .join(" \n ")
+    .trim()
+}
+
 function applyPlantingCalculator(
   quote: z.infer<typeof processedQuoteSchema>,
   transcript: string,
   knowledgeItemContext: unknown[],
+  plantingScopeText: string,
 ) {
   if (!hasPlantingCalculatorIntent(transcript)) return quote
+
+  // QuotePlan Slice 4 — the calculator reads measurements/plant requests from the
+  // planting buckets' text only (falls back to the full transcript when no planting
+  // bucket was identified). This is what structurally prevents a retaining/topsoil
+  // measurement from being fabricated into a planting option.
+  const plantText = plantingScopeText.trim() ? plantingScopeText : transcript
 
   const plantItems = getPlantLibraryItems(knowledgeItemContext)
   const ficusDebugRecords = debugFicusTuffiPlantRecords(plantItems)
@@ -1734,16 +1774,16 @@ function applyPlantingCalculator(
     console.log("plant-library Ficus Tuffi records", ficusDebugRecords)
   }
   const calculatorRequests = mergePlantCalculatorRequests(
-    extractPlantCalculatorRequestsFromText(transcript),
+    extractPlantCalculatorRequestsFromText(plantText),
     getPlantQuantityRequestsFromLineItems(quote),
   )
-  const rows = extractPlantLengthRows(transcript)
-  const quantityRequest = extractPlantQuantity(transcript)
+  const rows = extractPlantLengthRows(plantText)
+  const quantityRequest = extractPlantQuantity(plantText)
   if (plantItems.length === 0 && !rows.length && !quantityRequest && calculatorRequests.length === 0) return quote
 
-  const mentionedItems = findMentionedPlantItems(transcript, plantItems)
-  const optionSizes = extractRequestedPlantOptionSizes(transcript)
-  const spokenSpacingMm = extractSpacingMm(transcript)
+  const mentionedItems = findMentionedPlantItems(plantText, plantItems)
+  const optionSizes = extractRequestedPlantOptionSizes(plantText)
+  const spokenSpacingMm = extractSpacingMm(plantText)
   const plantRows = plantItemsToKnowledgeRows(plantItems)
   const calculatorResults = calculatorRequests.map((request) => {
     const libraryMatch = matchPlantRowsFromLibrary(plantRows, request.plant_name ?? "")
@@ -3136,6 +3176,16 @@ export async function processTranscriptToQuote(
 
     try {
       const extraction = await extractQuote(extractionContext)
+
+      // QuotePlan Slice 4 — build the plan BEFORE the deterministic calculator steps so
+      // the planting calculator consumes measurements from planting buckets only. Built
+      // from the raw extraction (buildQuotePlan reads primary_quote/optional_quotes/
+      // materials, which the pre-calculator chain steps do not change), so this is a
+      // faithful pre-calculation view. Labour recovery / optional_priced_works still use
+      // their own plan built from the finished quote below (unchanged).
+      const preCalculationPlan = planQuote({ extraction: extraction.quote, transcript, classification })
+      const plantingScopeText = plantingScopeTextFromPlan(preCalculationPlan)
+
       const quote = normalizeFencingProcessedQuote(correctMisclassifiedRetaining(normalizeRetainingProcessedQuote(applyAddressReviewDetails(
         removeCapturedLeadMissingInformation(
           surfaceLineItemMissingInformation(
@@ -3166,6 +3216,7 @@ export async function processTranscriptToQuote(
                           ),
                           transcript,
                           knowledgeItemContext,
+                          plantingScopeText,
                         ),
                         transcript,
                       ),
