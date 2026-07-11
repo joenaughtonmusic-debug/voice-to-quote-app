@@ -49,7 +49,7 @@ export type XeroQuotePayload = {
     notes: string[]
   }
   source: {
-    app: "Quotecord"
+    app: "Talk to Quote"
     draftId?: string | null
   }
 }
@@ -265,7 +265,7 @@ export function buildXeroQuotePayload(
       : [],
     quote: {
       title: quoteTitle,
-      reference: `Quotecord ${isoDate(now)}`,
+      reference: `Talk to Quote ${isoDate(now)}`,
       date: isoDate(now),
       expiryDate: isoDate(addDays(now, 30)),
       status: "DRAFT",
@@ -276,7 +276,7 @@ export function buildXeroQuotePayload(
       notes: [...scopeNotes(quote), ...upgradeNotes],
     },
     source: {
-      app: "Quotecord",
+      app: "Talk to Quote",
       draftId: options.draftId ?? null,
     },
   }
