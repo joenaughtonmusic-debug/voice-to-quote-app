@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation"
-import { buildAdamCustomerDraftQuote } from "@/lib/dev-fixtures/adam-customer-draft-quote"
+import { buildClientBCustomerDraftQuote } from "@/lib/dev-fixtures/client-b-customer-draft-quote"
 import { CustomerDraftFixtureClient } from "./fixture-client"
 
 // Gated dev/test-only fixture route. It renders the real customer-draft UI with a
-// deterministic Adam/Titirangi quote (no OpenAI) so the browser/e2e path can be
+// deterministic Client B/Titirangi quote (no OpenAI) so the browser/e2e path can be
 // regression-tested. It is DISABLED in production by default: it only serves when not
 // in production, or when ENABLE_FIXTURE_ROUTES=1 is explicitly set. It never touches
 // live OpenAI, Xero/JMS export, or normal production behaviour.
@@ -18,7 +18,7 @@ export default async function CustomerDraftFixturePage() {
     notFound()
   }
 
-  const { quote, transcript } = await buildAdamCustomerDraftQuote()
+  const { quote, transcript } = await buildClientBCustomerDraftQuote()
 
   return <CustomerDraftFixtureClient quote={quote} rawTranscript={transcript} />
 }

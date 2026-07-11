@@ -11,7 +11,7 @@ const DECKING_OUTPUT_PATTERN = /\bdeck\s*area\s*\d+|\bdecking\s*boards?\b|\bdeck
  * V04 — Classification / calculator conflicts (detection only).
  *
  * Narrow first case: the decking calculator/template has taken over a quote whose
- * transcript contains no decking intent (the Adam/Titirangi failure mode). Does
+ * transcript contains no decking intent (the Client B/Titirangi failure mode). Does
  * NOT attempt to fix classification.
  */
 export function v04ClassificationConflicts(ctx: AuditContext): AuditIssue[] {

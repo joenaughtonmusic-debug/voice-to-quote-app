@@ -14,8 +14,8 @@ import { buildOverseerInputFromReview } from "./from-review"
 function landscapingQuote(): ProcessedQuote {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Garden Bed Renovation",
     job_type: "general_landscaping",
     primary_quote: {
@@ -39,7 +39,7 @@ function landscapingQuote(): ProcessedQuote {
 
 test("buildOverseerInputFromReview assembles quote + rendered customer text + rendererPath", () => {
   const quote = landscapingQuote()
-  const input = buildOverseerInputFromReview({ processedQuote: quote, rawTranscript: "Garden bed renovation for Stephanie." })
+  const input = buildOverseerInputFromReview({ processedQuote: quote, rawTranscript: "Garden bed renovation for Client A." })
 
   assert.equal(input.quote, quote, "the quote is passed through unchanged (not mutated)")
   assert.ok(input.customerPreviewText.trim().length > 0, "customer preview text is rendered")

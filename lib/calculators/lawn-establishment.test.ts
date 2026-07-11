@@ -4,7 +4,7 @@ import test from "node:test"
 import { calculateSoilVolume, extractSoilVolumeFromText } from "./soil-volume"
 import { calculateLawnEstablishment, extractLawnSeedFact } from "./lawn-establishment"
 
-const ADAM_TRANSCRIPT = `Okay, this is a quote for Adam at 20 Lemnos Street in Titirangi. So the main job is levelling the back lawn. Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. So we're looking at doing a 50mm depth across the area, and the area is approximately 6m by 16.8m. And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. I imagine a 5kg bag, $129 for the bag.`
+const ADAM_TRANSCRIPT = `Okay, this is a quote for Client B at 20 Poplar Street in Titirangi. So the main job is levelling the back lawn. Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. So we're looking at doing a 50mm depth across the area, and the area is approximately 6m by 16.8m. And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. I imagine a 5kg bag, $129 for the bag.`
 
 // ── soil volume ──────────────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@ test("calculateSoilVolume: 6 × 16.8 × 50mm = 100.8m² / 5.04m³", () => {
   assert.equal(result.orderVolumeM3, 6) // ceil(5.04) for ordering with waste
 })
 
-test("extractSoilVolumeFromText: Adam transcript returns 100.8m² / 5.04m³ topsoil", () => {
+test("extractSoilVolumeFromText: Client B transcript returns 100.8m² / 5.04m³ topsoil", () => {
   const result = extractSoilVolumeFromText(ADAM_TRANSCRIPT)
   assert.ok(result, "must extract a soil volume result")
   assert.equal(result!.areaM2, 100.8)
@@ -73,7 +73,7 @@ test("extractLawnSeedFact: returns null when lawn seed is not mentioned", () => 
 
 // ── composed ─────────────────────────────────────────────────────────────────
 
-test("calculateLawnEstablishment: Adam transcript yields topsoil 5.04m³ and lawn seed $129", () => {
+test("calculateLawnEstablishment: Client B transcript yields topsoil 5.04m³ and lawn seed $129", () => {
   const result = calculateLawnEstablishment(ADAM_TRANSCRIPT)
   assert.equal(result.topsoil?.areaM2, 100.8)
   assert.equal(result.topsoil?.volumeM3, 5.04)

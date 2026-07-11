@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import type { GoldenQuoteFixture } from "./contracts"
-import { adamTitirangi } from "./fixtures/adam-titirangi"
+import { clientBTitirangi } from "./fixtures/client-b-titirangi"
 import { gardenBedRenovation } from "./fixtures/garden-bed-renovation"
 import { micheliaPlanting } from "./fixtures/michelia-planting"
 import { buildProjectionFromQuote, formatContractReport, runGoldenQuote, runGoldenQuoteThroughPipeline } from "./runner"
@@ -28,7 +28,7 @@ import { processTranscriptToQuote, type ProcessTranscriptDeps } from "../pipelin
  * See docs/GOLDEN_QUOTE_RUNNER.md.
  */
 
-const FIXTURES: GoldenQuoteFixture[] = [micheliaPlanting, gardenBedRenovation, adamTitirangi]
+const FIXTURES: GoldenQuoteFixture[] = [micheliaPlanting, gardenBedRenovation, clientBTitirangi]
 
 function assertReportPasses(fixture: GoldenQuoteFixture) {
   const { report } = runGoldenQuote(fixture)
@@ -56,8 +56,8 @@ test("Golden Quote 1 — Michelia planting (PIPELINE-BACKED): contract holds thr
   // Explicit QA-5 assertions against the real pipeline output.
   assert.ok(projection.quote.audit_result, "audit_result must exist")
   assert.equal(projection.quote.job_type, "planting")
-  assert.equal(projection.quote.client_name, "Stephanie")
-  assert.match(projection.quote.site_address, /10 Cotswold Lane, Mount Wellington/)
+  assert.equal(projection.quote.client_name, "Client A")
+  assert.match(projection.quote.site_address, /10 Willow Lane, Mount Wellington/)
   assert.equal(projection.quote.plant_calculator_results?.[0]?.plant_count, 30)
   assert.equal(projection.quote.plant_calculator_results?.[0]?.spacing_mm, 500)
   assert.ok(
@@ -111,8 +111,8 @@ test("Golden Quote 2 — Garden bed renovation (PIPELINE-BACKED): contract holds
   assert.ok(projection.quote.audit_result, "audit_result must exist")
   assert.match(projection.quote.job_type, /general_landscaping|garden_bed_renovation/i)
   assert.ok(!/retain/i.test(projection.quote.job_type), "must not be classified as retaining")
-  assert.equal(projection.quote.client_name, "Stephanie")
-  assert.match(projection.quote.site_address, /10 Cotswold Lane, Mount Wellington/)
+  assert.equal(projection.quote.client_name, "Client A")
+  assert.match(projection.quote.site_address, /10 Willow Lane, Mount Wellington/)
 
   // Labour recovered deterministically to 17h / $1,870 (7 + 2 + 8, at $110/hr).
   assert.equal(projection.labourLine?.quantity, "17", "labour recovered to 17 hours")
@@ -152,15 +152,15 @@ test("Golden Quote 2 — Garden bed renovation (PIPELINE-BACKED): contract holds
   assert.ok(!/not included in the main quote/i.test(projection.customerText), "no spurious optional works section")
 })
 
-test("Golden Quote 3 — Adam/Titirangi: routed as landscaping, no decking output (QA-3 fix)", () => {
-  assertReportPasses(adamTitirangi)
+test("Golden Quote 3 — Client B/Titirangi: routed as landscaping, no decking output (QA-3 fix)", () => {
+  assertReportPasses(clientBTitirangi)
 })
 
-test("Golden Quote 3 — Adam/Titirangi: decking + suburb audit issues resolved (hedge warning may remain)", () => {
+test("Golden Quote 3 — Client B/Titirangi: decking + suburb audit issues resolved (hedge warning may remain)", () => {
   // QA-3: the decking misclassification, decking-scope leak, missing topsoil/lawn
   // scope, and dropped suburb are fixed. The optional-hedge warning is allowed to
   // remain (future work — plant count/spacing not yet calculated).
-  const { projection } = runGoldenQuote(adamTitirangi)
+  const { projection } = runGoldenQuote(clientBTitirangi)
   const ids = projection.audit.issues.map((i) => i.id)
 
   for (const resolved of [
@@ -174,8 +174,8 @@ test("Golden Quote 3 — Adam/Titirangi: decking + suburb audit issues resolved 
   }
 })
 
-test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline holds the full mixed-landscaping contract", async () => {
-  // QA-7/QA-8/QA-9: drives the Adam/Titirangi transcript through the REAL extracted
+test("Golden Quote 3 — Client B/Titirangi (PIPELINE-BACKED): the real pipeline holds the full mixed-landscaping contract", async () => {
+  // QA-7/QA-8/QA-9: drives the Client B/Titirangi transcript through the REAL extracted
   // pipeline (processTranscriptToQuote) with mocked OpenAI deps — no live OpenAI, no
   // browser.
   //
@@ -186,12 +186,12 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
   // taken over by the planting presentation. The pipeline path now satisfies the
   // FULL declarative contract, so this asserts zero failing checks plus explicit
   // QA-8/QA-9 guarantees.
-  const { projection, report } = await runGoldenQuoteThroughPipeline(adamTitirangi)
+  const { projection, report } = await runGoldenQuoteThroughPipeline(clientBTitirangi)
   const failing = report.checks.filter((c) => !c.passed)
   assert.equal(
     failing.length,
     0,
-    `Adam/Titirangi pipeline-backed run has failing contract checks:\n${formatContractReport(report)}`,
+    `Client B/Titirangi pipeline-backed run has failing contract checks:\n${formatContractReport(report)}`,
   )
 
   const jms = projection.jmsLines.join("\n")
@@ -199,14 +199,14 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
 
   // Runs headlessly and attaches a deterministic audit result.
   assert.ok(projection.quote.audit_result, "audit_result must exist")
-  assert.equal(projection.quote.client_name, "Adam")
+  assert.equal(projection.quote.client_name, "Client B")
 
   // QA-8 fix #1 — retaining is only a sub-component; the job stays general landscaping.
   assert.match(projection.quote.job_type, /general_landscaping|landscaping/i)
   assert.ok(!/retain/i.test(projection.quote.job_type), "must not be classified as retaining")
 
   // QA-8 fix #3 — the "in Titirangi" suburb is preserved and V08 no longer fires.
-  assert.match(projection.quote.site_address, /20 Lemnos Street, Titirangi/)
+  assert.match(projection.quote.site_address, /20 Poplar Street, Titirangi/)
   assert.ok(!auditIds.includes("V08-suburb-missing"), `V08-suburb-missing must not fire; got [${auditIds.join(", ")}]`)
 
   // QA-9 fix — no fabricated planting area from the retaining wall, so the customer
@@ -216,7 +216,7 @@ test("Golden Quote 3 — Adam/Titirangi (PIPELINE-BACKED): the real pipeline hol
   assert.deepEqual(projection.quote.plant_calculator_results ?? [], [], "no fabricated plant calculator results")
   // Milestone 2 — the QuotePlan primary intent is landscaping (not planting), and the
   // customer quote title must not collapse to a planting title.
-  assert.equal(projection.quote.render_intent?.mainIsPlanting, false, "Adam primary work is not planting")
+  assert.equal(projection.quote.render_intent?.mainIsPlanting, false, "Client B primary work is not planting")
   assert.ok(
     !/planting quote/i.test(projection.customerText),
     `customer quote title must not collapse to a planting quote:\n${projection.customerText.slice(0, 200)}`,
@@ -360,8 +360,8 @@ test("Slice 3b: rendered customer draft shows exactly one optional works section
   // single optional works section and never leak the old scope line or internal detail.
   const quote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Adam",
-    site_address: "20 Lemnos Street, Titirangi",
+    client_name: "Client B",
+    site_address: "20 Poplar Street, Titirangi",
     quote_title: "Back Lawn Levelling Quote",
     job_type: "general_landscaping",
     primary_quote: {

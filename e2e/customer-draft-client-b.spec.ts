@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test"
 
 /**
- * Deterministic browser regression for the Adam/Titirangi customer draft.
+ * Deterministic browser regression for the Client B/Titirangi customer draft.
  *
  * Renders the REAL customer-draft UI (`QuoteDraft` → `StandardCustomerPreview` + the
  * priced optional-works block) from a fixed, injected ProcessedQuote — no live OpenAI.
@@ -12,7 +12,7 @@ import { test, expect } from "@playwright/test"
  * Assertions run against the customer-VISIBLE text (`innerText`), which excludes the
  * collapsed "Dev diagnostics" details — matching what a customer actually sees.
  */
-test("Adam/Titirangi customer draft renders deterministically with de-duplicated optional works", async ({
+test("Client B/Titirangi customer draft renders deterministically with de-duplicated optional works", async ({
   page,
 }) => {
   await page.goto("/dev/customer-draft-fixture")
@@ -27,8 +27,8 @@ test("Adam/Titirangi customer draft renders deterministically with de-duplicated
 
   // ── Must include ──────────────────────────────────────────────────────────
   const required = [
-    "Adam",
-    "20 Lemnos Street, Titirangi",
+    "Client B",
+    "20 Poplar Street, Titirangi",
     "retaining wall",
     "polythene",
     "topsoil",
@@ -44,7 +44,7 @@ test("Adam/Titirangi customer draft renders deterministically with de-duplicated
   expect(optionalWorksCount, "exactly one Optional works section").toBe(1)
 
   // ── Milestone 2: mixed landscaping must not collapse to a planting quote ──
-  expect(text.toLowerCase(), "Adam is a mixed landscaping quote, not a Planting Quote").not.toContain("planting quote")
+  expect(text.toLowerCase(), "Client B is a mixed landscaping quote, not a Planting Quote").not.toContain("planting quote")
 
   // ── Must NOT include (internal detail / labour leak / fabricated options) ─
   const forbidden = [

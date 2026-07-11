@@ -15,11 +15,11 @@ import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "./processed-quote"
 import type { CustomerQuoteAssemblyInput } from "./customer-quote-assembly/types"
 
 // ---------------------------------------------------------------------------
-// Stephanie garden bed renovation transcript
+// Client A garden bed renovation transcript
 // ---------------------------------------------------------------------------
 
-const stephanieTranscript = `
-Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const clientATranscript = `
+Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This quote is for the left-hand garden bed renovation.
 
@@ -67,14 +67,14 @@ No planting included.
 `.trim()
 
 // ---------------------------------------------------------------------------
-// Stephanie ProcessedQuote — simulates what the AI produces after misclassification
+// Client A ProcessedQuote — simulates what the AI produces after misclassification
 // ---------------------------------------------------------------------------
 
-function stephanieAiMisclassifiedQuote(): ProcessedQuote {
+function clientAAiMisclassifiedQuote(): ProcessedQuote {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Retaining Wall Quote",
     job_type: "retaining",
     selected_template_id: "retaining",
@@ -127,24 +127,24 @@ function stephanieAiMisclassifiedQuote(): ProcessedQuote {
   }
 }
 
-function stephanieAssemblyInput(quote: ProcessedQuote): CustomerQuoteAssemblyInput {
-  return { quote, rawTranscript: stephanieTranscript }
+function clientAAssemblyInput(quote: ProcessedQuote): CustomerQuoteAssemblyInput {
+  return { quote, rawTranscript: clientATranscript }
 }
 
 // ---------------------------------------------------------------------------
-// 1. Retaining detector: Stephanie transcript must not score as retaining
+// 1. Retaining detector: Client A transcript must not score as retaining
 // ---------------------------------------------------------------------------
 
-test("Stephanie transcript — detectRetainingFromText does not produce high/medium retaining confidence", () => {
-  const result = detectRetainingFromText(stephanieTranscript)
+test("Client A transcript — detectRetainingFromText does not produce high/medium retaining confidence", () => {
+  const result = detectRetainingFromText(clientATranscript)
   assert.ok(
     result.confidence === "low" || result.confidence === "none",
     `Expected low/none confidence, got: ${result.confidence} (score: ${result.confidence_score})\nReasons: ${result.reasons.join(", ")}`,
   )
 })
 
-test("Stephanie transcript — negative garden bed guard fires in detector", () => {
-  const result = detectRetainingFromText(stephanieTranscript)
+test("Client A transcript — negative garden bed guard fires in detector", () => {
+  const result = detectRetainingFromText(clientATranscript)
   assert.ok(
     result.reasons.some((r) => /garden bed|negative signal/i.test(r)),
     `Expected negative guard reason, got reasons: ${result.reasons.join(", ")}`,
@@ -152,11 +152,11 @@ test("Stephanie transcript — negative garden bed guard fires in detector", () 
 })
 
 // ---------------------------------------------------------------------------
-// 2. isRetainingTranscript: Stephanie must return false
+// 2. isRetainingTranscript: Client A must return false
 // ---------------------------------------------------------------------------
 
-test("Stephanie transcript — isRetainingTranscript returns false", () => {
-  assert.equal(isRetainingTranscript(stephanieTranscript), false)
+test("Client A transcript — isRetainingTranscript returns false", () => {
+  assert.equal(isRetainingTranscript(clientATranscript), false)
 })
 
 // ---------------------------------------------------------------------------
@@ -181,8 +181,8 @@ test("Real retaining transcript — isRetainingTranscript returns true", () => {
 // ---------------------------------------------------------------------------
 
 test("correctMisclassifiedRetaining — clears job_type and template when transcript is not retaining", () => {
-  const original = stephanieAiMisclassifiedQuote()
-  const corrected = correctMisclassifiedRetaining(original, stephanieTranscript)
+  const original = clientAAiMisclassifiedQuote()
+  const corrected = correctMisclassifiedRetaining(original, clientATranscript)
 
   assert.notEqual(corrected.job_type, "retaining", "job_type should not be retaining after correction")
   assert.notEqual(corrected.primary_quote.job_type, "retaining", "primary_quote.job_type should not be retaining")
@@ -192,7 +192,7 @@ test("correctMisclassifiedRetaining — clears job_type and template when transc
 })
 
 test("correctMisclassifiedRetaining — infers garden_bed_renovation job_type for garden bed transcript", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
   assert.ok(
     /garden_bed_renovation|garden_bed|landscaping/i.test(corrected.job_type),
     `Expected landscaping/garden job_type, got: ${corrected.job_type}`,
@@ -200,8 +200,8 @@ test("correctMisclassifiedRetaining — infers garden_bed_renovation job_type fo
 })
 
 test("correctMisclassifiedRetaining — preserves scope, materials, and optional works", () => {
-  const original = stephanieAiMisclassifiedQuote()
-  const corrected = correctMisclassifiedRetaining(original, stephanieTranscript)
+  const original = clientAAiMisclassifiedQuote()
+  const corrected = correctMisclassifiedRetaining(original, clientATranscript)
 
   assert.equal(corrected.customer_scope.length, original.customer_scope.length, "customer_scope should be preserved")
   assert.equal(corrected.materials.length, original.materials.length, "materials should be preserved")
@@ -221,12 +221,12 @@ test("correctMisclassifiedRetaining — does not modify a genuine retaining quot
 })
 
 // ---------------------------------------------------------------------------
-// 5. hasRetainingAssemblyFacts: Stephanie corrected quote must NOT activate retaining assembly
+// 5. hasRetainingAssemblyFacts: Client A corrected quote must NOT activate retaining assembly
 // ---------------------------------------------------------------------------
 
-test("Stephanie corrected quote — hasRetainingAssemblyFacts returns false", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const input = stephanieAssemblyInput(corrected)
+test("Client A corrected quote — hasRetainingAssemblyFacts returns false", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const input = clientAAssemblyInput(corrected)
   assert.equal(hasRetainingAssemblyFacts(input), false)
 })
 
@@ -246,12 +246,12 @@ test("Real retaining quote — hasRetainingAssemblyFacts returns true", () => {
 })
 
 // ---------------------------------------------------------------------------
-// 6. Customer quote assembly: Stephanie routes to general landscaping
+// 6. Customer quote assembly: Client A routes to general landscaping
 // ---------------------------------------------------------------------------
 
-test("Stephanie corrected quote — assembleCustomerQuote does NOT return retaining title", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const input = stephanieAssemblyInput(corrected)
+test("Client A corrected quote — assembleCustomerQuote does NOT return retaining title", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const input = clientAAssemblyInput(corrected)
   const result = assembleCustomerQuote(input)
 
   assert.ok(result !== null, "assembleCustomerQuote should return a result, not null")
@@ -261,18 +261,18 @@ test("Stephanie corrected quote — assembleCustomerQuote does NOT return retain
   )
 })
 
-test("Stephanie corrected quote — customer quote title is Garden Bed Renovation", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const input = stephanieAssemblyInput(corrected)
+test("Client A corrected quote — customer quote title is Garden Bed Renovation", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const input = clientAAssemblyInput(corrected)
   const result = assembleCustomerQuote(input)
 
   assert.ok(result !== null)
   assert.equal(result!.title, "Garden Bed Renovation")
 })
 
-test("Stephanie corrected quote — customer quote contains Scope of Work section", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const input = stephanieAssemblyInput(corrected)
+test("Client A corrected quote — customer quote contains Scope of Work section", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const input = clientAAssemblyInput(corrected)
   const result = assembleCustomerQuote(input)
 
   const scopeSection = result?.sections.find((s) => s.title === "Scope of Work")
@@ -280,76 +280,76 @@ test("Stephanie corrected quote — customer quote contains Scope of Work sectio
   assert.ok(scopeSection!.items.length >= 3, `Expected at least 3 scope items, got: ${scopeSection!.items.join(" | ")}`)
 })
 
-test("Stephanie corrected quote — scope includes keystone edging", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — scope includes keystone edging", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
   assert.ok(/keystone\s+edging/i.test(scopeText), `Expected keystone edging in scope: ${scopeText}`)
 })
 
-test("Stephanie corrected quote — scope includes mandarin tree", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — scope includes mandarin tree", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
   assert.ok(/mandarin\s+tree/i.test(scopeText), `Expected mandarin tree in scope: ${scopeText}`)
 })
 
-test("Stephanie corrected quote — scope includes 200x50 timber border", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — scope includes 200x50 timber border", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
   assert.ok(/200x50\s+timber/i.test(scopeText), `Expected 200x50 timber in scope: ${scopeText}`)
 })
 
-test("Stephanie corrected quote — scope includes 10 square metres", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — scope includes 10 square metres", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
   assert.ok(/10\s+square\s+metres?/i.test(scopeText), `Expected 10 square metres in scope: ${scopeText}`)
 })
 
-test("Stephanie corrected quote — scope includes 900 millimetres", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — scope includes 900 millimetres", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
   assert.ok(/900\s*(?:millimetres?|mm)/i.test(scopeText), `Expected 900mm in scope: ${scopeText}`)
 })
 
-test("Stephanie corrected quote — customer quote contains Materials section", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — customer quote contains Materials section", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const materialsSection = result?.sections.find((s) => s.title === "Materials")
   assert.ok(materialsSection, "Materials section must be present")
   assert.ok(materialsSection!.items.length >= 2, `Expected at least 2 material items, got: ${materialsSection!.items.join(" | ")}`)
 })
 
-test("Stephanie corrected quote — Materials includes timber, timber pegs, and fixings", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — Materials includes timber, timber pegs, and fixings", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const materialsText = result?.sections.find((s) => s.title === "Materials")?.items.join(" ") ?? ""
   assert.ok(/200x50\s+timber|timber/i.test(materialsText), `Expected timber in materials: ${materialsText}`)
   assert.ok(/timber\s+pegs?/i.test(materialsText), `Expected timber pegs in materials: ${materialsText}`)
   assert.ok(/bugle\s+screws?|fixings?/i.test(materialsText), `Expected fixings in materials: ${materialsText}`)
 })
 
-test("Stephanie corrected quote — customer quote contains Optional Works section", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — customer quote contains Optional Works section", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const optionalSection = result?.sections.find((s) => s.title === "Optional Works")
   assert.ok(optionalSection, "Optional Works section must be present")
   assert.ok(optionalSection!.items.length >= 2, `Expected at least 2 optional items, got: ${optionalSection!.items.join(" | ")}`)
 })
 
-test("Stephanie corrected quote — no stray [] placeholders in any section", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — no stray [] placeholders in any section", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(!/\[\s*\]/.test(allText), `Found stray [] in output: ${allText}`)
 })
 
-test("Stephanie corrected quote — labour hours do not appear in customer-facing sections", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — labour hours do not appear in customer-facing sections", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(!/allow\s+\d+\s+hours?\s+to/i.test(allText), `Labour allowance should not appear in customer quote: ${allText}`)
 })
@@ -403,9 +403,9 @@ test("hasGeneralLandscapingFacts — returns false when scope is empty", () => {
 // 9. Golden contract — scope completeness (all 5 items)
 // ---------------------------------------------------------------------------
 
-test("Stephanie corrected quote — scope contains all 5 required items (count >= 5)", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — scope contains all 5 required items (count >= 5)", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const scopeSection = result?.sections.find((s) => s.title === "Scope of Work")
   assert.ok(scopeSection, "Scope of Work section must be present")
   assert.ok(
@@ -418,9 +418,9 @@ test("Stephanie corrected quote — scope contains all 5 required items (count >
 // 10. Golden contract — optional works completeness (all 3 items)
 // ---------------------------------------------------------------------------
 
-test("Stephanie corrected quote — Optional Works contains all 3 items", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — Optional Works contains all 3 items", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const optionalSection = result?.sections.find((s) => s.title === "Optional Works")
   assert.ok(optionalSection, "Optional Works section must be present")
   assert.ok(
@@ -429,23 +429,23 @@ test("Stephanie corrected quote — Optional Works contains all 3 items", () => 
   )
 })
 
-test("Stephanie corrected quote — Optional Works includes weed removal", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — Optional Works includes weed removal", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/weed/i.test(optText), `Expected weed removal in optional works: ${optText}`)
 })
 
-test("Stephanie corrected quote — Optional Works includes apple tree stump", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — Optional Works includes apple tree stump", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/apple\s+tree\s+stump|stump/i.test(optText), `Expected apple tree stump in optional works: ${optText}`)
 })
 
-test("Stephanie corrected quote — Optional Works includes garden mix and mulch", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — Optional Works includes garden mix and mulch", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/garden\s+mix|mulch/i.test(optText), `Expected garden mix or mulch in optional works: ${optText}`)
 })
@@ -454,9 +454,9 @@ test("Stephanie corrected quote — Optional Works includes garden mix and mulch
 // 11. Golden contract — customer preview must not expose internal notes
 // ---------------------------------------------------------------------------
 
-test("Stephanie corrected quote — customer preview does not expose 'not a retaining wall' internal note", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — customer preview does not expose 'not a retaining wall' internal note", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(
     !/not\s+a\s+retaining\s+wall/i.test(allText),
@@ -464,9 +464,9 @@ test("Stephanie corrected quote — customer preview does not expose 'not a reta
   )
 })
 
-test("Stephanie corrected quote — customer preview does not expose 'keep optional works separate' internal note", () => {
-  const corrected = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
-  const result = assembleCustomerQuote(stephanieAssemblyInput(corrected))
+test("Client A corrected quote — customer preview does not expose 'keep optional works separate' internal note", () => {
+  const corrected = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
+  const result = assembleCustomerQuote(clientAAssemblyInput(corrected))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(
     !/keep\s+optional\s+works?\s+separate/i.test(allText),
@@ -478,9 +478,9 @@ test("Stephanie corrected quote — customer preview does not expose 'keep optio
 // 12. Golden contract — labour totals (transcript-level)
 // ---------------------------------------------------------------------------
 
-test("Stephanie transcript — labour allowances total 17 hours across 3 tasks (7 + 2 + 8)", () => {
+test("Client A transcript — labour allowances total 17 hours across 3 tasks (7 + 2 + 8)", () => {
   const LABOUR_ALLOWANCE_PATTERN = /allow\s+(\d+(?:\.\d+)?)\s+hours?\s+to\b/gi
-  const matches = [...stephanieTranscript.matchAll(LABOUR_ALLOWANCE_PATTERN)]
+  const matches = [...clientATranscript.matchAll(LABOUR_ALLOWANCE_PATTERN)]
   const totalHours = matches.reduce((sum, m) => sum + parseFloat(m[1] ?? "0"), 0)
   assert.equal(matches.length, 3, `Expected 3 labour allowance lines, got: ${matches.length}`)
   assert.equal(totalHours, 17, `Expected total labour of 17h (7+2+8), got: ${totalHours}h`)
@@ -494,7 +494,7 @@ test("Stephanie transcript — labour allowances total 17 hours across 3 tasks (
 // ---------------------------------------------------------------------------
 
 test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount=$7 from 'Allow 7 hours'", () => {
-  const { pricing } = extractPricing(stephanieTranscript)
+  const { pricing } = extractPricing(clientATranscript)
   const badFact = pricing.find(
     (f) => f.amount === 7 || f.amount_min === 7 || f.amount_max === 7,
   )
@@ -505,7 +505,7 @@ test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount
 })
 
 test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount=$2 from 'Allow 2 hours'", () => {
-  const { pricing } = extractPricing(stephanieTranscript)
+  const { pricing } = extractPricing(clientATranscript)
   const badFact = pricing.find(
     (f) => f.amount === 2 || f.amount_min === 2 || f.amount_max === 2,
   )
@@ -516,7 +516,7 @@ test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount
 })
 
 test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount=$8 from 'Allow 8 hours'", () => {
-  const { pricing } = extractPricing(stephanieTranscript)
+  const { pricing } = extractPricing(clientATranscript)
   const badFact = pricing.find(
     (f) => f.amount === 8 || f.amount_min === 8 || f.amount_max === 8,
   )
@@ -534,14 +534,14 @@ test("GOLDEN CONTRACT (expected to fail): extractPricing must not produce amount
 
 /**
  * Simulates the ProcessedQuote the API returns after AI extraction + post-processing
- * for the Stephanie transcript, without the hand-crafted optional_quotes fixture.
+ * for the Client A transcript, without the hand-crafted optional_quotes fixture.
  * The AI uses primary_quote.notes for optional items (common real-world output).
  */
-function stephanieAiDirectOutput(): ProcessedQuote {
+function clientAAiDirectOutput(): ProcessedQuote {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "garden_bed_renovation",
     job_type: "garden_bed_renovation",
     selected_template_id: "",
@@ -585,11 +585,11 @@ function stephanieAiDirectOutput(): ProcessedQuote {
 }
 
 function directOutputAssemblyInput(quote: ProcessedQuote): CustomerQuoteAssemblyInput {
-  return { quote, rawTranscript: stephanieTranscript }
+  return { quote, rawTranscript: clientATranscript }
 }
 
 test("Live-path: raw slug title 'garden_bed_renovation' renders as 'Garden Bed Renovation'", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   assert.ok(result !== null, "assembleCustomerQuote must return a result")
   assert.equal(result!.title, "Garden Bed Renovation")
 })
@@ -608,59 +608,59 @@ test("Live-path: raw slug 'general_landscaping' title renders as 'General Landsc
 })
 
 test("Live-path: Optional Works section present when optional items are in primary_quote.notes", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const optionalSection = result?.sections.find((s) => s.title === "Optional Works")
   assert.ok(optionalSection, `Optional Works section must be present. Sections: ${result?.sections.map((s) => s.title).join(", ")}`)
   assert.ok(optionalSection!.items.length >= 3, `Expected at least 3 optional items, got: ${optionalSection!.items.join(" | ")}`)
 })
 
 test("Live-path: Optional Works includes weed removal from notes", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/weed/i.test(optText), `Expected weed removal in optional works: ${optText}`)
 })
 
 test("Live-path: Optional Works includes apple tree stump from notes", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/apple\s+tree\s+stump|stump/i.test(optText), `Expected apple tree stump in optional works: ${optText}`)
 })
 
 test("Live-path: Optional Works includes garden mix / mulch from notes", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/garden\s+mix|mulch/i.test(optText), `Expected garden mix or mulch in optional works: ${optText}`)
 })
 
 test("Live-path: Scope of Work contains all 5 main scope items", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const scopeSection = result?.sections.find((s) => s.title === "Scope of Work")
   assert.ok(scopeSection, "Scope of Work section must be present")
   assert.ok(scopeSection!.items.length >= 5, `Expected at least 5 scope items, got ${scopeSection!.items.length}: ${scopeSection!.items.join(" | ")}`)
 })
 
 test("Live-path: optional items do not contaminate Scope of Work", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const scopeText = result?.sections.find((s) => s.title === "Scope of Work")?.items.join(" ") ?? ""
   assert.ok(!/weed\s+species/i.test(scopeText), `Optional item 'weed species' must not appear in Scope of Work: ${scopeText}`)
   assert.ok(!/apple\s+tree\s+stump/i.test(scopeText), `Optional item 'apple tree stump' must not appear in Scope of Work: ${scopeText}`)
 })
 
 test("Live-path: internal notes do not appear in customer preview", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(!/not\s+a\s+retaining\s+wall/i.test(allText), `Internal note exposed: ${allText}`)
   assert.ok(!/keep\s+optional\s+works?\s+separate/i.test(allText), `Internal note exposed: ${allText}`)
 })
 
 test("Live-path: labour hour phrases do not appear in customer preview", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(!/allow\s+\d+\s+hours?\s+to/i.test(allText), `Labour allowance must not appear in customer preview: ${allText}`)
 })
 
 test("Live-path: no stray [] in customer preview", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiDirectOutput()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiDirectOutput()))
   const allText = result?.sections.flatMap((s) => s.items).join(" ") ?? ""
   assert.ok(!/\[\s*\]/.test(allText), `Found stray [] in output: ${allText}`)
 })
@@ -669,34 +669,34 @@ test("Live-path: no stray [] in customer preview", () => {
 // 15. Per-task labour allowance extraction
 // ---------------------------------------------------------------------------
 
-test("extractPerTaskHourAllowances — extracts 3 tasks from Stephanie transcript", () => {
-  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+test("extractPerTaskHourAllowances — extracts 3 tasks from Client A transcript", () => {
+  const allowances = extractPerTaskHourAllowances(clientATranscript)
   assert.equal(allowances.length, 3, `Expected 3 allowances, got ${allowances.length}: ${JSON.stringify(allowances)}`)
 })
 
 test("extractPerTaskHourAllowances — keystone edging task is 7h", () => {
-  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const allowances = extractPerTaskHourAllowances(clientATranscript)
   const task = allowances.find((a) => /keystone\s+edging/i.test(a.label))
   assert.ok(task, `Expected a keystone edging task. Got: ${JSON.stringify(allowances)}`)
   assert.equal(task!.hours, 7)
 })
 
 test("extractPerTaskHourAllowances — mandarin tree task is 2h", () => {
-  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const allowances = extractPerTaskHourAllowances(clientATranscript)
   const task = allowances.find((a) => /mandarin\s+tree/i.test(a.label))
   assert.ok(task, `Expected a mandarin tree task. Got: ${JSON.stringify(allowances)}`)
   assert.equal(task!.hours, 2)
 })
 
 test("extractPerTaskHourAllowances — timber border task is 8h", () => {
-  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+  const allowances = extractPerTaskHourAllowances(clientATranscript)
   const task = allowances.find((a) => /timber\s+(garden\s+bed\s+)?border/i.test(a.label))
   assert.ok(task, `Expected a timber border task. Got: ${JSON.stringify(allowances)}`)
   assert.equal(task!.hours, 8)
 })
 
-test("summarisePerTaskHourAllowances — totals 17h from Stephanie transcript", () => {
-  const allowances = extractPerTaskHourAllowances(stephanieTranscript)
+test("summarisePerTaskHourAllowances — totals 17h from Client A transcript", () => {
+  const allowances = extractPerTaskHourAllowances(clientATranscript)
   const { totalHours } = summarisePerTaskHourAllowances(allowances)
   assert.equal(totalHours, 17)
 })
@@ -762,7 +762,7 @@ const allTemplates = [plantingTemplate, retainingTemplate, landscapingTemplate, 
 // ---------------------------------------------------------------------------
 
 test("Template recommendation: garden_bed_renovation does not recommend One-Off Garden Tidy", () => {
-  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const quote = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
   const facts = quoteFactsFromProcessedQuote(quote)
   const recommendation = recommendTemplateForQuote({
     facts,
@@ -778,7 +778,7 @@ test("Template recommendation: garden_bed_renovation does not recommend One-Off 
 })
 
 test("Template recommendation: garden_tidy score is penalised below landscaping for garden_bed_renovation", () => {
-  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const quote = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
   const facts = quoteFactsFromProcessedQuote(quote)
   const scores = scoreTemplatesForQuote({
     facts,
@@ -821,23 +821,23 @@ test("Labour display format: quantity with embedded unit is not double-appended"
 // 19. Optional-works section exclusion from main material scan
 // ---------------------------------------------------------------------------
 
-test("Optional-works boundary is present in Stephanie transcript", () => {
-  const boundary = stephanieTranscript.search(/\boptional\s+works?\s*:/i)
-  assert.ok(boundary > 0, "Expected to find 'Optional works:' boundary in Stephanie transcript")
+test("Optional-works boundary is present in Client A transcript", () => {
+  const boundary = clientATranscript.search(/\boptional\s+works?\s*:/i)
+  assert.ok(boundary > 0, "Expected to find 'Optional works:' boundary in Client A transcript")
 })
 
-test("garden mix appears only after optional-works boundary in Stephanie transcript", () => {
-  const boundary = stephanieTranscript.search(/\boptional\s+works?\s*:/i)
-  const mainSection = stephanieTranscript.slice(0, boundary)
+test("garden mix appears only after optional-works boundary in Client A transcript", () => {
+  const boundary = clientATranscript.search(/\boptional\s+works?\s*:/i)
+  const mainSection = clientATranscript.slice(0, boundary)
   assert.ok(
     !/garden\s+mix/i.test(mainSection),
     "garden mix must not appear in the main-scope section of the transcript — it is an optional-works item only",
   )
 })
 
-test("mulch appears only after optional-works boundary in Stephanie transcript", () => {
-  const boundary = stephanieTranscript.search(/\boptional\s+works?\s*:/i)
-  const mainSection = stephanieTranscript.slice(0, boundary)
+test("mulch appears only after optional-works boundary in Client A transcript", () => {
+  const boundary = clientATranscript.search(/\boptional\s+works?\s*:/i)
+  const mainSection = clientATranscript.slice(0, boundary)
   assert.ok(
     !/mulch/i.test(mainSection),
     "mulch must not appear in the main-scope section of the transcript — it is an optional-works item only",
@@ -845,7 +845,7 @@ test("mulch appears only after optional-works boundary in Stephanie transcript",
 })
 
 test("Template recommendation: garden_bed_renovation does not select Planting", () => {
-  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const quote = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
   const facts = quoteFactsFromProcessedQuote(quote)
   const scores = scoreTemplatesForQuote({ facts, templates: allTemplates, sectionsByTemplateId: {}, trade: quote.job_type, jobType: quote.job_type })
   const plantingScore = scores.find((s) => s.template.id === "planting")
@@ -857,7 +857,7 @@ test("Template recommendation: garden_bed_renovation does not select Planting", 
 })
 
 test("Template recommendation: garden_bed_renovation does not recommend Retaining Wall Quote", () => {
-  const quote = correctMisclassifiedRetaining(stephanieAiMisclassifiedQuote(), stephanieTranscript)
+  const quote = correctMisclassifiedRetaining(clientAAiMisclassifiedQuote(), clientATranscript)
   const facts = quoteFactsFromProcessedQuote(quote)
   const recommendation = recommendTemplateForQuote({
     facts,
@@ -880,11 +880,11 @@ test("Template recommendation: garden_bed_renovation does not recommend Retainin
  * Simulates what the AI returns when it correctly uses optional_quotes but
  * contaminates q.scope with metadata lines and leading-colon items.
  */
-function stephanieAiWithOptionalQuoteMetadata(): ProcessedQuote {
+function clientAAiWithOptionalQuoteMetadata(): ProcessedQuote {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "garden_bed_renovation",
     job_type: "garden_bed_renovation",
     primary_quote: {
@@ -928,7 +928,7 @@ function stephanieAiWithOptionalQuoteMetadata(): ProcessedQuote {
 }
 
 test("Optional Works preview: metadata lines (Title/Job type/Cadence) are filtered out", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiWithOptionalQuoteMetadata()))
   const optItems = result?.sections.find((s) => s.title === "Optional Works")?.items ?? []
   const joinedText = optItems.join(" | ")
   assert.ok(!/^title\s*:/i.test(joinedText) && !/\btitle\s*:/i.test(joinedText), `Title metadata must not appear in Optional Works: ${joinedText}`)
@@ -937,7 +937,7 @@ test("Optional Works preview: metadata lines (Title/Job type/Cadence) are filter
 })
 
 test("Optional Works preview: items do not have a leading colon", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiWithOptionalQuoteMetadata()))
   const optItems = result?.sections.find((s) => s.title === "Optional Works")?.items ?? []
   for (const item of optItems) {
     assert.ok(!/^\s*:/.test(item), `Optional Works item must not start with a colon: "${item}"`)
@@ -945,19 +945,19 @@ test("Optional Works preview: items do not have a leading colon", () => {
 })
 
 test("Optional Works preview: 3 optional scope items are present after filtering", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiWithOptionalQuoteMetadata()))
   const optItems = result?.sections.find((s) => s.title === "Optional Works")?.items ?? []
   assert.ok(optItems.length >= 3, `Expected at least 3 optional items after filtering metadata, got ${optItems.length}: ${optItems.join(" | ")}`)
 })
 
 test("Optional Works preview: weed removal item is present after metadata filtering", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiWithOptionalQuoteMetadata()))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/weed/i.test(optText), `Expected weed removal in optional works after filtering: ${optText}`)
 })
 
 test("Optional Works preview: apple tree stump item is present after metadata filtering", () => {
-  const result = assembleCustomerQuote(directOutputAssemblyInput(stephanieAiWithOptionalQuoteMetadata()))
+  const result = assembleCustomerQuote(directOutputAssemblyInput(clientAAiWithOptionalQuoteMetadata()))
   const optText = result?.sections.find((s) => s.title === "Optional Works")?.items.join(" ") ?? ""
   assert.ok(/stump/i.test(optText), `Expected stump in optional works after filtering: ${optText}`)
 })
@@ -1027,11 +1027,11 @@ test("Template recommendation: real retaining job recommends Retaining above Pla
 // priced optional work must not also appear as an old "Optional Works" assembly section
 // — including when the AI emits it BOTH in optional_quotes AND as an "Optional:"-prefixed
 // notes/scope line. (Regression for the manual-browser duplication bug.)
-function adamLikePricedOptionalHedgeQuote(): ProcessedQuote {
+function clientBLikePricedOptionalHedgeQuote(): ProcessedQuote {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Adam",
-    site_address: "20 Lemnos Street, Titirangi",
+    client_name: "Client B",
+    site_address: "20 Poplar Street, Titirangi",
     quote_title: "Back Lawn Levelling Quote",
     job_type: "general_landscaping",
     primary_quote: {
@@ -1077,7 +1077,7 @@ function adamLikePricedOptionalHedgeQuote(): ProcessedQuote {
 }
 
 test("Slice 3b: priced optional hedge is de-duplicated from the assembly Optional Works section (both paths)", () => {
-  const assembly = assembleGeneralLandscapingCustomerQuote({ quote: adamLikePricedOptionalHedgeQuote() })
+  const assembly = assembleGeneralLandscapingCustomerQuote({ quote: clientBLikePricedOptionalHedgeQuote() })
   const sectionTitles = assembly.sections.map((s) => s.title)
   const allItems = assembly.sections.flatMap((s) => s.items).join("\n")
 

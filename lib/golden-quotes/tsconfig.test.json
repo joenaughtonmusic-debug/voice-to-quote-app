@@ -18,6 +18,6 @@
     "./runner.ts",
     "./fixtures/michelia-planting.ts",
     "./fixtures/garden-bed-renovation.ts",
-    "./fixtures/adam-titirangi.ts"
+    "./fixtures/client-b-titirangi.ts"
   ]
 }

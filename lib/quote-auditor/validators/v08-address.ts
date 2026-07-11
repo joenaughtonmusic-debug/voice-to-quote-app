@@ -14,8 +14,8 @@ const ADDRESS_IN_SUBURB_PATTERN = new RegExp(
  * V08 — Address / suburb (detection only).
  *
  * Flags when the transcript says "<street> in <Suburb>" but the extracted
- * site address does not contain that suburb (the Adam/Titirangi failure:
- * "20 Lemnos Street in Titirangi" → captured only "20 Lemnos Street").
+ * site address does not contain that suburb (the Client B/Titirangi failure:
+ * "20 Poplar Street in Titirangi" → captured only "20 Poplar Street").
  */
 export function v08Address(ctx: AuditContext): AuditIssue[] {
   const issues: AuditIssue[] = []

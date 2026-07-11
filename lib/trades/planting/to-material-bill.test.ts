@@ -2,10 +2,10 @@ import assert from "node:assert/strict"
 import test from "node:test"
 
 import { parsePlantingMaterialQuantity, plantingMaterialsToBills } from "./to-material-bill"
-import { stephanieLiveTranscript } from "../../quote-presentation/stephanie-live-transcript"
+import { clientALiveTranscript } from "../../quote-presentation/client-a-live-transcript"
 
-test("plantingMaterialsToBills extracts five bags of garden mix from Stephanie transcript", () => {
-  const bills = plantingMaterialsToBills({ transcript: stephanieLiveTranscript })
+test("plantingMaterialsToBills extracts five bags of garden mix from Client A transcript", () => {
+  const bills = plantingMaterialsToBills({ transcript: clientALiveTranscript })
 
   assert.equal(bills.length, 1)
   assert.equal(bills[0]?.trade, "planting")
@@ -44,7 +44,7 @@ test("plantingMaterialsToBills extracts cubic metres of mulch", () => {
 
 test("plantingMaterialsToBills reads quantities from processed quote materials", () => {
   const bills = plantingMaterialsToBills({
-    transcript: "Planting job for Stephanie.",
+    transcript: "Planting job for Client A.",
     materials: ["Five bags of garden mix"],
   })
 

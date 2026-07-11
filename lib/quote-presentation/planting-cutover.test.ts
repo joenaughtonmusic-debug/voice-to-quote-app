@@ -27,7 +27,7 @@ import {
 import { applyPlantingMaterialOptions } from "../trades/planting/apply-material-options"
 import { quoteOptionsFromPlantCalculatorResults } from "../trades/planting/quote-options"
 import type { QuoteTemplateLibraryItem } from "../template-import-learning"
-import { stephanieLiveTranscript } from "./stephanie-live-transcript"
+import { clientALiveTranscript } from "./client-a-live-transcript"
 
 const PLANTING_ACCEPTANCE_DOC = "docs/PLANTING_MVP_ACCEPTANCE.md"
 
@@ -42,7 +42,7 @@ const plantingTemplate: QuoteTemplateLibraryItem = {
   status: "active",
 }
 
-const stephanieMicheliaRows: KnowledgePlantRow[] = [
+const clientAMicheliaRows: KnowledgePlantRow[] = [
   micheliaRow("PLANT-102", "Michelia gracipes 4L", "Michelia gracipes 4L", "4L", 68.75, 850),
 ]
 
@@ -113,16 +113,16 @@ function amyAcceptanceTranscript() {
   return match[1].trim()
 }
 
-function buildStephanieQuote(): ProcessedQuote {
-  const [request] = extractPlantCalculatorRequestsFromText(stephanieLiveTranscript)
+function buildClientAQuote(): ProcessedQuote {
+  const [request] = extractPlantCalculatorRequestsFromText(clientALiveTranscript)
   assert.ok(request)
-  const libraryMatch = matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name ?? "")
+  const libraryMatch = matchPlantRowsFromLibrary(clientAMicheliaRows, request.plant_name ?? "")
   const result = calculatePlantingQuote({ ...request, plant_library_match: libraryMatch })
 
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {
@@ -199,8 +199,8 @@ function includesText(text: string, expected: string) {
   return text.toLowerCase().includes(expected.toLowerCase())
 }
 
-test("Stephanie customer quote uses planting presentation model output", () => {
-  const { previewModel, rendered } = quoteDraftRendered(stephanieLiveTranscript, buildStephanieQuote())
+test("Client A customer quote uses planting presentation model output", () => {
+  const { previewModel, rendered } = quoteDraftRendered(clientALiveTranscript, buildClientAQuote())
 
   assert.equal(previewModel.rendererPath, "planting-presentation")
   assert.ok(previewModel.plantingCustomerQuote)
@@ -209,8 +209,8 @@ test("Stephanie customer quote uses planting presentation model output", () => {
   assert.equal(includesText(rendered, "Option 1: Michelia"), false, rendered)
 })
 
-test("Stephanie customer quote uses narrative scope and hides calculation detail", () => {
-  const { rendered, presentationSections } = quoteDraftRendered(stephanieLiveTranscript, buildStephanieQuote())
+test("Client A customer quote uses narrative scope and hides calculation detail", () => {
+  const { rendered, presentationSections } = quoteDraftRendered(clientALiveTranscript, buildClientAQuote())
 
   assert.equal(includesText(rendered, "Supply and plant Michelia gracipes hedge"), true, rendered)
   assert.equal(includesText(rendered, "Prepare planting area, dig planting holes"), true, rendered)
@@ -235,8 +235,8 @@ test("Stephanie customer quote uses narrative scope and hides calculation detail
   assert.equal(presentationSections.some((section) => section.title === "Review Notes"), false)
 })
 
-test("Stephanie customer quote hides internal review warnings from customer output", () => {
-  const { rendered, internalReviewNotes } = quoteDraftRendered(stephanieLiveTranscript, buildStephanieQuote())
+test("Client A customer quote hides internal review warnings from customer output", () => {
+  const { rendered, internalReviewNotes } = quoteDraftRendered(clientALiveTranscript, buildClientAQuote())
 
   assert.equal(rendered.includes("Review Notes"), false, rendered)
   assert.equal(/garden mix rate missing/i.test(rendered), false, rendered)
@@ -246,15 +246,15 @@ test("Stephanie customer quote hides internal review warnings from customer outp
   assert.ok(internalReviewNotes.length > 0)
 })
 
-test("Stephanie internal review notes are deduplicated and retained on the model", () => {
-  const quote = buildStephanieQuote()
+test("Client A internal review notes are deduplicated and retained on the model", () => {
+  const quote = buildClientAQuote()
   const model = buildQuotePresentationModel({
     quote,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     customerPreview: buildCustomerQuotePreview(
       buildCustomerPreviewQuoteInput({
         processedQuote: quote,
-        rawTranscript: stephanieLiveTranscript,
+        rawTranscript: clientALiveTranscript,
         selectedTemplate: plantingTemplate,
       }),
     ),
@@ -338,15 +338,15 @@ test("isUsablePlantingCustomerQuote rejects review-only sections", () => {
   )
 })
 
-test("Stephanie presentation model retains five bags of garden mix quantity", () => {
-  const quote = buildStephanieQuote()
+test("Client A presentation model retains five bags of garden mix quantity", () => {
+  const quote = buildClientAQuote()
   const model = buildQuotePresentationModel({
     quote,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     customerPreview: buildCustomerQuotePreview(
       buildCustomerPreviewQuoteInput({
         processedQuote: quote,
-        rawTranscript: stephanieLiveTranscript,
+        rawTranscript: clientALiveTranscript,
         selectedTemplate: plantingTemplate,
       }),
     ),
@@ -360,7 +360,7 @@ test("Stephanie presentation model retains five bags of garden mix quantity", ()
 })
 
 test("priced garden mix line item resolves to customer included wording", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
   quote.line_items = [
     {
       item_code: "MAT-GARDEN-MIX",
@@ -384,11 +384,11 @@ test("priced garden mix line item resolves to customer included wording", () => 
 
   const model = buildQuotePresentationModel({
     quote,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     customerPreview: buildCustomerQuotePreview(
       buildCustomerPreviewQuoteInput({
         processedQuote: quote,
-        rawTranscript: stephanieLiveTranscript,
+        rawTranscript: clientALiveTranscript,
         selectedTemplate: plantingTemplate,
       }),
     ),
@@ -404,12 +404,12 @@ test("priced garden mix line item resolves to customer included wording", () => 
   const notes = collectPresentationReviewNotes(model)
   assert.equal(notes.some((note) => /garden mix rate missing/i.test(note)), false)
 
-  const { rendered } = quoteDraftRendered(stephanieLiveTranscript, quote)
+  const { rendered } = quoteDraftRendered(clientALiveTranscript, quote)
   assert.equal(includesText(rendered, "Garden mix included"), true, rendered)
 })
 
 test("planting mix alias resolves to garden mix material line", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
   quote.materials = ["Five bags of planting mix"]
   quote.line_items = [
     {
@@ -431,7 +431,7 @@ test("planting mix alias resolves to garden mix material line", () => {
     },
   ]
 
-  const model = buildQuotePresentationModel({ quote, rawTranscript: stephanieLiveTranscript })
+  const model = buildQuotePresentationModel({ quote, rawTranscript: clientALiveTranscript })
   assert.ok(model)
 
   const gardenMix = model.lines.find((line) => line.role === "material" && line.customerTitle === "Garden mix")
@@ -440,7 +440,7 @@ test("planting mix alias resolves to garden mix material line", () => {
 })
 
 test("captured plant delivery suppresses internal delivery review note", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
   quote.materials = [...quote.materials, "Plant delivery fee $85"]
   quote.line_items = [
     {
@@ -462,7 +462,7 @@ test("captured plant delivery suppresses internal delivery review note", () => {
     },
   ]
 
-  const model = buildQuotePresentationModel({ quote, rawTranscript: stephanieLiveTranscript })
+  const model = buildQuotePresentationModel({ quote, rawTranscript: clientALiveTranscript })
   assert.ok(model)
 
   const notes = collectPresentationReviewNotes(model)
@@ -470,7 +470,7 @@ test("captured plant delivery suppresses internal delivery review note", () => {
 })
 
 test("customer quote hides plant delivery review note", () => {
-  const { rendered, internalReviewNotes } = quoteDraftRendered(stephanieLiveTranscript, buildStephanieQuote())
+  const { rendered, internalReviewNotes } = quoteDraftRendered(clientALiveTranscript, buildClientAQuote())
 
   assert.equal(/plant delivery fee not captured/i.test(rendered), false, rendered)
   assert.equal(
@@ -488,33 +488,33 @@ test("optional works dedupe prefers specific timber border line", () => {
     ["150x50 timber board border, if required"],
   )
 
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
   quote.follow_up_tasks = [
     "150 by 50 timber board border to do later",
     "Timber board border installation later",
   ]
 
-  const { presentationSections } = quoteDraftRendered(stephanieLiveTranscript, quote)
+  const { presentationSections } = quoteDraftRendered(clientALiveTranscript, quote)
   const optionalWorks = presentationSections.find((section) => section.title === "Optional Works")
   assert.ok(optionalWorks)
   assert.equal(optionalWorks!.items.length, 1)
   assert.equal(optionalWorks!.items[0]?.title, "150x50 timber board border, if required")
 })
 
-test("Stephanie customer quote hides unpriced planting material trade option cards", () => {
-  const quote = buildStephanieQuote()
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [])
+test("Client A customer quote hides unpriced planting material trade option cards", () => {
+  const quote = buildClientAQuote()
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [])
 
   const previewInput = buildCustomerPreviewQuoteInput({
     processedQuote: quote,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     selectedTemplate: plantingTemplate,
   })
   const customerPreview = buildCustomerQuotePreview(previewInput)
   const previewModel = buildCustomerDraftPreviewModel({
     processedQuote: quote,
     customerPreview,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     selectedTemplate: previewInput.selected_template,
   })
   const rendered = renderCustomerDraftPreviewText(previewModel)
@@ -538,11 +538,11 @@ test("Stephanie customer quote hides unpriced planting material trade option car
   )
 })
 
-test("Stephanie priced plant option still appears after material resolver runs", () => {
-  const quote = buildStephanieQuote()
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [])
+test("Client A priced plant option still appears after material resolver runs", () => {
+  const quote = buildClientAQuote()
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [])
 
-  const { rendered, presentationSections } = quoteDraftRendered(stephanieLiveTranscript, quote)
+  const { rendered, presentationSections } = quoteDraftRendered(clientALiveTranscript, quote)
   const plantingOptions = presentationSections.find((section) => section.title === "Planting Options")
   assert.ok(plantingOptions)
   assert.equal(plantingOptions!.items.some((item) => /Michelia gracipes 4L — \$/i.test(item.title)), true)
@@ -553,7 +553,7 @@ test("Stephanie priced plant option still appears after material resolver runs",
 // Michelia transcript: "plant she wanted was" phrasing — new transcript format
 // ---------------------------------------------------------------------------
 
-const micheliaTranscript = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const micheliaTranscript = `Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This is a planting quote for the front garden bed.
 
@@ -585,7 +585,7 @@ Keep the timber board border as optional work.`
 function buildMicheliaQuote(): ProcessedQuote {
   const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscript)
   const libraryMatch = request
-    ? matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name ?? "")
+    ? matchPlantRowsFromLibrary(clientAMicheliaRows, request.plant_name ?? "")
     : undefined
   const result = request
     ? calculatePlantingQuote({ ...request, plant_library_match: libraryMatch })
@@ -593,8 +593,8 @@ function buildMicheliaQuote(): ProcessedQuote {
 
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "planting",
     job_type: "planting",
     primary_quote: {

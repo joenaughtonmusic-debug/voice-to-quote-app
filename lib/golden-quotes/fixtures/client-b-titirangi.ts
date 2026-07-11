@@ -2,7 +2,7 @@ import { calculateLawnEstablishment } from "../../calculators/lawn-establishment
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../../processed-quote"
 import type { GoldenQuoteFixture } from "../contracts"
 
-const TRANSCRIPT = `Okay, this is a quote for Adam at 20 Lemnos Street in Titirangi. So the main job is levelling the back lawn. Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. And we also need to install some polythene along the fence to protect the fence. Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. So we're looking at doing a 50mm depth across the area, and the area is approximately 6m by 16.8m. And the retaining wall is going to sit 900mm off the fence, and the length is going to be 16.8m for the retaining wall. And it would be great to also have the option for lawn mix to go on top of the area, but in the actual quote we'll use topsoil. And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. I imagine a 5kg bag, $129 for the bag, and it would be great if you could also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the labour for that being two people one day.`
+const TRANSCRIPT = `Okay, this is a quote for Client B at 20 Poplar Street in Titirangi. So the main job is levelling the back lawn. Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. And we also need to install some polythene along the fence to protect the fence. Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. So we're looking at doing a 50mm depth across the area, and the area is approximately 6m by 16.8m. And the retaining wall is going to sit 900mm off the fence, and the length is going to be 16.8m for the retaining wall. And it would be great to also have the option for lawn mix to go on top of the area, but in the actual quote we'll use topsoil. And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. I imagine a 5kg bag, $129 for the bag, and it would be great if you could also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the labour for that being two people one day.`
 
 /**
  * QA-3 DESIRED STATE — mixed landscaping / back-lawn levelling with a small
@@ -28,8 +28,8 @@ function buildProcessedQuote(): ProcessedQuote {
 
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Adam",
-    site_address: "20 Lemnos Street, Titirangi",
+    client_name: "Client B",
+    site_address: "20 Poplar Street, Titirangi",
     quote_title: "Back Lawn Levelling Quote",
     job_type: "general_landscaping",
     primary_quote: {
@@ -134,12 +134,12 @@ function buildProcessedQuote(): ProcessedQuote {
 // polythene, topsoil, lawn seed all present) and the optional Ficus hedge stays as
 // optional scope text with no fabricated plant count. See the pipeline-backed test,
 // which asserts the full contract passes.
-function adamExtractedQuote() {
+function clientBExtractedQuote() {
   const { topsoil, lawnSeed } = calculateLawnEstablishment(TRANSCRIPT)
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Adam",
-    site_address: "20 Lemnos Street, Titirangi",
+    client_name: "Client B",
+    site_address: "20 Poplar Street, Titirangi",
     quote_title: "Back Lawn Levelling Quote",
     job_type: "general_landscaping",
     primary_quote: {
@@ -226,8 +226,8 @@ function adamExtractedQuote() {
   }
 }
 
-export const adamTitirangi: GoldenQuoteFixture = {
-  name: "Golden Quote 3 — Adam / Titirangi (mixed landscaping)",
+export const clientBTitirangi: GoldenQuoteFixture = {
+  name: "Golden Quote 3 — Client B / Titirangi (mixed landscaping)",
   mockingNotes:
     "AI-extracted fields stubbed to the QA-3 desired landscaping output. The verified real change is the decking detector gate (lib/trades/decking/detector.ts + its unit tests). Projection layers run on real code.",
   transcript: TRANSCRIPT,
@@ -322,7 +322,7 @@ export const adamTitirangi: GoldenQuoteFixture = {
   ],
   buildProcessedQuote,
   pipeline: {
-    extractedQuote: adamExtractedQuote(),
+    extractedQuote: clientBExtractedQuote(),
     // A per-hour landscaping labour KB item so the optional Ficus hedge labour gets a
     // rate (recoveryBestRate) and becomes a priced optional work (Slice 3a/3b). It has
     // no effect on main labour: plan.main.sourceText carries no labour phrase, so no

@@ -458,8 +458,8 @@ test("Michelia Matched JMS Line Items panel shows 12 hours and 1320 after normal
 
   const quote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane",
+    client_name: "Client A",
+    site_address: "10 Willow Lane",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {

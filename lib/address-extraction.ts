@@ -196,7 +196,7 @@ function cleanCandidate(rawCandidate: string, warnings: string[]) {
   let candidate = rawCandidate.replace(/\s+/g, " ").trim()
 
   // Normalise a spoken "in <suburb>" connector to the comma form so the cleaned
-  // address reads "20 Lemnos Street, Titirangi" rather than "... Street in Titirangi".
+  // address reads "20 Poplar Street, Titirangi" rather than "... Street in Titirangi".
   candidate = candidate.replace(new RegExp(`\\s+in\\s+(${suburbPattern})\\b`, "i"), ", $1")
 
   for (const rule of correctionRules) {

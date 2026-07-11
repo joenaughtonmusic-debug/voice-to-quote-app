@@ -2442,7 +2442,7 @@ function applyDeterministicLabourAllowances(
 
 /**
  * Applies per-task "Allow N hours to <task>" labour allowances deterministically.
- * Handles transcripts like the Stephanie garden bed renovation that use individual
+ * Handles transcripts like the Client A garden bed renovation that use individual
  * hour phrases per task rather than the "N days, M people" crew pattern.
  * Only fires when the days×people path has not already created a labour item.
  */

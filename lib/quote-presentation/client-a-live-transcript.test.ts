@@ -19,7 +19,7 @@ import {
 import { quoteOptionsFromPlantCalculatorResults } from "../trades/planting/quote-options"
 import type { QuoteTemplateLibraryItem } from "../template-import-learning"
 
-import { stephanieLiveTranscript } from "./stephanie-live-transcript"
+import { clientALiveTranscript } from "./client-a-live-transcript"
 
 const plantingTemplate: QuoteTemplateLibraryItem = {
   id: "planting",
@@ -32,7 +32,7 @@ const plantingTemplate: QuoteTemplateLibraryItem = {
   status: "active",
 }
 
-const stephanieMicheliaRows: KnowledgePlantRow[] = [
+const clientAMicheliaRows: KnowledgePlantRow[] = [
   micheliaRow("PLANT-101", "Michelia gracipes 2L", "Michelia gracipes 2L", "2L", 18.5, 600),
   micheliaRow("PLANT-102", "Michelia gracipes 4L", "Michelia gracipes 4L", "4L", 32.0, 600),
   micheliaRow("PLANT-103", "Michelia gracipes 25L", "Michelia gracipes 25L", "25L", 95.0, 600),
@@ -65,15 +65,15 @@ function micheliaRow(
   }
 }
 
-export function buildStephanieQuoteFixture(transcript: string = stephanieLiveTranscript): ProcessedQuote {
+export function buildClientAQuoteFixture(transcript: string = clientALiveTranscript): ProcessedQuote {
   return buildLiveProcessedQuoteFromTranscript(transcript)
 }
 
 function buildLiveProcessedQuoteFromTranscript(transcript: string): ProcessedQuote {
   const [request] = extractPlantCalculatorRequestsFromText(transcript)
-  assert.ok(request, "Stephanie transcript must produce a planting calculator request")
+  assert.ok(request, "Client A transcript must produce a planting calculator request")
 
-  const libraryMatch = matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name ?? "")
+  const libraryMatch = matchPlantRowsFromLibrary(clientAMicheliaRows, request.plant_name ?? "")
   const result = calculatePlantingQuote({
     ...request,
     plant_library_match: libraryMatch,
@@ -83,8 +83,8 @@ function buildLiveProcessedQuoteFromTranscript(transcript: string): ProcessedQuo
 
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: extractClientNameFromTranscript(transcript) ?? "Stephanie",
-    site_address: address.cleaned_address ?? "10 Cotswold Lane, Mount Wellington",
+    client_name: extractClientNameFromTranscript(transcript) ?? "Client A",
+    site_address: address.cleaned_address ?? "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {
@@ -111,8 +111,8 @@ function buildLiveProcessedQuoteFromTranscript(transcript: string): ProcessedQuo
   }
 }
 
-test("Stephanie live transcript extracts planting length plant name and 50cm spacing", () => {
-  const transcript = stephanieLiveTranscript
+test("Client A live transcript extracts planting length plant name and 50cm spacing", () => {
+  const transcript = clientALiveTranscript
 
   assert.equal(extractSpokenSpacingMmFromText(transcript), 500)
 
@@ -124,18 +124,18 @@ test("Stephanie live transcript extracts planting length plant name and 50cm spa
 })
 
 test("Michaelia gracipes fuzzy-matches Michelia gracipes in plant library", () => {
-  const match = matchPlantRowsFromLibrary(stephanieMicheliaRows, "Michaelia gracipes")
+  const match = matchPlantRowsFromLibrary(clientAMicheliaRows, "Michaelia gracipes")
 
   assert.notEqual(match.match_confidence, "none")
   assert.equal(match.plant_name, "Michelia gracipes")
   assert.ok((match.options ?? []).length >= 2)
 })
 
-test("Stephanie live transcript produces priced plant options with spoken spacing plant count and spacing review warning", () => {
-  const [request] = extractPlantCalculatorRequestsFromText(stephanieLiveTranscript)
+test("Client A live transcript produces priced plant options with spoken spacing plant count and spacing review warning", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(clientALiveTranscript)
   assert.ok(request)
 
-  const libraryMatch = matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name ?? "")
+  const libraryMatch = matchPlantRowsFromLibrary(clientAMicheliaRows, request.plant_name ?? "")
   const result = calculatePlantingQuote({ ...request, plant_library_match: libraryMatch })
 
   assert.equal(result.length_m, 14.2)
@@ -148,11 +148,11 @@ test("Stephanie live transcript produces priced plant options with spoken spacin
   assert.ok(result.warnings.some((warning) => /500mm.*600mm|600mm.*500mm/i.test(warning.message)))
 })
 
-test("Stephanie live transcript QuoteDraft-equivalent path fills presentation model with sendable planting data", () => {
-  const quote = buildLiveProcessedQuoteFromTranscript(stephanieLiveTranscript)
+test("Client A live transcript QuoteDraft-equivalent path fills presentation model with sendable planting data", () => {
+  const quote = buildLiveProcessedQuoteFromTranscript(clientALiveTranscript)
   const previewInput = buildCustomerPreviewQuoteInput({
     processedQuote: quote,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     selectedTemplate: plantingTemplate,
   })
   const customerPreview = buildCustomerQuotePreview(previewInput, {
@@ -162,7 +162,7 @@ test("Stephanie live transcript QuoteDraft-equivalent path fills presentation mo
   const previewModel = buildCustomerDraftPreviewModel({
     processedQuote: quote,
     customerPreview,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     selectedTemplate: previewInput.selected_template,
   })
   const rendered = renderCustomerDraftPreviewText(previewModel)

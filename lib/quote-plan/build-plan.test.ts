@@ -14,9 +14,9 @@ function extraction(overrides: Partial<ProcessedQuote>): ProcessedQuote {
   return { ...EMPTY_PROCESSED_QUOTE, ...overrides }
 }
 
-// ── 1. Adam/Titirangi — optional hedge labour must NOT become main labour ────
+// ── 1. Client B/Titirangi — optional hedge labour must NOT become main labour ────
 const ADAM_TRANSCRIPT =
-  "Okay, this is a quote for Adam at 20 Lemnos Street in Titirangi. So the main job is levelling the back lawn. " +
+  "Okay, this is a quote for Client B at 20 Poplar Street in Titirangi. So the main job is levelling the back lawn. " +
   "Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. " +
   "And we also need to install some polythene along the fence to protect the fence. " +
   "Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. " +
@@ -26,10 +26,10 @@ const ADAM_TRANSCRIPT =
   "And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. " +
   "I imagine a 5kg bag, $129 for the bag, and it would be great if you could also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the labour for that being two people one day."
 
-function adamExtraction(): ProcessedQuote {
+function clientBExtraction(): ProcessedQuote {
   return extraction({
-    client_name: "Adam",
-    site_address: "20 Lemnos Street, Titirangi",
+    client_name: "Client B",
+    site_address: "20 Poplar Street, Titirangi",
     quote_title: "Back Lawn Levelling Quote",
     job_type: "general_landscaping",
     primary_quote: {
@@ -59,9 +59,9 @@ function adamExtraction(): ProcessedQuote {
   })
 }
 
-test("Adam/Titirangi — optional Ficus hedge labour is captured on the optional bucket, not main", () => {
+test("Client B/Titirangi — optional Ficus hedge labour is captured on the optional bucket, not main", () => {
   const plan = buildQuotePlan({
-    extraction: adamExtraction(),
+    extraction: clientBExtraction(),
     transcript: ADAM_TRANSCRIPT,
     classification: { specialist: "landscaping" },
   })
@@ -87,7 +87,7 @@ test("Adam/Titirangi — optional Ficus hedge labour is captured on the optional
 //        calculator fabricating "the retaining wall 16.8M" plant options. ────────────
 test("Slice 4 — retaining-wall length is never captured as a bucket's planting measurement", () => {
   const plan = buildQuotePlan({
-    extraction: adamExtraction(),
+    extraction: clientBExtraction(),
     transcript: ADAM_TRANSCRIPT,
     classification: { specialist: "landscaping" },
   })
@@ -146,7 +146,7 @@ test("Maintenance — quoteType maintenance, cadence captured, greenwaste is a m
 
 // ── 3. Michelia planting — measurements + labour on main, border stays optional ─
 const MICHELIA_TRANSCRIPT =
-  "Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.\n\n" +
+  "Went to see Client A at 10 Willow Lane, Mount Wellington.\n\n" +
   "This is a planting quote for the front garden bed.\n\n" +
   "The planting area is approximately 14.2 metres long.\n\n" +
   "The plant she wanted was Michelia gracipes.\n\n" +
@@ -159,7 +159,7 @@ const MICHELIA_TRANSCRIPT =
 test("Michelia planting — 14.2m/500mm and 12h labour on main; optional border has no planting measurement", () => {
   const plan = buildQuotePlan({
     extraction: extraction({
-      client_name: "Stephanie",
+      client_name: "Client A",
       job_type: "planting",
       quote_title: "Planting Quote",
       primary_quote: {

@@ -11,9 +11,9 @@
   "include": [
     "./planting-parity.test.ts",
     "./quote-draft-shadow.test.ts",
-    "./stephanie-live-transcript.test.ts",
+    "./client-a-live-transcript.test.ts",
     "./planting-cutover.test.ts",
-    "./stephanie-live-transcript.ts",
+    "./client-a-live-transcript.ts",
     "./workflow-presentation.test.ts",
     "./garden-tidy.ts",
     "./trade-calculator.ts",

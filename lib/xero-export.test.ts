@@ -56,7 +56,7 @@ test("extractXeroQuoteId reads common id fields, else null", () => {
 test("a repeat export with the same key does NOT re-fire the webhook", async () => {
   const { store } = inMemoryStore()
   const webhook = countingWebhook({ ok: true, status: 200, text: JSON.stringify({ QuoteID: "Q-1" }) })
-  const payload = { customer: "Adam", total: 1760 }
+  const payload = { customer: "ClientB", total: 1760 }
 
   const first = await dispatchXeroExport({ payload, draftId: "draft-1", webhookUrl: "https://hook", store, postWebhook: webhook.postWebhook })
   assert.equal(first.status, "sent")

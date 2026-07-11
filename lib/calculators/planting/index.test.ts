@@ -161,7 +161,7 @@ test("Michelia transcript: extracts 500mm (50cm) spacing", () => {
   assert.equal(request.spoken_spacing_mm, 500)
 })
 
-test("extracts Stephanie Cotswold planting area plant name and centimetre spacing", () => {
+test("extracts Client A Willow planting area plant name and centimetre spacing", () => {
   const transcript =
     "it was a 14.2 metre planting area, and the plant she wanted planting was Michaelia gracipes. Maybe give both sizes as an option, probably with 50 centimetre spacing"
 
@@ -274,7 +274,7 @@ Include hardfill/removal of old soil at a cost of $154.`)
 
 // QA-9: structural landscaping phrases must never be treated as plant names, so a
 // retaining-wall length sentence cannot fabricate a planting request/area. This is
-// what caused the Adam/Titirangi customer preview to be taken over by the planting
+// what caused the Client B/Titirangi customer preview to be taken over by the planting
 // renderer (it read "16.8m for the retaining wall" as a 16.8m planting row).
 test("does not create a plant calculator request from '16.8m for the retaining wall'", () => {
   const requests = extractPlantCalculatorRequestsFromText(
@@ -293,7 +293,7 @@ test("'the retaining wall' is not accepted as a plant name (no request, and neve
   )
 })
 
-test("Adam-style optional Ficus hedge without a count/length produces no fabricated planting request", () => {
+test("Client B-style optional Ficus hedge without a count/length produces no fabricated planting request", () => {
   const requests = extractPlantCalculatorRequestsFromText(
     "It would be great to also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the length is going to be 16.8m for the retaining wall.",
   )

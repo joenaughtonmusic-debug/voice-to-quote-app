@@ -15,8 +15,8 @@ import { matchPlantRowsFromLibrary, type KnowledgePlantRow } from "../plants"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
 import { quoteOptionsFromPlantCalculatorResults } from "../trades/planting/quote-options"
 import type { QuoteTemplateLibraryItem } from "../template-import-learning"
-import { stephanieLiveTranscript } from "./stephanie-live-transcript"
-import { buildStephanieQuoteFixture } from "./stephanie-live-transcript.test"
+import { clientALiveTranscript } from "./client-a-live-transcript"
+import { buildClientAQuoteFixture } from "./client-a-live-transcript.test"
 
 const PLANTING_ACCEPTANCE_DOC = "docs/PLANTING_MVP_ACCEPTANCE.md"
 
@@ -105,18 +105,18 @@ function includesText(text: string, expected: string) {
   return text.toLowerCase().includes(expected.toLowerCase())
 }
 
-test("QuoteDraft live path: Stephanie uses presentation customer quote instead of thin assembly", () => {
-  const quote = buildStephanieQuoteFixture()
+test("QuoteDraft live path: Client A uses presentation customer quote instead of thin assembly", () => {
+  const quote = buildClientAQuoteFixture()
   const previewInput = buildCustomerPreviewQuoteInput({
     processedQuote: quote,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     selectedTemplate: plantingTemplate,
   })
   const customerPreview = buildCustomerQuotePreview(previewInput)
   const previewModel = buildCustomerDraftPreviewModel({
     processedQuote: quote,
     customerPreview,
-    rawTranscript: stephanieLiveTranscript,
+    rawTranscript: clientALiveTranscript,
     selectedTemplate: previewInput.selected_template,
   })
   const rendered = renderCustomerDraftPreviewText(previewModel)

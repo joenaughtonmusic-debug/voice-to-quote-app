@@ -36,8 +36,8 @@ const plantingTemplate: QuoteTemplateLibraryItem = {
   status: "active",
 }
 
-const stephanieTranscript =
-  "Okay, I went to Stephanie's place yesterday, number 10 Cotswold Lane in Mount Wellington, and she had a few jobs that she wanted done, but one of which was this planting job, and it was a 14.2 metre planting area, and the plant she wanted planting was Michelia gracipes. I'm not sure what we've got in the database, but not the biggest one. Maybe give both sizes as an option, probably with 50 centimetre spacing, so however that works along the length. And then there was an optional note for a 150 by 50 timber board border to do later. I estimate that the labour would be one person, 1.5 days, because there's a few roots that we have to dig through, and she'll also need five bags of garden mix."
+const clientATranscript =
+  "Okay, I went to see Client A at 10 Willow Lane in Mount Wellington yesterday, and she had a few jobs that she wanted done, but one of which was this planting job, and it was a 14.2 metre planting area, and the plant she wanted planting was Michelia gracipes. I'm not sure what we've got in the database, but not the biggest one. Maybe give both sizes as an option, probably with 50 centimetre spacing, so however that works along the length. And then there was an optional note for a 150 by 50 timber board border to do later. I estimate that the labour would be one person, 1.5 days, because there's a few roots that we have to dig through, and she'll also need five bags of garden mix."
 
 const amyFicusRows: KnowledgePlantRow[] = [
   micheliaPlantRow("PLANT-028", "Ficus Tuffi 1.2m Hedge plant", "Ficus Tuffi 1.2m", "1.2m", 34.88, 850),
@@ -45,7 +45,7 @@ const amyFicusRows: KnowledgePlantRow[] = [
   micheliaPlantRow("PLANT-060", "Ficus Tuffi 25L Hedge plant", "Ficus Tuffi 25L", "25L", 118.75, 850),
 ]
 
-const stephanieMicheliaRows: KnowledgePlantRow[] = [
+const clientAMicheliaRows: KnowledgePlantRow[] = [
   micheliaPlantRow("PLANT-101", "Michelia gracipes 2L", "Michelia gracipes 2L", "2L", 18.5, 600),
   micheliaPlantRow("PLANT-102", "Michelia gracipes 4L", "Michelia gracipes 4L", "4L", 32.0, 600),
 ]
@@ -240,7 +240,7 @@ export function compareAssemblyToPresentation(
   return { presentationFields, assemblyFields, lostInAssembly }
 }
 
-function stephanieStructuredCalculatorFixture() {
+function clientAStructuredCalculatorFixture() {
   const request = {
     plant_name: "Michelia gracipes",
     length_m: 14.2,
@@ -251,20 +251,20 @@ function stephanieStructuredCalculatorFixture() {
 
   const result = calculatePlantingQuote({
     ...request,
-    plant_library_match: matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name),
+    plant_library_match: matchPlantRowsFromLibrary(clientAMicheliaRows, request.plant_name),
   })
 
   return { request, result, quoteOptions: quoteOptionsFromPlantCalculatorResults([result]) }
 }
 
-function stephanieQuote(): ProcessedQuote {
-  const address = extractAddressDetails(stephanieTranscript)
-  const { result, quoteOptions } = stephanieStructuredCalculatorFixture()
+function clientAQuote(): ProcessedQuote {
+  const address = extractAddressDetails(clientATranscript)
+  const { result, quoteOptions } = clientAStructuredCalculatorFixture()
 
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: extractClientNameFromTranscript(stephanieTranscript) ?? "Stephanie",
-    site_address: address.cleaned_address ?? "10 Cotswold Lane, Mount Wellington",
+    client_name: extractClientNameFromTranscript(clientATranscript) ?? "Client A",
+    site_address: address.cleaned_address ?? "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {
@@ -316,13 +316,13 @@ function amyQuote(transcript: string): ProcessedQuote {
   }
 }
 
-test("Stephanie live-path presentation model retains planting length plant name spacing options labour materials and optional works", () => {
-  const quote = stephanieQuote()
-  const { model, customerPreview } = buildLivePathPresentationModel(stephanieTranscript, quote)
+test("Client A live-path presentation model retains planting length plant name spacing options labour materials and optional works", () => {
+  const quote = clientAQuote()
+  const { model, customerPreview } = buildLivePathPresentationModel(clientATranscript, quote)
 
-  assert.ok(model, "Stephanie quote should produce a planting presentation model")
+  assert.ok(model, "Client A quote should produce a planting presentation model")
   assert.equal(model!.workflow, "planting")
-  assert.equal(model!.clientName, "Stephanie")
+  assert.equal(model!.clientName, "Client A")
 
   const customerLines = customerViewLines(model!)
   const internalLines = internalViewLines(model!)
@@ -368,14 +368,14 @@ test("Amy live-path presentation model retains three priced options length mater
   assert.ok(exportViewLines(model!).filter((line) => line.role === "plant_option").length >= 3)
 })
 
-test("Stephanie assembly comparison documents fields lost by current customer assembly", () => {
-  const quote = stephanieQuote()
-  const { model, previewInput, customerPreview } = buildLivePathPresentationModel(stephanieTranscript, quote)
+test("Client A assembly comparison documents fields lost by current customer assembly", () => {
+  const quote = clientAQuote()
+  const { model, previewInput, customerPreview } = buildLivePathPresentationModel(clientATranscript, quote)
   assert.ok(model)
 
   const assembly = assembleCustomerQuote({
     quote,
-    rawTranscript: stephanieTranscript,
+    rawTranscript: clientATranscript,
     selectedTemplate: previewInput.selected_template,
     pricingFacts: customerPreview.pricingFacts.map((fact) => ({
       id: fact.id,

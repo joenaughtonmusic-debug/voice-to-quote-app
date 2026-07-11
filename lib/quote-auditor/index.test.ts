@@ -8,7 +8,7 @@ import type { AuditContext } from "./types"
 
 // ─── Transcript constants ────────────────────────────────────────────────────
 
-const MICHELIA_TRANSCRIPT = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const MICHELIA_TRANSCRIPT = `Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This is a planting quote for the front garden bed.
 
@@ -32,9 +32,9 @@ This is a planting job, not a garden tidy.
 Use the spoken 50 centimetre spacing.
 Keep the timber board border as optional work.`
 
-const ADAM_TRANSCRIPT = `Okay, this is a quote for Adam at 20 Lemnos Street in Titirangi. So the main job is levelling the back lawn. Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. And we also need to install some polythene along the fence to protect the fence. Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. So we're looking at doing a 50mm depth across the area, and the area is approximately 6m by 16.8m. And the retaining wall is going to sit 900mm off the fence, and the length is going to be 16.8m for the retaining wall. And it would be great to also have the option for lawn mix to go on top of the area, but in the actual quote we'll use topsoil. And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. I imagine a 5kg bag, $129 for the bag, and it would be great if you could also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the labour for that being two people one day.`
+const ADAM_TRANSCRIPT = `Okay, this is a quote for Client B at 20 Poplar Street in Titirangi. So the main job is levelling the back lawn. Before we do that though, we need to construct a small timber retaining wall, approximately 400mm high, using two 200x50 retaining timbers with 100x100 timber posts along that length. And we also need to install some polythene along the fence to protect the fence. Once we've installed the retaining wall, we can then look to put down a whole bunch of topsoil. So we're looking at doing a 50mm depth across the area, and the area is approximately 6m by 16.8m. And the retaining wall is going to sit 900mm off the fence, and the length is going to be 16.8m for the retaining wall. And it would be great to also have the option for lawn mix to go on top of the area, but in the actual quote we'll use topsoil. And we also need to have a count for some lawn seed, but we'll just use the cheap lawn seed. I imagine a 5kg bag, $129 for the bag, and it would be great if you could also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the labour for that being two people one day.`
 
-const GARDEN_BED_TRANSCRIPT = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const GARDEN_BED_TRANSCRIPT = `Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This quote is for the left-hand garden bed renovation.
 
@@ -246,13 +246,13 @@ function bogusPlantNameQuote(): ProcessedQuote {
   } as unknown as ProcessedQuote
 }
 
-// Mirrors lib/golden-quotes/fixtures/adam-titirangi.ts: the current BAD output —
+// Mirrors lib/golden-quotes/fixtures/client-b-titirangi.ts: the current BAD output —
 // misclassified as decking, suburb dropped, topsoil/lawn seed absent.
-function adamBadQuote(): ProcessedQuote {
+function clientBBadQuote(): ProcessedQuote {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Adam",
-    site_address: "20 Lemnos Street",
+    client_name: "Client B",
+    site_address: "20 Poplar Street",
     quote_title: "Retaining Wall Quote",
     job_type: "decking",
     primary_quote: {
@@ -481,10 +481,10 @@ test("Michelia clean case: missing_information does not include labour quantity/
   assert.equal(hasLabourQtyEntry, false, "missing_information must not include labour quantity/hours when labour is recovered")
 })
 
-// ── V04 classification conflicts (Adam/Titirangi) ────────────────────────────
+// ── V04 classification conflicts (Client B/Titirangi) ────────────────────────────
 
-test("V04: flags decking output on a non-decking transcript (Adam/Titirangi)", () => {
-  const result = auditProcessedQuote(ctx(adamBadQuote(), ADAM_TRANSCRIPT))
+test("V04: flags decking output on a non-decking transcript (Client B/Titirangi)", () => {
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
 
   const issue = result.issues.find((i) => i.id === "V04-decking-on-non-decking")
   assert.ok(issue, "Must flag decking output when the transcript has no decking intent")
@@ -499,7 +499,7 @@ test("V04: flags decking output on a non-decking transcript (Adam/Titirangi)", (
 
 test("V04: does NOT flag when the transcript genuinely mentions decking", () => {
   const result = auditProcessedQuote(
-    ctx(adamBadQuote(), "Build a new deck with decking boards and joists over the patio."),
+    ctx(clientBBadQuote(), "Build a new deck with decking boards and joists over the patio."),
   )
   assert.equal(
     result.issues.find((i) => i.id === "V04-decking-on-non-decking"),
@@ -508,10 +508,10 @@ test("V04: does NOT flag when the transcript genuinely mentions decking", () => 
   )
 })
 
-// ── V06 customer preview safety (Adam/Titirangi) ─────────────────────────────
+// ── V06 customer preview safety (Client B/Titirangi) ─────────────────────────────
 
 test("V06: flags 'Plant multiple Deck area 1' in customer scope", () => {
-  const result = auditProcessedQuote(ctx(adamBadQuote(), ADAM_TRANSCRIPT))
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
 
   const issue = result.issues.find((i) => i.id === "V06-decking-scope-leak")
   assert.ok(issue, "Must flag decking artefacts in customer-facing scope")
@@ -520,7 +520,7 @@ test("V06: flags 'Plant multiple Deck area 1' in customer scope", () => {
 })
 
 test("V06: flags missing topsoil/lawn establishment when transcript mentions them", () => {
-  const result = auditProcessedQuote(ctx(adamBadQuote(), ADAM_TRANSCRIPT))
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
 
   const issue = result.issues.find((i) => i.id === "V06-missing-topsoil-lawn-scope")
   assert.ok(issue, "Must flag topsoil/lawn establishment missing from the customer preview")
@@ -529,14 +529,14 @@ test("V06: flags missing topsoil/lawn establishment when transcript mentions the
 })
 
 test("V06: flags missing lawn seed spoken in the transcript", () => {
-  const result = auditProcessedQuote(ctx(adamBadQuote(), ADAM_TRANSCRIPT))
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
   const issue = result.issues.find((i) => i.id === "V06-missing-lawn-seed")
   assert.ok(issue, "Must flag lawn seed omitted from customer-facing output")
   assert.equal(issue!.category, "customer_preview")
 })
 
 test("V06: flags optional Ficus hedge that is present but never calculated/warned", () => {
-  const result = auditProcessedQuote(ctx(adamBadQuote(), ADAM_TRANSCRIPT))
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
   const issue = result.issues.find((i) => i.id === "V06-optional-hedge-unwarned")
   assert.ok(issue, "Must flag an optional hedge with no plant count/spacing calc or warning")
   assert.equal(issue!.category, "customer_preview")
@@ -548,23 +548,23 @@ test("V06: clean planting quote does not trip customer-preview safety", () => {
   assert.equal(v06.length, 0, `Michelia must not trip V06: ${JSON.stringify(v06.map((i) => i.id))}`)
 })
 
-// ── V08 address / suburb (Adam/Titirangi) ────────────────────────────────────
+// ── V08 address / suburb (Client B/Titirangi) ────────────────────────────────────
 
 test("V08: flags missing suburb Titirangi", () => {
-  const result = auditProcessedQuote(ctx(adamBadQuote(), ADAM_TRANSCRIPT))
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
 
   const issue = result.issues.find((i) => i.id === "V08-suburb-missing")
   assert.ok(issue, "Must flag suburb missing from the extracted address")
   assert.equal(issue!.severity, "warning")
   assert.equal(issue!.category, "address")
-  assert.match(issue!.evidence ?? "", /20 Lemnos Street in Titirangi/i)
+  assert.match(issue!.evidence ?? "", /20 Poplar Street in Titirangi/i)
   assert.match(issue!.expected ?? "", /Titirangi/i)
-  assert.match(issue!.actual ?? "", /missing|Not captured|Lemnos/i)
+  assert.match(issue!.actual ?? "", /missing|Not captured|Poplar/i)
 })
 
 test("V08: does NOT flag when the suburb is already in the address", () => {
-  const quote = adamBadQuote()
-  ;(quote as unknown as Record<string, unknown>).site_address = "20 Lemnos Street, Titirangi"
+  const quote = clientBBadQuote()
+  ;(quote as unknown as Record<string, unknown>).site_address = "20 Poplar Street, Titirangi"
   const result = auditProcessedQuote(ctx(quote, ADAM_TRANSCRIPT))
   assert.equal(
     result.issues.find((i) => i.id === "V08-suburb-missing"),
@@ -578,6 +578,6 @@ test("V08: does not fire on comma-form address without an 'in <suburb>' phrase",
   assert.equal(
     result.issues.find((i) => i.id === "V08-suburb-missing"),
     undefined,
-    "Michelia address ('10 Cotswold Lane, Mount Wellington') must not trip V08",
+    "Michelia address ('10 Willow Lane, Mount Wellington') must not trip V08",
   )
 })

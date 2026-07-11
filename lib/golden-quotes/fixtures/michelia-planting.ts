@@ -8,7 +8,7 @@ import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../../processed-quot
 import { quoteOptionsFromPlantCalculatorResults } from "../../trades/planting/quote-options"
 import type { GoldenQuoteFixture } from "../contracts"
 
-const TRANSCRIPT = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const TRANSCRIPT = `Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This is a planting quote for the front garden bed.
 
@@ -83,8 +83,8 @@ function buildProcessedQuote(): ProcessedQuote {
 
   const quote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {
@@ -175,8 +175,8 @@ const MICHELIA_KNOWLEDGE_ITEMS = [
 function micheliaExtractedQuote() {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {

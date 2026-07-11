@@ -71,7 +71,7 @@ test("does not detect decking from electrical transcript", () => {
 })
 
 test("does not detect decking from a lawn/retaining job with area + posts but no deck intent", () => {
-  // Adam/Titirangi: "6m by 16.8m" topsoil area + "100x100 timber posts" (retaining)
+  // Client B/Titirangi: "6m by 16.8m" topsoil area + "100x100 timber posts" (retaining)
   // must NOT classify as decking — there is no deck/decking/joists/bearers/subframe.
   const transcript =
     "Levelling the back lawn. Construct a small timber retaining wall 400mm high using 100x100 timber posts. Topsoil across an area approximately 6m by 16.8m."

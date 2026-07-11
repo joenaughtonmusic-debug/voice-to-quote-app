@@ -194,8 +194,8 @@ test("normaliseDraftQuotePlan defaults a missing bucket kind and records the cha
   assert.equal(changed, true)
 })
 
-// 7. Adam/Titirangi-style mocked AI plan validates end-to-end.
-test("Adam/Titirangi-style mocked AI plan validates and is accepted", () => {
+// 7. Client B/Titirangi-style mocked AI plan validates end-to-end.
+test("Client B/Titirangi-style mocked AI plan validates and is accepted", () => {
   const draft = {
     quoteType: "landscaping",
     quoteTypeConfidence: "high",

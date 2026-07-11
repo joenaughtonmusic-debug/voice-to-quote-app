@@ -5,7 +5,7 @@ import { EMPTY_PROCESSED_QUOTE } from "../processed-quote"
 import { processTranscriptToQuote, type ProcessTranscriptDeps } from "./process-transcript"
 import { buildQuotePlan } from "../quote-plan/build-plan"
 
-const MICHELIA_TRANSCRIPT = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const MICHELIA_TRANSCRIPT = `Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This is a planting quote for the front garden bed.
 
@@ -45,8 +45,8 @@ const KNOWLEDGE_ITEMS = [
 function micheliaExtractedQuote() {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {

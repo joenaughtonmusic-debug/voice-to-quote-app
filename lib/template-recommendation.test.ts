@@ -531,7 +531,7 @@ test("stale AI-selected Decking template is ignored for hedge_trimming one-off t
   assert.deepEqual(selection, { templateId: "", source: "stale_ai" })
 })
 
-const stephaniePlantingFacts = [
+const clientAPlantingFacts = [
   fact("job_scope", "14.2 metre planting area of Michaelia gracipes"),
   fact("materials", "Five bags of garden mix"),
   fact("labour", "One person, 1.5 days labour"),
@@ -541,29 +541,29 @@ const stephaniePlantingFacts = [
   },
 ]
 
-const stephaniePlantingSignals = {
+const clientAPlantingSignals = {
   hasPlantCalculatorResults: true,
   hasPlantingQuoteOptions: true,
   hasPlantNameOrLength: true,
 }
 
-test("Stephanie planting quote recommends Planting not One-Off Garden Tidy", () => {
+test("Client A planting quote recommends Planting not One-Off Garden Tidy", () => {
   const templates = [maintenanceTemplate, gardenTidyTemplate, plantingTemplate]
   const recommendation = recommendTemplateForQuote({
-    facts: stephaniePlantingFacts,
+    facts: clientAPlantingFacts,
     templates,
     sectionsByTemplateId: {},
     jobType: "planting",
     trade: "planting",
-    plantingSignals: stephaniePlantingSignals,
+    plantingSignals: clientAPlantingSignals,
   })
   const scores = scoreTemplatesForQuote({
-    facts: stephaniePlantingFacts,
+    facts: clientAPlantingFacts,
     templates,
     sectionsByTemplateId: {},
     jobType: "planting",
     trade: "planting",
-    plantingSignals: stephaniePlantingSignals,
+    plantingSignals: clientAPlantingSignals,
   })
 
   assert.equal(recommendation?.template.id, plantingTemplate.id)
@@ -619,7 +619,7 @@ test("stale AI-selected One-Off Garden Tidy is ignored for planting workflow", (
   const selection = resolveTemplateSelection({
     templates: [gardenTidyTemplate, plantingTemplate],
     selectedTemplateName: "One-Off Garden Tidy",
-    facts: stephaniePlantingFacts,
+    facts: clientAPlantingFacts,
     jobType: "planting",
     trade: "planting",
   })
@@ -629,17 +629,17 @@ test("stale AI-selected One-Off Garden Tidy is ignored for planting workflow", (
 
 test("manual Planting template selection still wins over garden tidy recommendation context", () => {
   const recommendation = recommendTemplateForQuote({
-    facts: stephaniePlantingFacts,
+    facts: clientAPlantingFacts,
     templates: [gardenTidyTemplate, plantingTemplate],
     sectionsByTemplateId: {},
     jobType: "planting",
     trade: "planting",
-    plantingSignals: stephaniePlantingSignals,
+    plantingSignals: clientAPlantingSignals,
   })
   const selection = resolveTemplateSelection({
     templates: [gardenTidyTemplate, plantingTemplate],
     recommendation,
-    facts: stephaniePlantingFacts,
+    facts: clientAPlantingFacts,
     jobType: "planting",
     trade: "planting",
     currentTemplateId: gardenTidyTemplate.id,

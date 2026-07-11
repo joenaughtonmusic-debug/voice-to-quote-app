@@ -12,7 +12,7 @@ import {
   buildQuotePresentationModel,
   collectPresentationReviewNotes,
 } from "../../quote-presentation"
-import { stephanieLiveTranscript } from "../../quote-presentation/stephanie-live-transcript"
+import { clientALiveTranscript } from "../../quote-presentation/client-a-live-transcript"
 import { quoteOptionsFromPlantCalculatorResults } from "./quote-options"
 import { applyPlantingMaterialOptions } from "./apply-material-options"
 
@@ -44,7 +44,7 @@ const deliveryItem = {
   item_type: "material",
 }
 
-const stephanieMicheliaRows: KnowledgePlantRow[] = [
+const clientAMicheliaRows: KnowledgePlantRow[] = [
   {
     item_code: "PLANT-102",
     item_name: "Michelia gracipes 4L",
@@ -64,17 +64,17 @@ const stephanieMicheliaRows: KnowledgePlantRow[] = [
   },
 ]
 
-function buildStephanieQuote(): ProcessedQuote {
-  const [request] = extractPlantCalculatorRequestsFromText(stephanieLiveTranscript)
+function buildClientAQuote(): ProcessedQuote {
+  const [request] = extractPlantCalculatorRequestsFromText(clientALiveTranscript)
   assert.ok(request)
-  const libraryMatch = matchPlantRowsFromLibrary(stephanieMicheliaRows, request.plant_name ?? "")
+  const libraryMatch = matchPlantRowsFromLibrary(clientAMicheliaRows, request.plant_name ?? "")
   const result = calculatePlantingQuote({ ...request, plant_library_match: libraryMatch })
 
   return {
     ...EMPTY_PROCESSED_QUOTE,
     line_items: [],
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Planting Quote",
     job_type: "planting",
     primary_quote: {
@@ -94,10 +94,10 @@ function buildStephanieQuote(): ProcessedQuote {
 }
 
 test("applyPlantingMaterialOptions prices five bags of garden mix from knowledge item", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
   const plantingOptionsBefore = (quote.quote_options ?? []).filter((option) => option.category === "planting")
 
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [gardenMixItem])
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [gardenMixItem])
 
   const gardenMix = quote.line_items.find((item) => /garden mix/i.test(item.item_name))
   assert.ok(gardenMix)
@@ -115,18 +115,18 @@ test("applyPlantingMaterialOptions prices five bags of garden mix from knowledge
 })
 
 test("applyPlantingMaterialOptions works for planting job_type without landscaping classification", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
   assert.equal(quote.job_type, "planting")
 
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [gardenMixItem])
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [gardenMixItem])
 
   assert.ok(quote.line_items.some((item) => /garden mix/i.test(item.item_name) && Number(item.final_rate_used) === 18))
 })
 
 test("applyPlantingMaterialOptions matches garden mix transcript to Planting mix knowledge alias", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
 
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [plantingMixAliasItem])
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [plantingMixAliasItem])
 
   const gardenMix = quote.line_items.find((item) => /planting mix|garden mix/i.test(item.item_name))
   assert.ok(gardenMix)
@@ -134,9 +134,9 @@ test("applyPlantingMaterialOptions matches garden mix transcript to Planting mix
 })
 
 test("applyPlantingMaterialOptions leaves material unpriced when no knowledge match exists", () => {
-  const quote = buildStephanieQuote()
+  const quote = buildClientAQuote()
 
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [])
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [])
 
   const gardenMix = quote.line_items.find((item) => /garden mix/i.test(item.item_name))
   assert.ok(gardenMix)
@@ -144,7 +144,7 @@ test("applyPlantingMaterialOptions leaves material unpriced when no knowledge ma
   assert.equal(gardenMix.final_rate_used, null)
   assert.equal(gardenMix.warning, "Rate missing")
 
-  const model = buildQuotePresentationModel({ quote, rawTranscript: stephanieLiveTranscript })
+  const model = buildQuotePresentationModel({ quote, rawTranscript: clientALiveTranscript })
   assert.ok(model)
   const rendered = buildPresentationCustomerPreview(model)
     .flatMap((section) => section.items.map((item) => item.title))
@@ -155,8 +155,8 @@ test("applyPlantingMaterialOptions leaves material unpriced when no knowledge ma
 })
 
 test("applyPlantingMaterialOptions prefers spoken unit price over knowledge item rate", () => {
-  const quote = buildStephanieQuote()
-  const transcript = `${stephanieLiveTranscript.replace(/\.$/, "")}, and price five bags of garden mix at $15 each.`
+  const quote = buildClientAQuote()
+  const transcript = `${clientALiveTranscript.replace(/\.$/, "")}, and price five bags of garden mix at $15 each.`
 
   applyPlantingMaterialOptions(quote, transcript, [gardenMixItem])
 
@@ -167,8 +167,8 @@ test("applyPlantingMaterialOptions prefers spoken unit price over knowledge item
 })
 
 test("resolved plant delivery suppresses missing delivery review note", () => {
-  const quote = buildStephanieQuote()
-  const transcript = `${stephanieLiveTranscript} Include plant delivery.`
+  const quote = buildClientAQuote()
+  const transcript = `${clientALiveTranscript} Include plant delivery.`
 
   applyPlantingMaterialOptions(quote, transcript, [gardenMixItem, deliveryItem])
 
@@ -182,10 +182,10 @@ test("resolved plant delivery suppresses missing delivery review note", () => {
 })
 
 test("resolved garden mix surfaces as customer included material in presentation model", () => {
-  const quote = buildStephanieQuote()
-  applyPlantingMaterialOptions(quote, stephanieLiveTranscript, [gardenMixItem])
+  const quote = buildClientAQuote()
+  applyPlantingMaterialOptions(quote, clientALiveTranscript, [gardenMixItem])
 
-  const model = buildQuotePresentationModel({ quote, rawTranscript: stephanieLiveTranscript })
+  const model = buildQuotePresentationModel({ quote, rawTranscript: clientALiveTranscript })
   assert.ok(model)
 
   const rendered = buildPresentationCustomerPreview(model)

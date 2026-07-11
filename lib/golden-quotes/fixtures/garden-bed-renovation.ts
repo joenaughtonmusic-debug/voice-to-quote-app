@@ -3,7 +3,7 @@ import { extractPricing } from "../../core/pricing-extraction"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../../processed-quote"
 import type { GoldenQuoteFixture } from "../contracts"
 
-const TRANSCRIPT = `Went to see Stephanie at 10 Cotswold Lane, Mount Wellington.
+const TRANSCRIPT = `Went to see Client A at 10 Willow Lane, Mount Wellington.
 
 This quote is for the left-hand garden bed renovation.
 
@@ -48,8 +48,8 @@ function buildProcessedQuote(): ProcessedQuote {
 
   const quote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Garden Bed Renovation",
     job_type: "general_landscaping",
     primary_quote: {
@@ -143,8 +143,8 @@ const GARDEN_BED_KNOWLEDGE_ITEMS = [
 function gardenBedExtractedQuote() {
   return {
     ...EMPTY_PROCESSED_QUOTE,
-    client_name: "Stephanie",
-    site_address: "10 Cotswold Lane, Mount Wellington",
+    client_name: "Client A",
+    site_address: "10 Willow Lane, Mount Wellington",
     quote_title: "Garden Bed Renovation",
     job_type: "general_landscaping",
     primary_quote: {
