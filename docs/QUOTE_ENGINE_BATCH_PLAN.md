@@ -159,6 +159,56 @@ Goal:
 
 **Status: design-only pending**
 
+### AI-1 — render_intent mixed-trade guard (controlled-mode regression)
+Context: controlled mode (`ENABLE_AI_QUOTE_PLAN`, dev-only) lets an accepted/normalised AI
+QuotePlan drive the quote. Live verification of 5 real transcripts found one customer-facing
+regression: **Sarah/Ellerslie** (planting + paving) — the AI plan's planting main bucket set
+`render_intent.mainIsPlanting = true`, so `selectCustomerRendererPath` chose
+`planting-presentation` and **the paver area (1.5m × 3.5m) fell out of the customer scope**.
+
+Goal:
+- A planting main bucket must NOT collapse a job that also has non-planting structural work
+  (paving/retaining/decking/hard fill/topsoil/concrete/fencing). Sarah must keep the paver area.
+- Plan-source-agnostic: protect both the AI-driven and deterministic paths.
+
+Plan:
+- Add a pure detector `hasNonPlantingStructuralScope(...)`, reusing the existing
+  `isStructuralNonPlantLabel` helper so the structural definition stays single-sourced.
+- Apply at the `render_intent` derivation in `lib/pipeline/process-transcript.ts`:
+  `mainIsPlanting = isPlantingBucket(...) && !hasNonPlantingStructuralScope(...)`.
+- Belt-and-suspenders (kept in scope): also guard
+  `selectCustomerRendererPath`/`isPrimaryPlantingQuote` in `lib/customer-renderer-intent.ts` so
+  a mixed job can't route to plants-only from any angle, even with an externally-supplied
+  render_intent.
+
+Done criteria:
+- Unit/pipeline test: Sarah-style plan (planting main + paving scope) → `mainIsPlanting === false`
+  → assembly (mixed) renderer → paver retained.
+- Regression: Michelia (pure planting) stays `planting-presentation`; golden Client B unaffected;
+  planting-parity / cutover / golden suites green.
+- **Live re-run of the Sarah/Ellerslie transcript with controlled mode on — the paver area is
+  actually back in the customer scope** (not just unit tests passing).
+- `npm run build`; commit on its own.
+
+**Status: approved — active (next).**
+
+### AI-2 — AI-plan optional-works passthrough
+Context: same verification found the AI plan's optional buckets (Finn's water-blasting, Dane's
+optional edging) do NOT reach the customer `optional_quotes` — they only feed internal
+`optional_priced_works`.
+
+Goal:
+- When the AI plan drives, map its `optional` buckets into customer-facing `optional_quotes`
+  WITHOUT changing `quote_options` semantics or breaking the existing de-dup / customer-optional-works
+  contract (guardrail).
+
+Plan (scope fully after AI-1 lands, since AI-1 may change how mixed jobs render optionals):
+- Bucket → QuoteOption mapping, de-duplicated against optionals the extraction already produced,
+  reconciled with the Slice-3a/3b priced-optional-works path.
+- Tests + golden + `test:customer-optional-works`.
+
+**Status: approved — queued (do NOT start before AI-1 lands).**
+
 ### Later — KB / Price List Schema v2
 Goal:
 - canonical item names
