@@ -1,6 +1,6 @@
 # Trade Module Scaffold
 
-This guide is the practical starting point for adding a new Quotecord trade module such as fencing, paving, electrical, plumbing, painting, cleaning, arborist work, or another specialist trade.
+This guide is the practical starting point for adding a new Talk to Quote trade module such as fencing, paving, electrical, plumbing, painting, cleaning, arborist work, or another specialist trade.
 
 Use this alongside `docs/TRADE_MODULE_CONTRACT.md`. The contract defines the rules; this guide defines the repeatable folder shape and implementation order.
 

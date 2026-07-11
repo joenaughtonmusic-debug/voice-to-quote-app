@@ -1,8 +1,8 @@
-# Quotecord Product Vision
+# Talk to Quote Product Vision
 
 ## Vision
 
-Quotecord helps trade businesses quote faster, more consistently, and with less admin by turning real-world site conversations into accurate, editable quote drafts.
+Talk to Quote helps trade businesses quote faster, more consistently, and with less admin by turning real-world site conversations into accurate, editable quote drafts.
 
 ## Product Principles
 

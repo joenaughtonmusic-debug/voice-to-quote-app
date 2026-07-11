@@ -7,7 +7,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'VoiceQuote — Voice to Quote for Trades',
+  title: 'Talk to Quote — Voice to Quote for Trades',
   description:
     'Record a job on-site and turn your voice into a ready-to-send quote. Built for NZ trades and property maintenance businesses.',
   generator: 'v0.app',

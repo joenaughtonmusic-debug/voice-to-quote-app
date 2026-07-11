@@ -1,4 +1,4 @@
-# Quotecord Changelog
+# Talk to Quote Changelog
 
 ## Unreleased
 

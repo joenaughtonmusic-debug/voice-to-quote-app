@@ -1,8 +1,8 @@
-# Quotecord Project Overview
+# Talk to Quote Project Overview
 
 ## Purpose
 
-Quotecord is an AI-powered voice-to-quote application that helps trade businesses turn spoken site notes into structured quote drafts.
+Talk to Quote is an AI-powered voice-to-quote application that helps trade businesses turn spoken site notes into structured quote drafts.
 
 ## Core Workflow
 

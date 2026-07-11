@@ -1,6 +1,6 @@
-# Quotecord Master Context
+# Talk to Quote Master Context
 
-This document is the master product context for Quotecord. It is intended to be read by future AI agents, developers, founders, contractors, investors, product managers, and anyone else who needs to understand what Quotecord is, why it exists, how it works, and how it should evolve.
+This document is the master product context for Talk to Quote. It is intended to be read by future AI agents, developers, founders, contractors, investors, product managers, and anyone else who needs to understand what Talk to Quote is, why it exists, how it works, and how it should evolve.
 
 It should be treated as a living product document. When major product decisions, architectural changes, or strategic assumptions change, this file should be updated.
 
@@ -10,21 +10,21 @@ It should be treated as a living product document. When major product decisions,
 
 ### Product Name
 
-Quotecord
+Talk to Quote
 
 ### Mission
 
-Quotecord helps trade businesses turn voice notes, site visit observations, and customer conversations into structured quote drafts with far less manual admin.
+Talk to Quote helps trade businesses turn voice notes, site visit observations, and customer conversations into structured quote drafts with far less manual admin.
 
 The mission is to make quoting faster, more consistent, and more accurate without forcing tradespeople to change how they naturally work in the field.
 
 ### Vision
 
-The long-term vision is for Quotecord to become the voice-first quote intelligence layer for trade businesses.
+The long-term vision is for Talk to Quote to become the voice-first quote intelligence layer for trade businesses.
 
-Quotecord should sit between real-world site work and job management systems. It should understand spoken job details, business templates, price lists, supplier data, trade-specific terminology, and user preferences, then produce a clean draft quote that can be reviewed and pushed into a user’s existing workflow.
+Talk to Quote should sit between real-world site work and job management systems. It should understand spoken job details, business templates, price lists, supplier data, trade-specific terminology, and user preferences, then produce a clean draft quote that can be reviewed and pushed into a user’s existing workflow.
 
-Quotecord is not intended to replace job management systems. It is intended to make them easier to use by solving the hardest part of quoting: turning messy real-world notes into structured, commercially useful quote data.
+Talk to Quote is not intended to replace job management systems. It is intended to make them easier to use by solving the hardest part of quoting: turning messy real-world notes into structured, commercially useful quote data.
 
 ### Core Problem Being Solved
 
@@ -41,7 +41,7 @@ Common pain points include:
 - Job management systems are powerful but not always quick to use on-site.
 - AI tools are often too generic and do not understand trade quoting structure.
 
-Quotecord exists to reduce the gap between field work and quote creation.
+Talk to Quote exists to reduce the gap between field work and quote creation.
 
 ### Target Users
 
@@ -64,7 +64,7 @@ The product should work particularly well for owner-operators and small teams wh
 
 ### Why the Product Exists
 
-Quotecord exists because the most valuable quote information is often spoken immediately after a site visit, not typed into a system.
+Talk to Quote exists because the most valuable quote information is often spoken immediately after a site visit, not typed into a system.
 
 A tradesperson can describe the job naturally:
 
@@ -72,25 +72,25 @@ A tradesperson can describe the job naturally:
 
 That spoken note contains customer information, site details, plant names, scope, waste allowance, optional quote intent, and recurring service opportunity. But without an intelligent system, that information still needs to be manually translated into a quote.
 
-Quotecord turns that raw spoken context into structured quote data while preserving uncertainty and keeping a human in control.
+Talk to Quote turns that raw spoken context into structured quote data while preserving uncertainty and keeping a human in control.
 
 ---
 
 ## 2. Product Philosophy
 
-Quotecord’s product philosophy is built around a few core decisions.
+Talk to Quote’s product philosophy is built around a few core decisions.
 
 ### Voice-First Workflow
 
 The product is designed around the reality that tradespeople often think and work aloud.
 
-Voice is faster than typing after a site visit. It captures context, cautions, measurements, customer requests, and judgement calls in the moment. Quotecord should make voice the easiest way to create a first draft, while still supporting typed notes, pasted transcripts, and future conversation-style capture.
+Voice is faster than typing after a site visit. It captures context, cautions, measurements, customer requests, and judgement calls in the moment. Talk to Quote should make voice the easiest way to create a first draft, while still supporting typed notes, pasted transcripts, and future conversation-style capture.
 
 Voice-first does not mean voice-only. It means the primary capture workflow should assume that the user is mobile, busy, and still close to the job context.
 
 ### Mobile-First
 
-Quotecord should be usable on a phone immediately after or during a site visit.
+Talk to Quote should be usable on a phone immediately after or during a site visit.
 
 Mobile-first means:
 
@@ -114,7 +114,7 @@ At that point, the user knows:
 - What uncertainty or risk should be priced carefully
 - What optional upsells or recurring work may be relevant
 
-Quotecord should help capture that knowledge before it fades.
+Talk to Quote should help capture that knowledge before it fades.
 
 ### Minimise Admin
 
@@ -147,7 +147,7 @@ Templates should control:
 
 ### Knowledge Base Over Business-Specific Prompts
 
-Quotecord should avoid hardcoded business logic such as:
+Talk to Quote should avoid hardcoded business logic such as:
 
 - Specific company prices
 - Specific user item codes
@@ -166,15 +166,15 @@ Instead, business-specific behaviour should be derived from:
 
 ### JMS Integration Over Standalone Quoting
 
-Quotecord should complement existing job management systems rather than compete with them directly.
+Talk to Quote should complement existing job management systems rather than compete with them directly.
 
-Most trade businesses already use or may eventually use tools such as Tradify, ServiceM8, Fergus, SimPRO, Jobber, or Xero. Quotecord’s strategic value is in making quote creation easier before the quote reaches those systems.
+Most trade businesses already use or may eventually use tools such as Tradify, ServiceM8, Fergus, SimPRO, Jobber, or Xero. Talk to Quote’s strategic value is in making quote creation easier before the quote reaches those systems.
 
-Long term, Quotecord should push clean quote data into a JMS, not force users to maintain two disconnected systems.
+Long term, Talk to Quote should push clean quote data into a JMS, not force users to maintain two disconnected systems.
 
 ### Universal Multi-Industry Approach
 
-Quotecord is designed for multiple trades.
+Talk to Quote is designed for multiple trades.
 
 It should support trade-specific extraction while sharing universal logic for:
 
@@ -193,7 +193,7 @@ The product should not become hardcoded around one company, one trade, or one wo
 
 AI should draft. Humans should approve.
 
-Quotecord should not send customer quotes automatically without human review. The AI can accelerate quote creation, but trade quotes often carry commercial, legal, and reputational risk. The user must be able to review, edit, and approve the quote before export or sending.
+Talk to Quote should not send customer quotes automatically without human review. The AI can accelerate quote creation, but trade quotes often carry commercial, legal, and reputational risk. The user must be able to review, edit, and approve the quote before export or sending.
 
 ### Core Principles
 
@@ -218,7 +218,7 @@ Examples:
 
 #### Preserve Uncertainty Rather Than Guessing
 
-If information is missing or ambiguous, Quotecord should flag it.
+If information is missing or ambiguous, Talk to Quote should flag it.
 
 The system should prefer:
 
@@ -268,7 +268,7 @@ The site visit may include:
 
 ### Record Quote
 
-The user records a spoken summary in Quotecord.
+The user records a spoken summary in Talk to Quote.
 
 The recording flow supports:
 
@@ -407,7 +407,7 @@ This may include:
 
 ### Future Workflow Vision
 
-Long term, Quotecord should support:
+Long term, Talk to Quote should support:
 
 - Voice conversation mode
 - Multi-step quote clarification
@@ -422,7 +422,7 @@ Long term, Quotecord should support:
 
 ## 4. Target Industries
 
-Quotecord is built as a multi-industry platform with shared universal extraction and trade-specific extractors.
+Talk to Quote is built as a multi-industry platform with shared universal extraction and trade-specific extractors.
 
 ### Gardening Maintenance
 
@@ -629,7 +629,7 @@ Common quote types:
 
 ## 5. AI Architecture
 
-Quotecord’s AI architecture is layered. Each layer has a defined responsibility.
+Talk to Quote’s AI architecture is layered. Each layer has a defined responsibility.
 
 ### Transcript
 
@@ -895,7 +895,7 @@ Lighter framework for now.
 
 Templates provide reusable quote structure and business-specific wording.
 
-They help Quotecord produce quote drafts that sound like the user’s business and follow the user’s preferred structure.
+They help Talk to Quote produce quote drafts that sound like the user’s business and follow the user’s preferred structure.
 
 ### What Templates Should Contain
 
@@ -956,7 +956,7 @@ Future learning may include:
 
 ### Purpose
 
-The Knowledge Base is the user-controlled memory layer for Quotecord.
+The Knowledge Base is the user-controlled memory layer for Talk to Quote.
 
 It should hold the information that makes quote drafts specific to a business without hardcoding that business into source code.
 
@@ -1019,9 +1019,9 @@ Knowledge Base should not:
 
 ### Purpose
 
-The JMS Item Library connects Quotecord’s extracted line items to the user’s existing job management system item structure.
+The JMS Item Library connects Talk to Quote’s extracted line items to the user’s existing job management system item structure.
 
-It allows Quotecord to produce quote data that is compatible with systems the business already uses.
+It allows Talk to Quote to produce quote data that is compatible with systems the business already uses.
 
 ### Supported Systems
 
@@ -1039,7 +1039,7 @@ Current or planned import support includes:
 
 Item codes should come from imported libraries.
 
-Quotecord should not invent item codes. If no confident match exists, the item code should remain empty and the line item should be flagged for review.
+Talk to Quote should not invent item codes. If no confident match exists, the item code should remain empty and the line item should be flagged for review.
 
 ### Aliases
 
@@ -1062,7 +1062,7 @@ Aliases may come from:
 
 ### Pricing
 
-Quotecord should use sell/customer prices only.
+Talk to Quote should use sell/customer prices only.
 
 It must not use cost/buy prices as sell prices.
 
@@ -1091,7 +1091,7 @@ The system should prefer specific pricing items over broad service items when th
 
 ### Strategic Advantage
 
-JMS integration is a strategic advantage because it makes Quotecord complementary rather than competitive.
+JMS integration is a strategic advantage because it makes Talk to Quote complementary rather than competitive.
 
 Trade businesses do not need a new system of record. They need a faster way to create structured quote data that can fit into the systems they already use.
 
@@ -1166,7 +1166,7 @@ ceil(11 / 0.8) + 1 = 15 plants
 
 ### Pricing Options
 
-If the user asks for options, Quotecord should return separate option totals.
+If the user asks for options, Talk to Quote should return separate option totals.
 
 Example:
 
@@ -1496,7 +1496,7 @@ The ideal onboarding flow:
 
 Users should be able to upload existing quotes, templates, terms, and exclusions.
 
-Quotecord should extract:
+Talk to Quote should extract:
 
 - Reusable wording
 - Scope patterns
@@ -1542,7 +1542,7 @@ Power users may:
 - Import plant and supplier catalogues
 - Run debug test suites
 - Refine templates over time
-- Use Quotecord as a quote drafting layer before JMS export
+- Use Talk to Quote as a quote drafting layer before JMS export
 
 ---
 
@@ -1552,35 +1552,35 @@ Power users may:
 
 Tradify is a job management system for trades. It supports quoting, scheduling, invoicing, job tracking, and customer management.
 
-Quotecord does not replace Tradify. It can complement Tradify by generating structured quote data from voice notes before pushing the result into Tradify.
+Talk to Quote does not replace Tradify. It can complement Tradify by generating structured quote data from voice notes before pushing the result into Tradify.
 
 ### ServiceM8
 
 ServiceM8 is strong for mobile job management, scheduling, and field service workflows.
 
-Quotecord complements ServiceM8 by focusing on AI-assisted quote drafting from spoken job context.
+Talk to Quote complements ServiceM8 by focusing on AI-assisted quote drafting from spoken job context.
 
 ### Fergus
 
 Fergus supports job tracking, quoting, scheduling, and business management for trades.
 
-Quotecord can become a quote intelligence layer that helps users prepare better quote drafts before sending data into Fergus.
+Talk to Quote can become a quote intelligence layer that helps users prepare better quote drafts before sending data into Fergus.
 
 ### SimPRO
 
 SimPRO is a more comprehensive field service management platform often used by larger trade/service businesses.
 
-Quotecord can complement SimPRO by improving quote intake and field note structuring, especially before formal estimation.
+Talk to Quote can complement SimPRO by improving quote intake and field note structuring, especially before formal estimation.
 
 ### Jobber
 
 Jobber is popular for small service businesses and provides quoting, scheduling, CRM, and invoicing.
 
-Quotecord can complement Jobber by making quote creation faster and more voice-first.
+Talk to Quote can complement Jobber by making quote creation faster and more voice-first.
 
-### Why Quotecord Is Different
+### Why Talk to Quote Is Different
 
-Quotecord is different because it focuses on the moment before structured quoting:
+Talk to Quote is different because it focuses on the moment before structured quoting:
 
 - Site visit notes
 - Voice capture
@@ -1590,11 +1590,11 @@ Quotecord is different because it focuses on the moment before structured quotin
 - JMS item matching
 - Human review
 
-Most JMS platforms assume the user is ready to enter structured data. Quotecord helps create that structured data from messy field context.
+Most JMS platforms assume the user is ready to enter structured data. Talk to Quote helps create that structured data from messy field context.
 
-### Why Quotecord Complements JMS Platforms
+### Why Talk to Quote Complements JMS Platforms
 
-Quotecord should not try to become a full JMS.
+Talk to Quote should not try to become a full JMS.
 
 Instead, it should:
 
@@ -1676,7 +1676,7 @@ Do not treat these as final product-readiness scores.
 
 Major product decisions already made:
 
-- Quotecord is a universal multi-industry product.
+- Talk to Quote is a universal multi-industry product.
 - Do not hardcode Pristine Gardens-specific logic.
 - Templates are the primary structure mechanism.
 - Knowledge Base controls business-specific behaviour.
@@ -1691,7 +1691,7 @@ Major product decisions already made:
 - Service role keys must not be used in the client app.
 - RLS must remain intact.
 - OpenAI API keys stay server-side.
-- Quotecord complements JMS platforms rather than replacing them.
+- Talk to Quote complements JMS platforms rather than replacing them.
 
 ---
 
@@ -1733,7 +1733,7 @@ Major product decisions already made:
 
 ### Job Intelligence Layer
 
-Quotecord should become the job intelligence layer that understands:
+Talk to Quote should become the job intelligence layer that understands:
 
 - What the user saw
 - What the customer asked for
@@ -1750,7 +1750,7 @@ The user might say:
 
 > "Quote this as a one-off tidy, but include a two-monthly maintenance option. Use the standard estimate wording and price greenwaste separately."
 
-Quotecord should understand this instruction and structure the quote accordingly.
+Talk to Quote should understand this instruction and structure the quote accordingly.
 
 ### Self-Improving Extraction
 
@@ -1767,9 +1767,9 @@ Learning must remain user-controlled and transparent.
 
 ### Cross-JMS Compatibility
 
-Quotecord should support multiple JMS systems by mapping to their item libraries and export formats.
+Talk to Quote should support multiple JMS systems by mapping to their item libraries and export formats.
 
-The goal is to make Quotecord valuable regardless of which operational system the business uses.
+The goal is to make Talk to Quote valuable regardless of which operational system the business uses.
 
 ### AI-Assisted Quote Building
 
@@ -1784,7 +1784,7 @@ Future AI should help with:
 
 ### Scheduling and Invoicing Opportunities
 
-Quotecord may eventually support adjacent workflows such as scheduling and invoicing assistance, but it should avoid becoming a full JMS replacement.
+Talk to Quote may eventually support adjacent workflows such as scheduling and invoicing assistance, but it should avoid becoming a full JMS replacement.
 
 The strategic posture is:
 
@@ -1920,7 +1920,7 @@ Over time, these should become repeatable regression suites.
 
 ## Closing Note
 
-Quotecord is not just a transcription app and not just a quote builder.
+Talk to Quote is not just a transcription app and not just a quote builder.
 
 It is a structured intelligence layer between real-world trade conversations and operational systems.
 

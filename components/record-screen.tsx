@@ -1222,7 +1222,7 @@ export function RecordScreen({
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Waypoints className="h-4 w-4" strokeWidth={2.4} />
           </span>
-          <span className="font-mono text-sm font-medium tracking-tight text-foreground">voicequote</span>
+          <span className="font-mono text-sm font-medium tracking-tight text-foreground">Talk to Quote</span>
         </div>
         <span
           className={cn(

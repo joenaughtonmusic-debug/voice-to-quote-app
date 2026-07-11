@@ -1,6 +1,6 @@
 # Quote Engine Reliability Goal
 
-**App:** Voice-to-Quote / VoiceQuote — estimating and quoting engine for Pristine Gardens  
+**App:** Talk to Quote — estimating and quoting engine for Pristine Gardens  
 **Branch:** wip/export-mapping-refactor-from-cursor  
 **Status:** Active development — do not merge to main until full golden suite passes
 

@@ -1,6 +1,6 @@
 # Import Architecture
 
-This document defines Quotecord's universal import architecture for Plant Library imports, JMS item libraries, price lists, supplier catalogues, templates, terms, exclusions, and future business knowledge imports.
+This document defines Talk to Quote's universal import architecture for Plant Library imports, JMS item libraries, price lists, supplier catalogues, templates, terms, exclusions, and future business knowledge imports.
 
 ## Guiding Principles
 

@@ -2,9 +2,9 @@
 
 Last Updated: June 2026
 
-This document defines the first Template Import Learning design for Quotecord.
+This document defines the first Template Import Learning design for Talk to Quote.
 
-Template Import Learning lets users upload existing quote templates or past quotes so Quotecord can learn customer-facing structure, section order, and wording patterns without hardcoding one business, one trade, or one export system.
+Template Import Learning lets users upload existing quote templates or past quotes so Talk to Quote can learn customer-facing structure, section order, and wording patterns without hardcoding one business, one trade, or one export system.
 
 This is a design document only. Phase 1 does not change application behaviour.
 
@@ -12,7 +12,7 @@ This is a design document only. Phase 1 does not change application behaviour.
 
 Template Import Learning is the process of turning uploaded quote examples into reviewed, reusable template configuration.
 
-It should help Quotecord learn:
+It should help Talk to Quote learn:
 
 - how a business structures quotes
 - what section names it uses
@@ -82,7 +82,7 @@ Templates must not be the primary source of:
 - material quantity defaults
 - customer contact identity
 
-If a past quote includes item codes or account codes, Quotecord may display them as evidence during review. They should not silently become authoritative template rules.
+If a past quote includes item codes or account codes, Talk to Quote may display them as evidence during review. They should not silently become authoritative template rules.
 
 ## First MVP Workflow
 
