@@ -102,6 +102,17 @@ function micheliaCleanQuote(): ProcessedQuote {
         warnings: [],
       },
     ],
+    // The transcript asks to keep the timber board border as optional work, so a clean
+    // quote represents it in optional works (matching the golden Michelia fixture).
+    optional_quotes: [
+      {
+        quote_title: "Optional timber board border",
+        job_type: "planting",
+        cadence: "",
+        scope: ["Install a 150x50 timber board border around the planting area."],
+        notes: [],
+      },
+    ],
   } as unknown as ProcessedQuote
 }
 
@@ -535,11 +546,30 @@ test("V06: flags missing lawn seed spoken in the transcript", () => {
   assert.equal(issue!.category, "customer_preview")
 })
 
-test("V06: flags optional Ficus hedge that is present but never calculated/warned", () => {
-  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
-  const issue = result.issues.find((i) => i.id === "V06-optional-hedge-unwarned")
-  assert.ok(issue, "Must flag an optional hedge with no plant count/spacing calc or warning")
+test("V06: flags an optional work requested in the transcript but dropped from the quote", () => {
+  // The transcript asks for an optional work; this quote drops it entirely
+  // (no optional works, no follow-up, no warning). General property — no plant named.
+  const droppedOptional = {
+    ...clientBBadQuote(),
+    optional_quotes: [],
+    follow_up_tasks: [],
+    confidence_warnings: [],
+    missing_information: [],
+  } as unknown as ProcessedQuote
+  const result = auditProcessedQuote(ctx(droppedOptional, ADAM_TRANSCRIPT))
+  const issue = result.issues.find((i) => i.id === "V06-optional-work-missing")
+  assert.ok(issue, "Must flag an optional work requested in the transcript but absent from the quote")
   assert.equal(issue!.category, "customer_preview")
+})
+
+test("V06: does not flag when the requested optional work is represented in optional works", () => {
+  // clientBBadQuote keeps the optional work in optional_quotes.
+  const result = auditProcessedQuote(ctx(clientBBadQuote(), ADAM_TRANSCRIPT))
+  assert.equal(
+    result.issues.find((i) => i.id === "V06-optional-work-missing"),
+    undefined,
+    "An optional work present in optional works must not trip the general check",
+  )
 })
 
 test("V06: clean planting quote does not trip customer-preview safety", () => {

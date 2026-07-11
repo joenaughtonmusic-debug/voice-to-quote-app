@@ -311,6 +311,11 @@ export const clientBTitirangi: GoldenQuoteFixture = {
       "V06-decking-scope-leak",
       "V06-missing-topsoil-lawn-scope",
       "V06-missing-lawn-seed",
+      // The optional Ficus hedge IS represented in optional works, so the general
+      // V06 optional-work check must not fire. The fixture-specific expectation that
+      // this optional work is the Ficus hedge (and still needs a plant count) lives
+      // in the internalFacts / knownFailures below, not in the general validator.
+      "V06-optional-work-missing",
       "V08-suburb-missing",
       "V03-missing-labour-export-line",
     ],

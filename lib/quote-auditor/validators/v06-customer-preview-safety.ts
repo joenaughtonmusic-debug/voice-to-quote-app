@@ -62,7 +62,7 @@ export function v06CustomerPreviewSafety(ctx: AuditContext): AuditIssue[] {
       evidence: firstSentence(transcript, /[^.]*\b(?:topsoil|levelling the back lawn|lawn)\b[^.]*\./i) ?? "topsoil / lawn establishment in transcript",
       expected: "Customer scope should include importing/spreading topsoil and lawn establishment.",
       actual: "No topsoil / lawn establishment in customer scope.",
-      suggested_fix: "Add topsoil/lawn establishment to scope; add a soil-volume calculator (6 × 16.8 × 0.05 = 5.04m³).",
+      suggested_fix: "Add topsoil/lawn establishment to scope; compute the soil volume from the stated area and depth.",
       can_auto_correct: false,
     })
   }
@@ -79,46 +79,40 @@ export function v06CustomerPreviewSafety(ctx: AuditContext): AuditIssue[] {
       evidence: firstSentence(transcript, /[^.]*lawn\s+seed[^.]*\./i) ?? "lawn seed in transcript",
       expected: "Lawn seed represented in materials/scope (with its spoken price where given).",
       actual: "Lawn seed missing from customer-facing output.",
-      suggested_fix: "Map the spoken lawn seed (and its $129 price) to a material line item.",
+      suggested_fix: "Map the spoken lawn seed (and any spoken price) to a material line item.",
       can_auto_correct: false,
     })
   }
 
-  // ── 4. Optional Ficus hedge missing, or present but never calculated/warned ─
-  const transcriptMentionsFicusHedge =
-    /\bficus\b/i.test(transcript) || /\bhedge\b[^.]*\bfence\b|\bfence\b[^.]*\bhedge\b/i.test(transcript)
-  if (transcriptMentionsFicusHedge) {
-    const optionalText = (quote.optional_quotes ?? [])
-      .flatMap((option) => [option.quote_title, ...(option.scope ?? [])])
-      .join("\n")
-    const hedgeInOptional = /\bficus\b/i.test(optionalText) || /\bhedge\b/i.test(optionalText)
-    const hasPlantCalc = (quote.plant_calculator_results ?? []).length > 0
-    const hasHedgeWarning = [...(quote.confidence_warnings ?? []), ...(quote.missing_information ?? [])].some((entry) =>
-      /ficus|hedge|plant\s+count|spacing/i.test(entry),
-    )
+  // ── 4. An optional work the customer asked to be quoted must be represented ──
+  // GENERAL property (names no specific plant, price or trade): if the transcript
+  // requests an optional/additional work, the quote must represent it in optional
+  // works (or a follow-up task) or raise a warning that it was not captured.
+  // Fixture-specific expectations (e.g. that a particular optional work is a specific
+  // plant that still needs a count/spacing) belong in the golden fixture's contract,
+  // not in a general validator.
+  const transcriptRequestsOptionalWork =
+    /\boptional\s+(?:price|quote|works?|extra|add-?on|item)\b/i.test(transcript) ||
+    /\bas\s+an?\s+option\b/i.test(transcript) ||
+    /\boption\s+(?:for|to)\s+(?:also\s+)?(?:add|include|do|plant|install|build|price|quote|supply)\b/i.test(transcript)
+  if (transcriptRequestsOptionalWork) {
+    const hasOptionalRepresentation =
+      (quote.optional_quotes ?? []).length > 0 || (quote.follow_up_tasks ?? []).length > 0
+    const hasOptionalWarning = [
+      ...(quote.confidence_warnings ?? []),
+      ...(quote.missing_information ?? []),
+    ].some((entry) => /\boption(?:al)?\b/i.test(entry))
 
-    if (!hedgeInOptional) {
+    if (!hasOptionalRepresentation && !hasOptionalWarning) {
       issues.push({
-        id: "V06-optional-hedge-missing",
+        id: "V06-optional-work-missing",
         severity: "warning",
         category: "customer_preview",
-        message: "Transcript requests an optional Ficus hedge but it is not represented in optional works.",
-        evidence: firstSentence(transcript, /[^.]*ficus[^.]*\./i) ?? "Ficus hedge in transcript",
-        expected: "An optional works entry for the Ficus hedge.",
-        actual: "No hedge in optional works.",
-        suggested_fix: "Capture the optional hedge as an optional works item.",
-        can_auto_correct: false,
-      })
-    } else if (!hasPlantCalc && !hasHedgeWarning) {
-      issues.push({
-        id: "V06-optional-hedge-unwarned",
-        severity: "warning",
-        category: "customer_preview",
-        message: "Optional Ficus hedge is present but has no plant-count/spacing calculation and no warning that they are missing.",
-        evidence: firstSentence(optionalText, /[^\n]*(?:ficus|hedge)[^\n]*/i) ?? "hedge in optional works",
-        expected: "Plant count/spacing calculated, or an explicit warning that they are missing.",
-        actual: "Hedge present with no calculation and no warning.",
-        suggested_fix: "Run the planting calculator on the optional hedge, or emit a missing plant-count/spacing warning.",
+        message: "Transcript requests an optional/additional work but the quote neither represents it in optional works nor raises a warning about it.",
+        evidence: firstSentence(transcript, /[^.]*\boption(?:al)?\b[^.]*\./i) ?? "optional work in transcript",
+        expected: "The requested optional work represented in optional works (or a follow-up task), or an explicit warning that it was not captured.",
+        actual: "No optional works, follow-up tasks, or optional-related warning present.",
+        suggested_fix: "Capture the requested optional work as an optional works item, or warn that it was not captured.",
         can_auto_correct: false,
       })
     }
