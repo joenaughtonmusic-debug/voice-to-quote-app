@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { processTranscriptToQuote } from "@/lib/pipeline/process-transcript"
 import { authenticateRequest } from "@/lib/api-auth"
 import type { ShadowReportStore } from "@/lib/quote-plan/shadow-report-store"
@@ -11,7 +12,7 @@ const SHADOW_REPORTS_TABLE = "quote_plan_shadow_reports"
  * the write, it silently no-ops so quote generation is never affected. RLS on the table scopes
  * rows to the authenticated user.
  */
-function createShadowReportStore(supabase: { from: (table: string) => { insert: (row: unknown) => Promise<unknown> } }): ShadowReportStore {
+function createShadowReportStore(supabase: SupabaseClient): ShadowReportStore {
   return {
     async save(record) {
       try {
