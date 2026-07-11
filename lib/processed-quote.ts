@@ -78,6 +78,13 @@ export type ProcessedQuote = {
     /** True only when the MAIN/primary work bucket is genuinely planting. */
     mainIsPlanting: boolean
   }
+  /**
+   * Internal-only telemetry from the shadow-mode AI QuotePlan planner (QuotePlan shadow
+   * telemetry). Present only when shadow mode ran. It NEVER influences pricing, rendering or
+   * export — `usedForOutput` is always false — and is not surfaced in customer output; the
+   * internal review view renders it via ShadowPlannerCard.
+   */
+  shadow_report?: import("@/lib/quote-plan/shadow").ShadowPlannerReport
 }
 
 export type EditableQuoteSection = {

@@ -395,16 +395,20 @@ test("processTranscriptToQuote: an injected shadowPlanner reports but never chan
 
   assert.ok(reportCount >= 1, "the shadow planner must be invoked and reported")
   assert.equal(lastReport!.usedForOutput, false, "the shadow candidate must never be used for output")
-  assert.equal(lastReport!.diff.divergent, true, "this shadow draft diverges from the deterministic plan")
+  assert.ok(lastReport!.diff && lastReport!.diff.divergent, "this shadow draft diverges from the deterministic plan")
 
-  // The divergent shadow draft must NOT have altered the quote at all.
+  // The report is attached to the quote as internal telemetry (for the review UI).
+  assert.ok(withShadow.quote.shadow_report, "the shadow report is attached to the quote")
+  assert.equal(withShadow.quote.shadow_report!.usedForOutput, false)
+
+  // The divergent shadow draft must NOT have altered any customer-driving field.
   assert.deepEqual(withShadow.quote.line_items, baseline.quote.line_items, "line items must be unaffected by shadow")
   assert.deepEqual(withShadow.quote.quote_options, baseline.quote.quote_options, "quote options must be unaffected by shadow")
   assert.deepEqual(withShadow.quote.render_intent, baseline.quote.render_intent, "render intent must be unaffected by shadow")
 })
 
-test("processTranscriptToQuote: a throwing shadowPlanner is swallowed and the quote is still produced", async () => {
-  let reportCount = 0
+test("processTranscriptToQuote: a throwing shadowPlanner is swallowed and recorded as 'failed'", async () => {
+  let lastReport: import("../quote-plan/shadow").ShadowPlannerReport | null = null
   const { quote, fallbackUsed } = await processTranscriptToQuote(
     { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
     {
@@ -412,16 +416,50 @@ test("processTranscriptToQuote: a throwing shadowPlanner is swallowed and the qu
       shadowPlanner: () => {
         throw new Error("shadow boom")
       },
-      onShadowReport: () => {
-        reportCount += 1
+      onShadowReport: (r) => {
+        lastReport = r
       },
     },
   )
 
   assert.equal(fallbackUsed, false, "a shadow failure must not force the quote into fallback")
-  assert.equal(reportCount, 0, "a failed shadow run reports nothing")
+  assert.equal(lastReport!.status, "failed", "a planner failure is recorded as a 'failed' report")
+  assert.equal(quote.shadow_report!.status, "failed")
   const labourLine = quote.line_items.find(
     (item) => /\blabou?r\b/i.test(item.item_type) || /\blabou?r\b/i.test(item.item_name),
   )
   assert.equal(labourLine, undefined, "the deterministic result is unchanged by the shadow failure")
+})
+
+test("processTranscriptToQuote: shadow report is persisted, and a persistence failure never fails the quote", async () => {
+  const saved: import("../quote-plan/shadow-report-store").ShadowReportRecord[] = []
+  const okResult = await processTranscriptToQuote(
+    { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS, userId: "user-42" },
+    {
+      ...optionalLabourDeps(),
+      shadowPlanner: (i) => buildQuotePlan(i), // valid draft → accepted
+      shadowReportStore: { save: async (r) => void saved.push(r) },
+    },
+  )
+  assert.equal(okResult.fallbackUsed, false)
+  assert.equal(saved.length, 1, "one shadow report row is persisted")
+  assert.equal(saved[0].user_id, "user-42")
+  assert.equal(saved[0].used_for_output, false, "persisted row records shadow output was NOT used")
+  assert.ok(["accepted", "normalised"].includes(saved[0].resolve_status), `status ${saved[0].resolve_status}`)
+
+  // A store that throws must not fail quote generation.
+  const failResult = await processTranscriptToQuote(
+    { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS, userId: "user-42" },
+    {
+      ...optionalLabourDeps(),
+      shadowPlanner: (i) => buildQuotePlan(i),
+      shadowReportStore: {
+        save: async () => {
+          throw new Error("db down")
+        },
+      },
+    },
+  )
+  assert.equal(failResult.fallbackUsed, false, "persistence failure must not fail the quote")
+  assert.ok(failResult.quote.shadow_report, "the quote still carries the shadow report")
 })

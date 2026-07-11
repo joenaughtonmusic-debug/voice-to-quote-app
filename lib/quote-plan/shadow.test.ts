@@ -124,16 +124,33 @@ test("diffQuotePlans: quoteType, optional count, main labour and scope deltas ar
 
 // ── buildShadowReport ─────────────────────────────────────────────────────────
 
-test("buildShadowReport: a valid draft is accepted and never marked used for output", () => {
+test("buildShadowReport: a valid draft is accepted, carries the plans, and is never used for output", () => {
   const input = fallbackInput()
-  const report = buildShadowReport({
-    deterministicPlan: buildQuotePlan(input),
-    draft: validDraft(),
-    fallbackInput: input,
-  })
+  const draft = validDraft()
+  const deterministicPlan = buildQuotePlan(input)
+  const report = buildShadowReport({ deterministicPlan, draft, fallbackInput: input, model: { provider: "openai", model: "test-model" } })
   assert.equal(report.usedForOutput, false)
   assert.ok(report.status === "accepted" || report.status === "normalised", `unexpected status ${report.status}`)
   assert.ok(!report.findings.some((f) => f.severity === "error"), "a valid draft has no error findings")
+  // Enriched telemetry: the plans are captured for review.
+  assert.strictEqual(report.deterministicPlan, deterministicPlan)
+  assert.deepEqual(report.aiDraftPlan, draft, "raw AI draft is retained")
+  assert.ok(report.resolvedPlan, "resolved candidate plan is retained")
+  assert.deepEqual(report.model, { provider: "openai", model: "test-model" })
+})
+
+test("buildShadowReport: string-coerced fields are normalised (status normalised)", () => {
+  const input = fallbackInput()
+  const base = validDraft()
+  const main = base.main as Record<string, unknown>
+  // String labour numbers force coercion → resolveQuotePlan marks the plan "normalised".
+  const draft = {
+    ...base,
+    main: { ...main, labour: [{ raw: "1 person 1 day", people: "1", days: "1", determinacy: "explicit" }] },
+  }
+  const report = buildShadowReport({ deterministicPlan: buildQuotePlan(input), draft, fallbackInput: input })
+  assert.equal(report.status, "normalised")
+  assert.equal(report.usedForOutput, false)
 })
 
 test("buildShadowReport: an invalid draft falls back and the diff is empty (baseline == fallback)", () => {
@@ -146,7 +163,7 @@ test("buildShadowReport: an invalid draft falls back and the diff is empty (base
   })
   assert.equal(report.status, "fallback")
   assert.equal(report.usedForOutput, false)
-  assert.equal(report.diff.divergent, false, "fallback resolves to the deterministic baseline, so no divergence")
+  assert.ok(report.diff && report.diff.divergent === false, "fallback resolves to the deterministic baseline, so no divergence")
   assert.match(report.summary, /REJECTED/)
 })
 
@@ -168,17 +185,49 @@ test("runShadowPlanner: an async draft is reported and returned", async () => {
   assert.strictEqual(reported, report, "onReport receives the same report")
 })
 
-test("runShadowPlanner: a throwing planner never throws and returns null (quote unaffected)", async () => {
+test("runShadowPlanner: a throwing planner never throws and records a 'failed' report", async () => {
   const input = fallbackInput()
-  const warnings: unknown[] = []
   const report = await runShadowPlanner({
     shadowPlanner: () => {
       throw new Error("planner boom")
     },
     fallbackInput: input,
     deterministicPlan: buildQuotePlan(input),
-    logger: { log() {}, warn: (...args: unknown[]) => warnings.push(args), error() {} },
+    logger: { log() {}, warn() {}, error() {} },
   })
-  assert.equal(report, null)
-  assert.equal(warnings.length, 1, "the failure is logged as a warning, not thrown")
+  assert.equal(report.status, "failed", "planner failure becomes a recorded 'failed' report")
+  assert.equal(report.usedForOutput, false)
+  assert.match(report.error ?? "", /planner boom/)
+  assert.equal(report.diff, null)
+})
+
+test("runShadowPlanner: persists the report and a persistence failure is swallowed", async () => {
+  const input = fallbackInput()
+  const saved: unknown[] = []
+  // A store that succeeds.
+  const okReport = await runShadowPlanner({
+    shadowPlanner: async () => validDraft(),
+    fallbackInput: input,
+    deterministicPlan: buildQuotePlan(input),
+    persist: async (r) => {
+      saved.push(r)
+    },
+  })
+  assert.equal(saved.length, 1, "the report is persisted")
+  assert.strictEqual(saved[0], okReport)
+
+  // A store that throws must not throw out of runShadowPlanner.
+  const warnings: unknown[] = []
+  const report = await runShadowPlanner({
+    shadowPlanner: async () => validDraft(),
+    fallbackInput: input,
+    deterministicPlan: buildQuotePlan(input),
+    persist: async () => {
+      throw new Error("db down")
+    },
+    logger: { log() {}, warn: (...a: unknown[]) => warnings.push(a), error() {} },
+  })
+  assert.ok(report, "a report is still returned when persistence fails")
+  assert.equal(report.usedForOutput, false)
+  assert.equal(warnings.length, 1, "persistence failure is logged, not thrown")
 })

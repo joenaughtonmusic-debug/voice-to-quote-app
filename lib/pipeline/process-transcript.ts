@@ -37,8 +37,9 @@ import { auditProcessedQuote } from "../quote-auditor"
 import { buildQuotePlan } from "../quote-plan/build-plan"
 import { resolveQuotePlan } from "../quote-plan/validate"
 import { buildOptionalPricedWorks } from "../quote-plan/optional-priced-works"
-import { runShadowPlanner, type ShadowPlannerReport } from "../quote-plan/shadow"
-import { buildAiQuotePlanDraft, isShadowPlannerEnabled } from "../quote-plan/ai-planner"
+import { runShadowPlanner, type ShadowPlannerReport, type ShadowModelInfo } from "../quote-plan/shadow"
+import { buildShadowReportRecord, type ShadowReportStore } from "../quote-plan/shadow-report-store"
+import { buildAiQuotePlanDraft, isShadowPlannerEnabled, defaultShadowModelInfo } from "../quote-plan/ai-planner"
 import type { BuildQuotePlanInput, QuotePlan, WorkBucket } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
 import type { ResolvableItem } from "../items/resolve-bill"
@@ -3119,6 +3120,13 @@ export type ProcessTranscriptDeps = {
   shadowPlanner?: (input: BuildQuotePlanInput) => unknown | Promise<unknown>
   /** Test/observability hook: receives each shadow report (never affects the quote). */
   onShadowReport?: (report: ShadowPlannerReport) => void
+  /**
+   * Best-effort persistence for shadow reports (Supabase-backed in the route, in-memory in
+   * tests). A save failure is swallowed and never fails quote generation.
+   */
+  shadowReportStore?: ShadowReportStore
+  /** Provider/model metadata recorded on the shadow report, when the caller knows it. */
+  shadowModel?: ShadowModelInfo
   logger?: Pick<Console, "log" | "warn" | "error">
 }
 
@@ -3156,6 +3164,8 @@ export async function processTranscriptToQuote(
   // the ENABLE_QUOTE_PLAN_SHADOW flag (+ an API key); otherwise undefined, so there is no
   // OpenAI call and no behavioural change. It NEVER feeds `planQuote`.
   const shadowPlanner = deps.shadowPlanner ?? (isShadowPlannerEnabled() ? (input: BuildQuotePlanInput) => buildAiQuotePlanDraft(input) : undefined)
+  const shadowModel: ShadowModelInfo | undefined =
+    deps.shadowModel ?? (!deps.shadowPlanner && isShadowPlannerEnabled() ? defaultShadowModelInfo() : undefined)
 
   const transcript = input.transcript.trim()
   const templateContext = getTemplateContext(input.templateContext)
@@ -3218,18 +3228,26 @@ export async function processTranscriptToQuote(
       const preCalculationPlan = planQuote({ extraction: extraction.quote, transcript, classification })
       const plantingScopeText = plantingScopeTextFromPlan(preCalculationPlan)
 
-      // QuotePlan Milestone 4 — SHADOW comparison. Runs only when a shadow planner is wired
-      // (flag-gated in production). The AI draft is validated + diffed against the deterministic
-      // baseline and logged internal-only; it never touches `quote`. Awaited but fully guarded so
-      // it can add latency but never alter or fail the live quote. Adds one OpenAI call when
-      // enabled — an accepted tradeoff for shadow observability.
+      // QuotePlan Milestone 4 — SHADOW comparison + telemetry. Runs only when a shadow planner
+      // is wired (flag-gated in production). The AI draft is validated + diffed against the
+      // deterministic baseline, then logged, persisted (best-effort) and attached to the quote as
+      // INTERNAL-only telemetry. It never drives pricing/rendering/export. runShadowPlanner is
+      // fully guarded: neither a planner failure nor a persistence failure can fail the quote.
+      let shadowReport: ShadowPlannerReport | undefined
       if (shadowPlanner) {
         const shadowInput: BuildQuotePlanInput = { extraction: extraction.quote, transcript, classification }
-        await runShadowPlanner({
+        const store = deps.shadowReportStore
+        const userId = input.userId
+        shadowReport = await runShadowPlanner({
           shadowPlanner,
           fallbackInput: shadowInput,
           deterministicPlan: buildQuotePlan(shadowInput),
+          model: shadowModel,
           logger: log,
+          persist:
+            store && userId
+              ? (report) => store.save(buildShadowReportRecord(report, { userId, draftId: null, transcript }))
+              : undefined,
           onReport: deps.onShadowReport,
         })
       }
@@ -3344,6 +3362,12 @@ export async function processTranscriptToQuote(
       quote.render_intent = {
         primaryTrade: preCalculationPlan.quoteType,
         mainIsPlanting: isPlantingBucket(preCalculationPlan.main, preCalculationPlan.quoteType),
+      }
+
+      // Attach shadow telemetry (internal-only) for the review UI. This is observability data:
+      // it does not influence any customer-facing field and is ignored by all renderers/export.
+      if (shadowReport) {
+        quote.shadow_report = shadowReport
       }
 
       attachMatchedLineItemMetadata(quote, knowledgeItemContext)

@@ -16,6 +16,7 @@
     "./process-transcript.test.ts",
     "./process-transcript.ts",
     "../quote-plan/shadow.ts",
+    "../quote-plan/shadow-report-store.ts",
     "../quote-plan/ai-planner.ts"
   ]
 }

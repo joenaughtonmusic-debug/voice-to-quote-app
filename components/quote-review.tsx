@@ -28,6 +28,7 @@ import {
 } from "@/lib/processed-quote"
 import { groupCustomerQuoteOptions } from "@/lib/customer-quote-options"
 import { CustomerQuoteOptionsCard } from "@/components/customer-quote-options-card"
+import { ShadowPlannerCard } from "@/components/shadow-planner-card"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
 import { uploadDraftPhoto, loadDraftPhotos, deleteDraftPhoto, type DraftPhoto } from "@/lib/draft-photos"
 import { supabase } from "@/lib/supabase"
@@ -500,6 +501,9 @@ export function QuoteReview({
             <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{rawTranscript}</p>
           </section>
 
+          {view === "internal" && processedQuote.shadow_report && (
+            <ShadowPlannerCard report={processedQuote.shadow_report} />
+          )}
           {view === "internal" && reviewNotices.length > 0 && <ReviewNoticesCard notices={reviewNotices} />}
           {view === "internal" && pricingFacts.length > 0 && <PricingFactsCard pricing={pricingFacts} />}
           {view === "internal" && (

@@ -20,6 +20,11 @@ const PLANNER_TIMEOUT_MS = 45000
 
 export const QUOTE_PLAN_SHADOW_ENV = "ENABLE_QUOTE_PLAN_SHADOW"
 
+/** Provider/model metadata for telemetry (does not trigger a call). */
+export function defaultShadowModelInfo(deps: { model?: string } = {}): { provider: string; model: string } {
+  return { provider: "openai", model: deps.model ?? DEFAULT_MODEL }
+}
+
 /** The raw-JSON model call, injectable so tests never touch the network. */
 export type QuotePlanModelCaller = (args: {
   systemPrompt: string

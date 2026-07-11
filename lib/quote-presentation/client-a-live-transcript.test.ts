@@ -189,3 +189,48 @@ test("Client A live transcript QuoteDraft-equivalent path fills presentation mod
   assert.equal(labourSection!.items.length, 1)
   assert.ok(previewModel.plantingInternalReviewNotes.length > 0)
 })
+
+test("shadow telemetry never leaks into customer-facing quote output", () => {
+  const quote = buildLiveProcessedQuoteFromTranscript(clientALiveTranscript)
+  // Attach a rich, divergent shadow report as internal telemetry.
+  ;(quote as ProcessedQuote).shadow_report = {
+    status: "fallback",
+    usedForOutput: false,
+    findings: [{ code: "unknown_quote_type", message: "SHADOW-ONLY finding text", severity: "warning" }],
+    diff: {
+      deterministicQuoteType: "planting",
+      candidateQuoteType: "decking",
+      quoteTypeChanged: true,
+      mainLabourCountDelta: 0,
+      optionalBucketCountDelta: 0,
+      mainScopeCountDelta: 0,
+      divergences: ["SHADOW-ONLY divergence text"],
+      divergent: true,
+    },
+    summary: "SHADOW-ONLY summary text",
+    deterministicPlan: { quoteType: "planting" } as never,
+    aiDraftPlan: { secret: "SHADOW-ONLY draft" },
+    resolvedPlan: null,
+  }
+
+  const previewInput = buildCustomerPreviewQuoteInput({
+    processedQuote: quote,
+    rawTranscript: clientALiveTranscript,
+    selectedTemplate: plantingTemplate,
+  })
+  const customerPreview = buildCustomerQuotePreview(previewInput, {
+    includeDeckingScope: true,
+    includeRetainingScope: true,
+  })
+  const previewModel = buildCustomerDraftPreviewModel({
+    processedQuote: quote,
+    customerPreview,
+    rawTranscript: clientALiveTranscript,
+    selectedTemplate: previewInput.selected_template,
+  })
+  const rendered = renderCustomerDraftPreviewText(previewModel)
+
+  for (const leak of ["SHADOW-ONLY", "AI Shadow Planner", "not used for quote output", "shadow_report"]) {
+    assert.equal(rendered.includes(leak), false, `customer output must not contain shadow telemetry ("${leak}")`)
+  }
+})
