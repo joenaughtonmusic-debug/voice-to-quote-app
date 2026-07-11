@@ -159,6 +159,33 @@ Goal:
 
 **Status: design-only pending**
 
+### AI-0 — mixed planting+paving classified/extracted as a mixed job (paver root cause)
+Context: live diagnosis of the Sarah/Ellerslie controlled-mode run showed the paver area is
+**dropped at extraction**, not at rendering. The classifier labels this mixed planting+paving
+job as `planting`; the planting-specialist extraction then focuses on plants and never captures
+"Lower paver area: 1.5m × 3.5m". Confirmed on BOTH gpt-4o-mini and gpt-5.2 extraction — so it is
+a classification/routing miss, not model weakness. `render_intent` (AI-1) cannot restore scope
+extraction never captured, so this must land first.
+
+Goal:
+- When a transcript has planting AND a distinct non-planting trade area (paving/retaining/deck/
+  hard fill/etc.), classify/route it as mixed `general_landscaping`, not pure `planting`, so the
+  general-landscaping extraction + assembly captures ALL scope (incl. the paver).
+- Do NOT reclassify a genuinely pure planting job (Michelia must stay `planting`).
+
+Likely approach (decide in batch): a deterministic post-classify guard (mirroring QA-8's
+`LANDSCAPING_PRIMARY_OVER_RETAINING_PATTERN`) that detects multiple distinct trade areas and
+keeps the quote `general_landscaping`, rather than a prompt change.
+
+Done criteria:
+- Live Sarah re-run: paver area is captured in the ProcessedQuote scope (extraction), classified
+  `general_landscaping`.
+- Regression: Michelia stays `planting`; golden Client B / Adam mixed-landscaping unaffected;
+  classification + golden + general-landscaping suites green.
+- `npm run build`; commit on its own.
+
+**Status: approved — active (next). Was AI-1's precondition, discovered during AI-1 diagnosis.**
+
 ### AI-1 — render_intent mixed-trade guard (controlled-mode regression)
 Context: controlled mode (`ENABLE_AI_QUOTE_PLAN`, dev-only) lets an accepted/normalised AI
 QuotePlan drive the quote. Live verification of 5 real transcripts found one customer-facing
@@ -190,7 +217,7 @@ Done criteria:
   actually back in the customer scope** (not just unit tests passing).
 - `npm run build`; commit on its own.
 
-**Status: approved — active (next).**
+**Status: approved — queued after AI-0 (render_intent guard; keeps the now-captured non-planting scope in the customer preview).**
 
 ### AI-2 — AI-plan optional-works passthrough
 Context: same verification found the AI plan's optional buckets (Finn's water-blasting, Dane's
