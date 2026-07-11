@@ -116,6 +116,31 @@ function coerceNumber(value: unknown): { value: number | null; wasString: boolea
   return { value: null, wasString: false, present: true }
 }
 
+/**
+ * The normalisation-boundary rule for EVERY optional numeric field on the plan (labour
+ * people/days/hours, measurements lengthM/areaM2/depthMm/spacingMm/count, and any other
+ * optional count/quantity). A field is "not provided" — and therefore dropped — when it is
+ * absent, blank, OR zero. Planners often emit 0 as a placeholder for a value they don't have;
+ * passing that 0 into validation (which requires positive numbers) would sink the whole plan.
+ *
+ * This ONLY drops zero/absent optionals. A present, non-zero value — including a genuinely
+ * out-of-range one (negative or implausibly large) — is returned as `take` so the validator
+ * still catches it. So this never weakens validation of real values.
+ */
+type OptionalNumericOutcome =
+  | { action: "omit" }
+  | { action: "zero" }
+  | { action: "unparseable" }
+  | { action: "take"; value: number; wasString: boolean }
+
+function coerceOptionalNumericField(raw: unknown): OptionalNumericOutcome {
+  const parsed = coerceNumber(raw)
+  if (!parsed.present) return { action: "omit" }
+  if (parsed.value === null) return { action: "unparseable" }
+  if (parsed.value === 0) return { action: "zero" }
+  return { action: "take", value: parsed.value, wasString: parsed.wasString }
+}
+
 // ── normalisation (untrusted draft → well-typed QuotePlan) ───────────────────
 
 type NormaliseContext = { findings: QuotePlanValidationFinding[]; changed: boolean }
@@ -139,9 +164,9 @@ function normaliseLabour(raw: unknown, path: string, bucketId: string, ctx: Norm
   }
   const result: LabourAllocation = { raw: coerceString(rec.raw), determinacy: "missing" }
   for (const key of ["people", "days", "hours"] as const) {
-    const parsed = coerceNumber(rec[key])
-    if (!parsed.present) continue
-    if (parsed.value === null) {
+    const field = coerceOptionalNumericField(rec[key])
+    if (field.action === "omit") continue
+    if (field.action === "unparseable") {
       finding(ctx, "warning", "unparseable_labour_value", `Could not parse labour ${key}; omitted.`, {
         path: `${path}.${key}`,
         bucketId,
@@ -149,8 +174,16 @@ function normaliseLabour(raw: unknown, path: string, bucketId: string, ctx: Norm
       ctx.changed = true
       continue
     }
-    if (parsed.wasString) ctx.changed = true
-    result[key] = parsed.value
+    if (field.action === "zero") {
+      finding(ctx, "info", "zero_labour_value_omitted", `Labour ${key} was 0 (no value); treated as not provided.`, {
+        path: `${path}.${key}`,
+        bucketId,
+      })
+      ctx.changed = true
+      continue
+    }
+    if (field.wasString) ctx.changed = true
+    result[key] = field.value
   }
   const declaredDeterminacy = coerceString(rec.determinacy)
   if (declaredDeterminacy === "explicit" || declaredDeterminacy === "inferred" || declaredDeterminacy === "missing") {
@@ -199,9 +232,9 @@ function normaliseMeasurements(raw: unknown, path: string, bucketId: string, ctx
   if (!rec) return undefined
   const measurements: BucketMeasurements = {}
   for (const key of ["lengthM", "areaM2", "depthMm", "spacingMm", "count"] as const) {
-    const parsed = coerceNumber(rec[key])
-    if (!parsed.present) continue
-    if (parsed.value === null) {
+    const field = coerceOptionalNumericField(rec[key])
+    if (field.action === "omit") continue
+    if (field.action === "unparseable") {
       finding(ctx, "warning", "unparseable_measurement", `Could not parse measurement ${key}; omitted.`, {
         path: `${path}.${key}`,
         bucketId,
@@ -209,8 +242,16 @@ function normaliseMeasurements(raw: unknown, path: string, bucketId: string, ctx
       ctx.changed = true
       continue
     }
-    if (parsed.wasString) ctx.changed = true
-    measurements[key] = parsed.value
+    if (field.action === "zero") {
+      finding(ctx, "info", "zero_measurement_omitted", `Measurement ${key} was 0 (no value); treated as not provided.`, {
+        path: `${path}.${key}`,
+        bucketId,
+      })
+      ctx.changed = true
+      continue
+    }
+    if (field.wasString) ctx.changed = true
+    measurements[key] = field.value
   }
   const provenance = coerceStringArray(rec.provenance)
   if (provenance.length > 0) measurements.provenance = provenance

@@ -39,7 +39,7 @@ import { resolveQuotePlan } from "../quote-plan/validate"
 import { buildOptionalPricedWorks } from "../quote-plan/optional-priced-works"
 import { runShadowPlanner, type ShadowPlannerReport, type ShadowModelInfo } from "../quote-plan/shadow"
 import { buildShadowReportRecord, type ShadowReportStore } from "../quote-plan/shadow-report-store"
-import { buildAiQuotePlanDraft, isShadowPlannerEnabled, defaultShadowModelInfo } from "../quote-plan/ai-planner"
+import { buildAiQuotePlanDraft, isShadowPlannerEnabled, isAiQuotePlanEnabled, defaultShadowModelInfo } from "../quote-plan/ai-planner"
 import type { BuildQuotePlanInput, QuotePlan, WorkBucket } from "../quote-plan/types"
 import type { ProcessedQuote } from "../processed-quote"
 import type { ResolvableItem } from "../items/resolve-bill"
@@ -3127,6 +3127,12 @@ export type ProcessTranscriptDeps = {
   shadowReportStore?: ShadowReportStore
   /** Provider/model metadata recorded on the shadow report, when the caller knows it. */
   shadowModel?: ShadowModelInfo
+  /**
+   * CONTROLLED MODE override (tests). When true, an accepted/normalised AI plan drives the
+   * quote's plan-consuming steps; fallback/failed uses deterministic buildQuotePlan. In
+   * production this defaults to isAiQuotePlanEnabled() (ENABLE_AI_QUOTE_PLAN + key).
+   */
+  aiPlanDriving?: boolean
   logger?: Pick<Console, "log" | "warn" | "error">
 }
 
@@ -3160,12 +3166,19 @@ export async function processTranscriptToQuote(
     (deps.draftPlanner
       ? (input) => resolveQuotePlan({ draft: deps.draftPlanner!(input), fallbackInput: input }).plan
       : buildQuotePlan)
-  // QuotePlan Milestone 4 — shadow-mode AI planner. In production it is enabled only behind
-  // the ENABLE_QUOTE_PLAN_SHADOW flag (+ an API key); otherwise undefined, so there is no
-  // OpenAI call and no behavioural change. It NEVER feeds `planQuote`.
-  const shadowPlanner = deps.shadowPlanner ?? (isShadowPlannerEnabled() ? (input: BuildQuotePlanInput) => buildAiQuotePlanDraft(input) : undefined)
+  // QuotePlan AI planner. Runs when shadow mode (ENABLE_QUOTE_PLAN_SHADOW) OR controlled mode
+  // (ENABLE_AI_QUOTE_PLAN) is enabled (+ an API key). In shadow mode it only reports; in
+  // controlled mode an accepted/normalised plan additionally DRIVES the quote (see below).
+  // Undefined otherwise → no OpenAI call, no behavioural change.
+  const aiPlanDriving = deps.aiPlanDriving ?? isAiQuotePlanEnabled()
+  const shadowPlanner =
+    deps.shadowPlanner ??
+    (isShadowPlannerEnabled() || isAiQuotePlanEnabled()
+      ? (input: BuildQuotePlanInput) => buildAiQuotePlanDraft(input)
+      : undefined)
   const shadowModel: ShadowModelInfo | undefined =
-    deps.shadowModel ?? (!deps.shadowPlanner && isShadowPlannerEnabled() ? defaultShadowModelInfo() : undefined)
+    deps.shadowModel ??
+    (!deps.shadowPlanner && (isShadowPlannerEnabled() || isAiQuotePlanEnabled()) ? defaultShadowModelInfo() : undefined)
 
   const transcript = input.transcript.trim()
   const templateContext = getTemplateContext(input.templateContext)
@@ -3225,15 +3238,14 @@ export async function processTranscriptToQuote(
       // materials, which the pre-calculator chain steps do not change), so this is a
       // faithful pre-calculation view. Labour recovery / optional_priced_works still use
       // their own plan built from the finished quote below (unchanged).
-      const preCalculationPlan = planQuote({ extraction: extraction.quote, transcript, classification })
-      const plantingScopeText = plantingScopeTextFromPlan(preCalculationPlan)
-
-      // QuotePlan Milestone 4 — SHADOW comparison + telemetry. Runs only when a shadow planner
-      // is wired (flag-gated in production). The AI draft is validated + diffed against the
-      // deterministic baseline, then logged, persisted (best-effort) and attached to the quote as
-      // INTERNAL-only telemetry. It never drives pricing/rendering/export. runShadowPlanner is
-      // fully guarded: neither a planner failure nor a persistence failure can fail the quote.
+      // QuotePlan AI planner — SHADOW + CONTROLLED mode. Compute the AI plan ONCE from the raw
+      // extraction. In controlled mode (ENABLE_AI_QUOTE_PLAN) an accepted/normalised plan DRIVES
+      // the pipeline's plan-consuming steps (planting scope text, render_intent, labour recovery,
+      // optional priced works); a fallback/failed plan uses deterministic buildQuotePlan. In
+      // shadow mode it only reports. Fully guarded: a planner or persistence failure never fails
+      // the quote. The report is always attached as internal telemetry (records whether it drove).
       let shadowReport: ShadowPlannerReport | undefined
+      let drivingPlan: QuotePlan | undefined
       if (shadowPlanner) {
         const shadowInput: BuildQuotePlanInput = { extraction: extraction.quote, transcript, classification }
         const store = deps.shadowReportStore
@@ -3243,6 +3255,7 @@ export async function processTranscriptToQuote(
           fallbackInput: shadowInput,
           deterministicPlan: buildQuotePlan(shadowInput),
           model: shadowModel,
+          drive: aiPlanDriving,
           logger: log,
           persist:
             store && userId
@@ -3250,7 +3263,17 @@ export async function processTranscriptToQuote(
               : undefined,
           onReport: deps.onShadowReport,
         })
+        if (shadowReport.usedForOutput && shadowReport.resolvedPlan) {
+          drivingPlan = shadowReport.resolvedPlan
+          log.log("quote-plan AI plan DRIVING output (controlled mode)", { status: shadowReport.status })
+        }
       }
+
+      // The plan feeds the planting-calculator scope + render intent below (and labour recovery /
+      // optional priced works further down). In controlled mode this is the AI plan; otherwise the
+      // deterministic buildQuotePlan (or an injected planQuote/draftPlanner in tests).
+      const preCalculationPlan = drivingPlan ?? planQuote({ extraction: extraction.quote, transcript, classification })
+      const plantingScopeText = plantingScopeTextFromPlan(preCalculationPlan)
 
       const quote = normalizeFencingProcessedQuote(correctMisclassifiedRetaining(normalizeRetainingProcessedQuote(applyAddressReviewDetails(
         removeCapturedLeadMissingInformation(
@@ -3325,7 +3348,9 @@ export async function processTranscriptToQuote(
       // back to this text; passing the plan's main-bucket sourceText (optional
       // sentences removed) stops optional labour (e.g. an optional hedge's
       // "two people one day") being recovered as the main structured labour line.
-      const quotePlan = planQuote({ extraction: quote, transcript, classification })
+      // In controlled mode reuse the AI plan (its buckets/labour are the authoritative reading);
+      // otherwise re-derive deterministically from the finished quote as before.
+      const quotePlan = drivingPlan ?? planQuote({ extraction: quote, transcript, classification })
       recoverMissingLabourLineItem(quote, quotePlan.main.sourceText, recoveryBestRate)
 
       // Surface any optional-bucket labour internally for review/pricing. internal_notes

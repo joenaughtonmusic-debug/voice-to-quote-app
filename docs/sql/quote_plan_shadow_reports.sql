@@ -4,9 +4,10 @@
 -- - Persist what the shadow-mode AI QuotePlan planner produced on each run so it can be
 --   reviewed: whether it was accepted / normalised / fell back / failed, the AI draft, the
 --   validation findings, and how it differed from the deterministic QuotePlan.
--- - The shadow candidate NEVER drives the quote in this milestone: `used_for_output` is
---   constrained to false. Rows are written best-effort by POST /api/process-quote and a
---   write failure must not fail quote generation (see lib/quote-plan/shadow.ts).
+-- - `used_for_output` records whether the AI plan actually drove the quote: false in shadow
+--   mode (observe-only), true in controlled mode (ENABLE_AI_QUOTE_PLAN) when the plan resolved
+--   accepted/normalised. Rows are written best-effort by POST /api/process-quote and a write
+--   failure must not fail quote generation (see lib/quote-plan/shadow.ts).
 --
 -- Row-level security restricts every row to the authenticated user that produced it.
 --
@@ -28,10 +29,10 @@ create table if not exists public.quote_plan_shadow_reports (
   model jsonb,
 
   constraint quote_plan_shadow_reports_status_check
-    check (resolve_status in ('accepted', 'normalised', 'fallback', 'failed', 'skipped')),
-  -- Hard guarantee at the storage layer: shadow output is never used for a real quote.
-  constraint quote_plan_shadow_reports_not_used_for_output
-    check (used_for_output = false)
+    check (resolve_status in ('accepted', 'normalised', 'fallback', 'failed', 'skipped'))
+  -- NOTE: controlled mode (ENABLE_AI_QUOTE_PLAN) can set used_for_output = true, so there is
+  -- deliberately NO check forcing it to false. See quote_plan_shadow_reports_allow_used.sql to
+  -- drop that constraint on databases created before controlled mode.
 );
 
 -- Review a user's shadow reports newest-first, optionally scoped to a draft.

@@ -28,8 +28,12 @@ export function ShadowPlannerCard({ report }: { report: ShadowPlannerReport | nu
     <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-foreground">AI Shadow Planner</h3>
-          <p className="mt-1 text-xs font-medium text-muted-foreground">{model.notUsedNotice}</p>
+          <h3 className="text-sm font-semibold text-foreground">
+            {model.usedForOutput ? "AI Planner (controlled)" : "AI Shadow Planner"}
+          </h3>
+          <p className={cn("mt-1 text-xs font-medium", model.usedForOutput ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+            {model.usageNotice}
+          </p>
         </div>
         <span className={cn("rounded-full px-2 py-1 text-xs font-semibold", toneClassName(model.tone))}>
           {model.statusLabel}

@@ -34,8 +34,12 @@ export type ShadowModelInfo = { provider?: string; model?: string }
 
 export type ShadowPlannerReport = {
   status: ShadowResolveStatus
-  /** Always false — the shadow candidate is never used to build the quote. */
-  usedForOutput: false
+  /**
+   * Whether the resolved AI plan actually drove this quote. False in shadow mode (observe-only).
+   * True only in controlled mode (ENABLE_AI_QUOTE_PLAN) when the plan resolved accepted/normalised.
+   * A fallback/failed plan never drives, so it is always false for those.
+   */
+  usedForOutput: boolean
   findings: QuotePlanValidationFinding[]
   /** null only when there is no resolved candidate to compare (status "failed"/"skipped"). */
   diff: QuotePlanDiff | null
@@ -119,12 +123,16 @@ export function buildShadowReport(args: {
   draft: unknown
   fallbackInput: BuildQuotePlanInput
   model?: ShadowModelInfo
+  /** Controlled mode: when true AND the plan resolves accepted/normalised, it drives the quote. */
+  drive?: boolean
 }): ShadowPlannerReport {
   const resolution = resolveQuotePlan({ draft: args.draft, fallbackInput: args.fallbackInput })
   const diff = diffQuotePlans(args.deterministicPlan, resolution.plan)
+  // Only an accepted/normalised plan can drive; a fallback never does.
+  const usedForOutput = Boolean(args.drive) && (resolution.status === "accepted" || resolution.status === "normalised")
   return {
     status: resolution.status,
-    usedForOutput: false,
+    usedForOutput,
     findings: resolution.findings,
     diff,
     summary: summarise(resolution.status, diff, resolution.findings),
@@ -166,6 +174,8 @@ export async function runShadowPlanner(args: {
   deterministicPlan: QuotePlan
   model?: ShadowModelInfo
   logger?: Pick<Console, "log" | "warn" | "error">
+  /** Controlled mode: allow an accepted/normalised plan to drive the quote (usedForOutput). */
+  drive?: boolean
   /** Optional async persistence (Supabase-backed in production). Failure is swallowed. */
   persist?: (report: ShadowPlannerReport) => Promise<void>
   onReport?: (report: ShadowPlannerReport) => void
@@ -178,6 +188,7 @@ export async function runShadowPlanner(args: {
       draft,
       fallbackInput: args.fallbackInput,
       model: args.model,
+      drive: args.drive,
     })
   } catch (error) {
     report = buildFailedShadowReport(args.deterministicPlan, error, args.model)

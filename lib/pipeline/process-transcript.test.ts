@@ -463,3 +463,54 @@ test("processTranscriptToQuote: shadow report is persisted, and a persistence fa
   assert.equal(failResult.fallbackUsed, false, "persistence failure must not fail the quote")
   assert.ok(failResult.quote.shadow_report, "the quote still carries the shadow report")
 })
+
+// ── Controlled mode: an accepted/normalised AI plan DRIVES the quote ──────────
+test("controlled mode: an accepted AI plan drives the quote (render_intent from the AI plan)", async () => {
+  const input = { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS }
+  const baseline = await processTranscriptToQuote(input, optionalLabourDeps())
+
+  // A valid AI plan whose quoteType differs from the deterministic one, so we can see it drive.
+  const drivingDraft = {
+    quoteType: "planting",
+    quoteTypeConfidence: "high",
+    main: {
+      id: "main",
+      title: "AI main",
+      kind: "main",
+      scope: ["Plant a hedge"],
+      labour: [],
+      materials: [],
+      measurements: { lengthM: 12 },
+      sourceText: "Plant a hedge",
+    },
+    optional: [],
+    exclusions: [],
+    uncertainties: [],
+  }
+  const driven = await processTranscriptToQuote(input, {
+    ...optionalLabourDeps(),
+    shadowPlanner: () => drivingDraft,
+    aiPlanDriving: true,
+  })
+
+  assert.equal(driven.quote.shadow_report!.usedForOutput, true, "an accepted AI plan drives in controlled mode")
+  assert.ok(["accepted", "normalised"].includes(driven.quote.shadow_report!.status))
+  assert.equal(driven.quote.render_intent?.primaryTrade, "planting", "render_intent comes from the driving AI plan")
+  assert.notEqual(baseline.quote.render_intent?.primaryTrade, "planting", "deterministic baseline differs")
+})
+
+test("controlled mode: a fallback AI plan does NOT drive (deterministic used, usedForOutput false)", async () => {
+  const input = { transcript: OPTIONAL_LABOUR_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS }
+  const baseline = await processTranscriptToQuote(input, optionalLabourDeps())
+  const driven = await processTranscriptToQuote(input, {
+    ...optionalLabourDeps(),
+    // Unusable draft → resolveQuotePlan falls back → must NOT drive.
+    shadowPlanner: () => ({ bogus: true, main: null }),
+    aiPlanDriving: true,
+  })
+
+  assert.equal(driven.quote.shadow_report!.status, "fallback")
+  assert.equal(driven.quote.shadow_report!.usedForOutput, false, "a fallback plan never drives")
+  assert.deepEqual(driven.quote.render_intent, baseline.quote.render_intent, "deterministic output preserved on fallback")
+  assert.deepEqual(driven.quote.line_items, baseline.quote.line_items)
+})

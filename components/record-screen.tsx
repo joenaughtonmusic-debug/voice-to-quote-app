@@ -5,6 +5,7 @@ import { Mic, Pause, Square, Trash2, Play, Sparkles, Radio, Waypoints, Loader2 }
 import { cn } from "@/lib/utils"
 import type { ProcessedQuote } from "@/lib/processed-quote"
 import { supabase } from "@/lib/supabase"
+import { bearerAuthHeader } from "@/lib/auth-headers"
 import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
 
 type RecState = "idle" | "recording" | "paused" | "stopped" | "processing"
@@ -1024,6 +1025,7 @@ export function RecordScreen({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(await bearerAuthHeader()),
         },
         body: JSON.stringify({ transcript: rawTranscript }),
       })
@@ -1086,6 +1088,7 @@ export function RecordScreen({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(await bearerAuthHeader()),
       },
       body: JSON.stringify({
         transcript: combinedInput,
@@ -1164,6 +1167,7 @@ export function RecordScreen({
 
       const response = await fetch("/api/transcribe", {
         method: "POST",
+        headers: await bearerAuthHeader(),
         body: formData,
       })
 

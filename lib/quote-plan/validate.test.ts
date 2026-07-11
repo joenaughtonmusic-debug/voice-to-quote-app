@@ -90,6 +90,92 @@ test("string labour/measurement numbers are normalised and accepted", () => {
   assert.ok(!result.findings.some((f) => f.severity === "error"))
 })
 
+// 2b. A zero-filled OPTIONAL measurement means "not provided" — it must be dropped, not reject
+//     the whole plan. (Planners sometimes emit 0 for a field they have no value for.)
+test("a zero-filled optional measurement is treated as absent and does not sink the plan", () => {
+  const draft = {
+    quoteType: "planting",
+    quoteTypeConfidence: "high",
+    main: {
+      id: "main",
+      title: "Planting",
+      kind: "main",
+      scope: ["Plant a hedge"],
+      labour: [{ raw: "1 person 1 day", people: 1, days: 1, determinacy: "explicit" }],
+      materials: [],
+      // lengthM is real; areaM2/depthMm/count/spacingMm were zero-filled with no value.
+      measurements: { lengthM: 14.2, areaM2: 0, depthMm: 0, spacingMm: 0, count: 0 },
+      sourceText: "Plant a 14.2m hedge.",
+    },
+    optional: [],
+  }
+  const result = resolveQuotePlan({ draft, fallbackInput: fallbackInput() })
+  assert.ok(result.status === "accepted" || result.status === "normalised", `status was ${result.status}`)
+  assert.ok(!result.findings.some((f) => f.severity === "error"), "zero-filled optionals must not produce errors")
+  assert.equal(result.plan.main.measurements?.lengthM, 14.2, "the real measurement is kept")
+  assert.equal(result.plan.main.measurements?.areaM2, undefined, "the zero-filled measurement is dropped")
+  assert.equal(result.plan.main.measurements?.count, undefined)
+})
+
+// 2b-labour. Zero-filled labour numbers (people/days/hours) on a no-labour bucket mean "not
+//   provided" — they must be dropped, not reject the plan. (The Sarah/Ellerslie case.)
+test("zero-filled labour values are treated as absent and do not sink the plan", () => {
+  const draft = {
+    quoteType: "landscaping",
+    quoteTypeConfidence: "high",
+    main: {
+      id: "main",
+      title: "Main",
+      kind: "main",
+      scope: ["Lay a lawn"],
+      labour: [{ raw: "one person one day", people: 1, days: 1, hours: 8, determinacy: "explicit" }],
+      materials: [],
+      sourceText: "Lay a lawn, one person one day.",
+    },
+    optional: [
+      {
+        id: "optional-1",
+        title: "Optional extra",
+        kind: "optional",
+        scope: ["Some optional work"],
+        // No labour known → planner emitted 0s. Must be dropped, not rejected.
+        labour: [{ raw: "optional extra", people: 0, days: 0, hours: 0, determinacy: "missing" }],
+        materials: [],
+        sourceText: "Optional extra.",
+      },
+    ],
+  }
+  const result = resolveQuotePlan({ draft, fallbackInput: fallbackInput() })
+  assert.ok(result.status === "accepted" || result.status === "normalised", `status was ${result.status}`)
+  assert.ok(!result.findings.some((f) => f.severity === "error"), "zero-filled labour must not produce errors")
+  assert.equal(result.plan.main.labour[0].hours, 8, "the real labour value is kept")
+  const optionalLabour = result.plan.optional[0].labour[0]
+  assert.equal(optionalLabour.people, undefined, "the zero-filled labour value is dropped")
+  assert.equal(optionalLabour.hours, undefined)
+})
+
+// 2c. A genuinely out-of-range measurement is STILL rejected — the fix must not weaken this.
+test("a negative measurement is still rejected (validator not weakened)", () => {
+  const draft = {
+    quoteType: "planting",
+    quoteTypeConfidence: "high",
+    main: {
+      id: "main",
+      title: "Planting",
+      kind: "main",
+      scope: ["Plant a hedge"],
+      labour: [],
+      materials: [],
+      measurements: { areaM2: -5 },
+      sourceText: "x",
+    },
+    optional: [],
+  }
+  const result = resolveQuotePlan({ draft, fallbackInput: fallbackInput() })
+  assert.equal(result.status, "fallback", "a negative measurement must still fall back")
+  assert.ok(result.findings.some((f) => f.code === "invalid_measurement" && f.severity === "error"))
+})
+
 // 3. Draft AI plan with invalid labour values falls back and reports a finding.
 test("invalid (negative) labour value falls back to deterministic buildQuotePlan", () => {
   const draft = {

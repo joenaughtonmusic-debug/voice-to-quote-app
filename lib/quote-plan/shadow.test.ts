@@ -153,6 +153,20 @@ test("buildShadowReport: string-coerced fields are normalised (status normalised
   assert.equal(report.usedForOutput, false)
 })
 
+test("buildShadowReport: controlled mode (drive) marks an accepted plan usedForOutput=true", () => {
+  const input = fallbackInput()
+  const report = buildShadowReport({ deterministicPlan: buildQuotePlan(input), draft: validDraft(), fallbackInput: input, drive: true })
+  assert.ok(report.status === "accepted" || report.status === "normalised")
+  assert.equal(report.usedForOutput, true, "an accepted/normalised plan drives in controlled mode")
+})
+
+test("buildShadowReport: controlled mode never drives a fallback plan", () => {
+  const input = fallbackInput()
+  const report = buildShadowReport({ deterministicPlan: buildQuotePlan(input), draft: { bogus: true, main: null }, fallbackInput: input, drive: true })
+  assert.equal(report.status, "fallback")
+  assert.equal(report.usedForOutput, false, "a fallback plan must never drive, even in controlled mode")
+})
+
 test("buildShadowReport: an invalid draft falls back and the diff is empty (baseline == fallback)", () => {
   const input = fallbackInput()
   const report = buildShadowReport({

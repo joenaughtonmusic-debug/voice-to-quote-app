@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { buildShadowPlannerCardModel, SHADOW_NOT_USED_NOTICE } from "./shadow-card-model"
+import { buildShadowPlannerCardModel, SHADOW_NOT_USED_NOTICE, AI_PLAN_DROVE_NOTICE } from "./shadow-card-model"
 import type { ShadowPlannerReport } from "./shadow"
 import type { QuotePlan } from "./types"
 
@@ -43,9 +43,16 @@ function report(overrides: Partial<ShadowPlannerReport> = {}): ShadowPlannerRepo
   }
 }
 
-test("card model always carries the 'not used for output' notice", () => {
-  assert.equal(buildShadowPlannerCardModel(report()).notUsedNotice, SHADOW_NOT_USED_NOTICE)
-  assert.equal(buildShadowPlannerCardModel(null).notUsedNotice, SHADOW_NOT_USED_NOTICE)
+test("card model shows the shadow-only notice when the plan did not drive", () => {
+  assert.equal(buildShadowPlannerCardModel(report()).usageNotice, SHADOW_NOT_USED_NOTICE)
+  assert.equal(buildShadowPlannerCardModel(report()).usedForOutput, false)
+  assert.equal(buildShadowPlannerCardModel(null).usageNotice, SHADOW_NOT_USED_NOTICE)
+})
+
+test("card model shows the 'drove the quote' notice in controlled mode", () => {
+  const model = buildShadowPlannerCardModel(report({ usedForOutput: true }))
+  assert.equal(model.usedForOutput, true)
+  assert.equal(model.usageNotice, AI_PLAN_DROVE_NOTICE)
 })
 
 test("card model renders status, findings, differences and model label", () => {
@@ -69,7 +76,7 @@ test("card model for a failed report shows no diff lines but keeps the notice", 
   const model = buildShadowPlannerCardModel(report({ status: "failed", diff: null, error: "boom" }))
   assert.equal(model.statusLabel, "Failed")
   assert.deepEqual(model.differences, [])
-  assert.equal(model.notUsedNotice, SHADOW_NOT_USED_NOTICE)
+  assert.equal(model.usageNotice, SHADOW_NOT_USED_NOTICE)
 })
 
 test("card model for a missing report is a clean 'skipped' state", () => {

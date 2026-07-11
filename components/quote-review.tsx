@@ -32,6 +32,7 @@ import { ShadowPlannerCard } from "@/components/shadow-planner-card"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
 import { uploadDraftPhoto, loadDraftPhotos, deleteDraftPhoto, type DraftPhoto } from "@/lib/draft-photos"
 import { supabase } from "@/lib/supabase"
+import { bearerAuthHeader } from "@/lib/auth-headers"
 import { useAuth } from "@/hooks/use-auth"
 import type { ExportCategoryMapping } from "@/lib/export-mappings"
 import {
@@ -401,7 +402,7 @@ export function QuoteReview({
       const exportMappings = await loadExportMappingsForPayload()
       const response = await fetch("/api/export-xero-quote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await bearerAuthHeader()) },
         body: JSON.stringify({
           processed_quote: buildCustomerPreviewQuoteInput({
             processedQuote: editedQuote,

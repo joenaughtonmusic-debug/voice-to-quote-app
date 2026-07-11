@@ -11,8 +11,10 @@ export type ShadowCardTone = "positive" | "neutral" | "warning" | "danger"
 export type ShadowCardFinding = { severity: string; message: string }
 
 export type ShadowPlannerCardModel = {
-  /** Fixed, always-shown disclaimer that the shadow plan did not drive the quote. */
-  notUsedNotice: string
+  /** Whether the AI plan actually drove this quote (controlled mode) vs shadow-only. */
+  usedForOutput: boolean
+  /** Notice reflecting whether the plan drove the quote or was shadow-only. */
+  usageNotice: string
   statusLabel: string
   tone: ShadowCardTone
   summary: string
@@ -26,6 +28,7 @@ export type ShadowPlannerCardModel = {
 }
 
 export const SHADOW_NOT_USED_NOTICE = "Shadow only — not used for quote output."
+export const AI_PLAN_DROVE_NOTICE = "Controlled mode — this AI plan drove the quote. Review before sending."
 
 const STATUS_LABELS: Record<ShadowResolveStatus, string> = {
   accepted: "Accepted",
@@ -47,7 +50,8 @@ const STATUS_TONES: Record<ShadowResolveStatus, ShadowCardTone> = {
 export function buildShadowPlannerCardModel(report: ShadowPlannerReport | null | undefined, limit = 5): ShadowPlannerCardModel {
   if (!report) {
     return {
-      notUsedNotice: SHADOW_NOT_USED_NOTICE,
+      usedForOutput: false,
+      usageNotice: SHADOW_NOT_USED_NOTICE,
       statusLabel: STATUS_LABELS.skipped,
       tone: STATUS_TONES.skipped,
       summary: "Shadow AI planning did not run for this quote.",
@@ -64,7 +68,8 @@ export function buildShadowPlannerCardModel(report: ShadowPlannerReport | null |
   const modelLabel = model ? [model.provider, model.model].filter(Boolean).join(" / ") || null : null
 
   return {
-    notUsedNotice: SHADOW_NOT_USED_NOTICE,
+    usedForOutput: report.usedForOutput,
+    usageNotice: report.usedForOutput ? AI_PLAN_DROVE_NOTICE : SHADOW_NOT_USED_NOTICE,
     statusLabel: STATUS_LABELS[report.status] ?? report.status,
     tone: STATUS_TONES[report.status] ?? "neutral",
     summary: report.summary,

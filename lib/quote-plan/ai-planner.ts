@@ -55,6 +55,17 @@ export function isShadowPlannerEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return isTruthyFlag(env[QUOTE_PLAN_SHADOW_ENV]) && Boolean((env.OPENAI_API_KEY ?? "").trim())
 }
 
+export const AI_QUOTE_PLAN_ENV = "ENABLE_AI_QUOTE_PLAN"
+
+/**
+ * CONTROLLED MODE gate. When enabled (flag + API key), an accepted/normalised AI plan DRIVES the
+ * quote (calculators/pricing/render read from it); a fallback/failed plan uses deterministic
+ * buildQuotePlan. Dev-only by intent. Implies the planner runs, so it also enables shadow output.
+ */
+export function isAiQuotePlanEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isTruthyFlag(env[AI_QUOTE_PLAN_ENV]) && Boolean((env.OPENAI_API_KEY ?? "").trim())
+}
+
 // ── prompt ───────────────────────────────────────────────────────────────────
 
 export function buildPlannerSystemPrompt(): string {
@@ -78,9 +89,11 @@ where Bucket = {
   "title": string,
   "kind": "main" | "optional",
   "scope": string[],
-  "labour": [{ "raw": string, "people": number, "days": number, "hours": number, "determinacy": "explicit" | "inferred" | "missing" }],
+  // people/days/hours are OPTIONAL — include a key ONLY when you have a real value (never 0).
+  "labour": [{ "raw": string, "people"?: number, "days"?: number, "hours"?: number, "determinacy": "explicit" | "inferred" | "missing" }],
   "materials": [{ "name": string, "quantity": string, "unit": string, "optional": boolean }],
-  "measurements": { "lengthM": number, "areaM2": number, "depthMm": number, "spacingMm": number, "count": number, "provenance": string[] },
+  // ALL measurement fields are OPTIONAL — include a key ONLY when you have a real value.
+  "measurements": { "lengthM"?: number, "areaM2"?: number, "depthMm"?: number, "spacingMm"?: number, "count"?: number, "provenance": string[] },
   "sourceText": string               // the transcript span this bucket came from
 }
 
@@ -90,6 +103,11 @@ Critical rules:
   in the main bucket's labour.
 - Only include a numeric labour/measurement value when the transcript states or clearly implies
   it. Omit fields you cannot ground; do not invent numbers.
+- NEVER use 0 (or any placeholder) for a numeric value you don't have — this applies to labour
+  (people, days, hours) AND measurements (lengthM, areaM2, depthMm, spacingMm, count). If the
+  transcript gives no value for a field, OMIT that key entirely; do not send 0. A bucket with no
+  labour should have "labour": [] (or a labour entry with just "raw" + "determinacy":"missing").
+  All numeric values must be positive.
 - A planting length (lengthM) must never be attributed to a structural item (retaining wall,
   fence, topsoil, path). Keep such measurements on the structural bucket.
 - Put the transcript wording each bucket came from in "sourceText", and cite measurement
