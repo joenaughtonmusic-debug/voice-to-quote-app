@@ -1,5 +1,6 @@
 import type { PricingFact } from "../core/pricing-extraction"
 import type { SelectedQuoteTemplate } from "../template-renderer"
+import { isTeamSiteNote } from "./internal-scope-signals"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
 
 function cleanLine(value: string) {
@@ -250,11 +251,13 @@ function siteNotes(input: CustomerQuoteAssemblyInput) {
   const notes = siteNoteSentences(input)
     .filter((sentence) => !/^[\s\-•]*(?:title|job\s*type|cadence|scope)\s*:/i.test(sentence))
     .map(stripInternalPrefix)
-    .filter((sentence) =>
-      /\b(greenwaste\s+bin|green\s*waste\s+bin|dog|gate|gates|access|parking|key|lock|alarm|neighbou?r|tenant)\b/i.test(
-        sentence,
-      ),
-    )
+    // B3: the customer Site Notes section keeps only customer-relevant operational info (e.g. a
+    // green waste bin available on site). Team / access / hazard / parking / pet advisories
+    // (dog, gates, steep driveway, park on street, keys, alarms) are NOT customer-facing — they
+    // stay in the internal notes for the crew. isTeamSiteNote is a belt-and-braces guard on top
+    // of the customer-info allowlist.
+    .filter((sentence) => /\b(greenwaste\s+bin|green\s*waste\s+bin)\b/i.test(sentence))
+    .filter((sentence) => !isTeamSiteNote(sentence))
     .filter((sentence) => !/\b(price|per\s+visit|\$\d|labou?r|hours?)\b/i.test(sentence))
     .map(formatSiteNote)
 

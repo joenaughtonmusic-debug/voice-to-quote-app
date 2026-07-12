@@ -103,6 +103,31 @@ function isInternalReminderLine(value: string) {
   )
 }
 
+/**
+ * Team / site-access note — an access, hazard, parking, pet or security advisory for the crew
+ * (B3). These belong in the team/internal instructions, never the customer quote. Unambiguous
+ * cues (dog, steep driveway, park on street, alarm, hazard) match outright; ambiguous work
+ * nouns (gate, access, key, lock) match only in an advisory frame so a genuine work item like
+ * "install a gate" or "improve access path" is NOT mistaken for a team note.
+ */
+export function isTeamSiteNote(value: string) {
+  const cleaned = cleanLine(value).toLowerCase()
+  if (/\b(?:dogs?|cats?|pets?)\b/i.test(cleaned)) return true
+  if (/\bsteep\s+(?:driveway|drive|section|bank|slope)\b/i.test(cleaned)) return true
+  if (/\bpark\s+(?:on|in|down|up|along)\b/i.test(cleaned)) return true
+  if (/\b(?:alarm|security\s+code|key\s*safe|lock\s*box|lockbox)\b/i.test(cleaned)) return true
+  if (/\b(?:hazard|slippery|uneven\s+ground|watch\s+(?:out\s+)?for|be\s+aware|beware)\b/i.test(cleaned)) return true
+  if (/\b(?:neighbou?rs?|tenants?)\b/i.test(cleaned)) return true
+
+  const advisory =
+    /\b(?:make\s+sure|ensure|please\b|note\b|remember\s+to|leave\b)\b/i.test(cleaned) ||
+    /\bkeep\s+(?:the\s+)?[\w\s]{0,20}?(?:closed|shut|locked)\b/i.test(cleaned) ||
+    /\b(?:closed|shut|locked)\s+when\b/i.test(cleaned)
+  if (advisory && /\b(?:gates?|access|entry|driveway|key|lock|code)\b/i.test(cleaned)) return true
+
+  return false
+}
+
 /** True when a line carries any internal signal and must be kept out of customer scope. */
 export function hasInternalScopeSignal(value: string) {
   return (
@@ -113,6 +138,7 @@ export function hasInternalScopeSignal(value: string) {
     isDisposalRateLine(value) ||
     isSchedulingOrReminderLine(value) ||
     isPlanningMetaLine(value) ||
-    isInternalReminderLine(value)
+    isInternalReminderLine(value) ||
+    isTeamSiteNote(value)
   )
 }

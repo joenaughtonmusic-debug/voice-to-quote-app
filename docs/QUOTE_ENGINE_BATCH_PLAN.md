@@ -309,6 +309,49 @@ Plan (scope fully after AI-1 lands, since AI-1 may change how mixed jobs render 
 
 **Status: approved — queued (do NOT start before AI-1 lands).**
 
+---
+
+## Bread-and-butter series (PRODUCTION_DIRECTION reset)
+
+Per `docs/PRODUCTION_DIRECTION.md`: nail one-off tidy + ongoing maintenance first;
+internal notes must never reach the customer; match the real quotes in
+`docs/reference_quotes/` (ANSWER_KEYS.md). Mixed-trade / paver work (AI-0c, AI-1) is
+**paused** — do not start it under this series.
+
+### B1 — keep internal notes out of customer scope; price tidy labour/greenwaste from spoken figures
+Internal planning notes (weekday/scheduling, hourly rate, labour hours, dump/tip rate,
+greenwaste quantity, option-planning chatter) leaked into customer scope. Added a shared
+`internal-scope-signals` gate applied in the tidy assembler AND `customerPreview.scopeItems`.
+Labour/greenwaste become priced customer lines from spoken figures via the shared export
+resolvers (inline "N hours at $R" → labour total; spoken "$130 of green waste" → greenwaste).
+
+**Status: done** (commit `7181705`). Graded Xavier + David: 0 leaks, David labour $400, Xavier greenwaste $130.
+
+### B3 — team/site notes out of the customer quote, retained internally
+Access/hazard/parking/pet advisories (dog, gates, steep driveway, park on street) leaked to
+the customer via the maintenance "Site Notes" section (Fiona) and `customerPreview.scopeItems`
+(Rachel). Added `isTeamSiteNote` to the shared gate (advisory-framed so work items like
+"install a gate" survive) and narrowed the maintenance customer Site Notes to customer-relevant
+info only (e.g. green waste bin). Notes retained in the internal view.
+
+**Status: done — pending commit.** Graded Fiona/Steve/Rachel: 0 leaks, capture (frequency, $85/$95 overrides, two bags) intact.
+
+### B2 — greenwaste business-rule pricing (queued)
+David's "1.5 days" greenwaste and other non-spoken quantities need a business-rule price to
+reach a $ line (like the real $39.75), instead of staying flagged/unpriced. Deterministic
+rule, spoken price still wins. Do NOT fold into B1.
+
+**Status: approved — queued.**
+
+### B4 — maintenance customer output is too thin (queued)
+The maintenance customer draft renders only "Main Focus" bullets — it needs, to match Nadia
+(QU-0521): a **per-visit price line**, a **greenwaste line**, and the **frequency shown**
+(currently the cadence is captured but not surfaced). Also worth: a first-class **Team
+instructions** output to receive the B3 access/hazard notes (currently they live in the
+internal view only).
+
+**Status: approved — queued (do NOT build yet).**
+
 ### Later — KB / Price List Schema v2
 Goal:
 - canonical item names

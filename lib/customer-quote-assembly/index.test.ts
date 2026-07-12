@@ -125,12 +125,13 @@ Keep gates closed due to dog.`
 
   assert.ok(assembly)
   assert.equal(assembly.title, "Monthly Maintenance")
+  // B3: the only site note is a team/access advisory (dog/gates), so it drops out of the
+  // customer quote entirely — no Site Notes section here.
   assert.deepEqual(assembly.sections.map((section) => section.title), [
     "Main Focus",
     "Service Includes",
     "Ongoing Maintenance",
     "Price",
-    "Site Notes",
   ])
   assert.deepEqual(sectionItems("Main Focus", assembly), ["Pruning", "Trimming"])
   assert.deepEqual(sectionItems("Service Includes", assembly), [
@@ -141,9 +142,11 @@ Keep gates closed due to dog.`
     "Each visit may include weeding, spraying, plant health checks, and general garden maintenance as required",
   ])
   assert.deepEqual(sectionItems("Price", assembly), ["$495 per visit"])
-  assert.deepEqual(sectionItems("Site Notes", assembly), ["Keep gates closed due to dog"])
+  // Team/access note (dog, gates) is NOT customer-facing.
+  assert.deepEqual(sectionItems("Site Notes", assembly), [])
 
   const rendered = renderedAssembly(assembly)
+  assert.equal(/dog|gates?\b/i.test(rendered), false, rendered)
   assert.equal(/4 hours|labou?r per visit/i.test(rendered), false)
   assert.equal(/Title:|Job type:|Cadence:|Scope:/i.test(rendered), false)
 })
@@ -206,12 +209,14 @@ Please keep the side gate shut as there is a dog on the property.`
     "Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
   ])
   assert.deepEqual(sectionItems("Price", assembly), ["$365 per visit"])
+  // B3: the customer Site Notes keep genuinely customer-relevant info (green waste bin) but
+  // NOT the team/access advisory (dog/gate), which stays internal.
   assert.deepEqual(sectionItems("Site Notes", assembly), [
     "A green waste bin is available on site",
-    "Please keep the side gate shut as there is a dog on the property",
   ])
 
   const rendered = renderedAssembly(assembly)
+  assert.equal(/dog|side gate/i.test(rendered), false, rendered)
   assert.equal(/Title:|Job type:|Cadence:|Scope:|Note:/i.test(rendered), false)
   assert.equal(/Planting labour|legacy \$ labour total/i.test(rendered), false)
 })

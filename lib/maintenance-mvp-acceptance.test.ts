@@ -7,6 +7,7 @@ import { extractClientNameFromTranscript } from "./client-name-extraction"
 import { buildPricingReviewNotices, extractPricing } from "./core/pricing-extraction"
 import type { QuoteFact, QuoteFactCategory } from "./core/quote-facts"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
+import { isTeamSiteNote } from "./customer-quote-assembly/internal-scope-signals"
 import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview, type CustomerPreviewLineItem, type CustomerPreviewQuote } from "./customer-quote-preview"
@@ -490,13 +491,89 @@ Please keep the side gate shut as dog on the property.`
   assert.equal(includesText(renderedText, "Greenwaste removal"), true, renderedText)
   assert.equal(includesText(renderedText, "Standard maintenance materials"), true, renderedText)
   assert.equal(includesText(renderedText, "A green waste bin is available on site"), true, renderedText)
-  assert.equal(includesText(renderedText, "Please keep the side gate shut as dog on the property"), true, renderedText)
+  // B3: the team/access advisory (gate shut / dog) is NOT customer-facing — it stays internal.
+  assert.equal(includesText(renderedText, "Please keep the side gate shut as dog on the property"), false, renderedText)
+  assert.equal(/\bdog\b|side gate/i.test(renderedText), false, renderedText)
   assert.equal((renderedText.match(/^General garden maintenance(?: as required)?$/gim) ?? []).length, 0, renderedText)
   assert.equal((renderedText.match(/green waste bin available on site|green waste bin is available on site/gi) ?? []).length, 1, renderedText)
-  assert.equal((renderedText.match(/Please keep the side gate shut as dog on the property/gi) ?? []).length, 1, renderedText)
   assert.equal(/Title:|Job type:|Cadence:|Scope:|Note:/i.test(renderedText), false, renderedText)
   assert.equal(includesText(renderedText, "Planting labour"), false, renderedText)
   assert.equal(/\$320(?:\.00)?/.test(renderedText), false, renderedText)
+})
+
+// B3 — team/site notes (dog, gates, access, hazards, parking, steep driveway) must never
+// reach the customer quote; they stay in the internal notes. Deterministic fixtures.
+
+function b3MaintenanceModel(quote: ProcessedQuote) {
+  const previewInput = buildCustomerPreviewQuoteInput({ processedQuote: quote, rawTranscript: "" })
+  const preview = buildCustomerQuotePreview(previewInput)
+  return buildCustomerDraftPreviewModel({ processedQuote: quote, customerPreview: preview, rawTranscript: "" })
+}
+
+test("B3 Fiona maintenance — dog/gates team note stays out of the customer quote, retained internally", () => {
+  const fiona: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Fiona",
+    site_address: "4 Wiriki Road, Mount Eden",
+    quote_title: "maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "maintenance",
+      job_type: "maintenance",
+      cadence: "two-monthly",
+      scope: ["Garden maintenance", "Weeding", "Pruning"],
+      notes: ["Note: Need to ensure gates are closed when visiting due to a dog on the property"],
+    },
+  }
+
+  const model = b3MaintenanceModel(fiona)
+  const rendered = renderCustomerDraftPreviewText(model)
+
+  assert.equal(/\bdog\b|\bgates?\b/i.test(rendered), false, `Team note leaked to rendered quote: ${rendered}`)
+  assert.equal(model.scopeItems.some((i) => /dog|gate/i.test(i)), false, `Team note in customer scope field: ${model.scopeItems.join(" | ")}`)
+  const siteNotes = model.assembly?.sections.find((s) => s.title === "Site Notes")?.items ?? []
+  assert.equal(siteNotes.some((i) => /dog|gate/i.test(i)), false, `Team note in customer Site Notes: ${siteNotes.join(" | ")}`)
+  // Retained internally so the crew still gets it.
+  assert.ok(fiona.primary_quote.notes.some((n) => /dog|gate/i.test(n)), "team note must remain in internal notes")
+})
+
+test("B3 Rachel maintenance — steep driveway / park on street stays out of customer scope", () => {
+  const rachel: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Rachel",
+    site_address: "18 Arnie Road, Remuera",
+    quote_title: "maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "maintenance",
+      job_type: "maintenance",
+      cadence: "monthly",
+      scope: ["Monthly maintenance", "Small sprays as needed"],
+      notes: ["Steep driveway", "Park on street"],
+    },
+  }
+
+  const model = b3MaintenanceModel(rachel)
+  const rendered = renderCustomerDraftPreviewText(model)
+
+  assert.equal(/steep driveway|park on street/i.test(rendered), false, `Team note leaked to rendered quote: ${rendered}`)
+  assert.equal(
+    model.scopeItems.some((i) => /steep driveway|park on street/i.test(i)),
+    false,
+    `Team note in customer scope field: ${model.scopeItems.join(" | ")}`,
+  )
+  assert.ok(rachel.primary_quote.notes.some((n) => /steep|park/i.test(n)), "team note must remain in internal notes")
+})
+
+test("B3 guard — a genuine work item with an access noun is NOT treated as a team note", () => {
+  // "install a gate" and "improve access path" are work items, not advisories — they must survive.
+  assert.equal(isTeamSiteNote("Install a new side gate"), false)
+  assert.equal(isTeamSiteNote("Improve the access path to the back garden"), false)
+  // Advisories are team notes.
+  assert.equal(isTeamSiteNote("Please keep the side gate shut as there is a dog"), true)
+  assert.equal(isTeamSiteNote("Steep driveway, park on street"), true)
 })
 
 test("maintenance draft preview handoff uses edited quote instead of stale parent quote", () => {
