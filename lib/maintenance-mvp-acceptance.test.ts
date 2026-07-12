@@ -4,6 +4,7 @@ import test from "node:test"
 
 import { extractAddressDetails } from "./address-extraction"
 import { extractClientNameFromTranscript } from "./client-name-extraction"
+import { extractMaintenancePricingFacts } from "./export/maintenance-pricing-facts"
 import { buildPricingReviewNotices, extractPricing } from "./core/pricing-extraction"
 import type { QuoteFact, QuoteFactCategory } from "./core/quote-facts"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
@@ -636,4 +637,61 @@ test("maintenance draft preview handoff uses edited quote instead of stale paren
   assert.equal(includesText(renderedText, "Service Includes"), true, renderedText)
   assert.equal(includesText(renderedText, "$405 per visit"), true, renderedText)
   assert.equal(includesText(renderedText, "Planting labour"), false, renderedText)
+})
+
+// ── M1 — deterministic maintenance pricing-facts layer ─────────────────────
+// Foundation for the maintenance send-ready series (M2 per-visit price, M3 greenwaste line,
+// M4 priced extras, M5 frequency). Parsed straight from the RAW transcript so figures are stable
+// run-to-run. Stella is the real MVP-acceptance transcript; Nadia (QU-0521) and Brett (QU-0569)
+// are representative transcripts built from the answer keys (no raw transcripts on file) — graded
+// on the SPOKEN facts + the rules, matching how the tidy series was graded.
+
+const M1_NADIA_TRANSCRIPT =
+  "Six-weekly garden maintenance for Nadia at 1a Meyrick Place, Meadowbank. $285 per visit. " +
+  "Removal of greenwaste is charged separately at $26.50 per visit, ranging from $26.50 up to $66.25. " +
+  "Sprays and extras roughly $10. Tool maintenance and servicing $12. " +
+  "Main focus will be hedge trimming, weeding beds, and removal of self-seeded plants."
+
+const M1_BRETT_TRANSCRIPT =
+  "Ongoing lawns and garden maintenance for Brett at 19a Blockhouse Bay Road, two-monthly. " +
+  "$467.50 per visit, with lawn mowing carried out between visits, increasing over summer. " +
+  "A standard amount of greenwaste removal is included within the service. " +
+  "Petrol for the mower is $7 per visit."
+
+test("M1 Stella — parses per-visit price, monthly cadence and greenwaste-included from the real transcript", () => {
+  const facts = extractMaintenancePricingFacts(acceptanceTranscript())
+  assert.equal(facts.spokenPerVisitPrice, 405, "'Price per visit $405'")
+  assert.equal(facts.cadence, "monthly")
+  assert.equal(facts.labourHours, 4.5, "'4.5 hours labour per visit'")
+  assert.equal(facts.greenwasteIncluded, true, "'$405 including greenwaste removal' folds greenwaste in")
+  assert.equal(facts.spokenGreenwasteTotal, null, "no separate greenwaste figure when it is included")
+})
+
+test("M1 Nadia — per-visit $285, six-weekly, greenwaste its own $26.50, sprays and tool servicing captured", () => {
+  const facts = extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT)
+  assert.equal(facts.spokenPerVisitPrice, 285)
+  assert.equal(facts.cadence, "six_weekly")
+  assert.equal(facts.greenwasteIncluded, false, "charged separately, not folded in")
+  assert.equal(facts.spokenGreenwasteTotal, 26.5, "trailing-$ greenwaste total is captured")
+  assert.deepEqual(
+    facts.extras.map((e) => e.name).sort(),
+    ["Sprays / extras", "Tool servicing"],
+    "sprays and tool servicing captured as extras (pricing/classification is M4)",
+  )
+})
+
+test("M1 Brett — per-visit $467.50, two-monthly, greenwaste included, petrol captured as an extra", () => {
+  const facts = extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT)
+  assert.equal(facts.spokenPerVisitPrice, 467.5)
+  assert.equal(facts.cadence, "two_monthly")
+  assert.equal(facts.greenwasteIncluded, true)
+  assert.equal(facts.spokenGreenwasteTotal, null, "included greenwaste yields no separate figure")
+  assert.deepEqual(facts.extras.map((e) => e.name), ["Petrol"])
+})
+
+test("M1 — the same transcript yields identical facts across repeated runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT), extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT))
+    assert.deepEqual(extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT), extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT))
+  }
 })
