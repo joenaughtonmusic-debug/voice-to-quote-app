@@ -1,4 +1,5 @@
 import type { PricingFact } from "../core/pricing-extraction"
+import { itemisedMaintenanceExtraTriggers, resolveMaintenanceExtras } from "../export/maintenance-extras"
 import { extractMaintenancePricingFacts } from "../export/maintenance-pricing-facts"
 import { resolveMaintenanceVisitPrice } from "../export/maintenance-visit-price"
 import { extractTidyPricingFacts } from "../export/tidy-pricing-facts"
@@ -129,12 +130,15 @@ function serviceIncludes(input: CustomerQuoteAssemblyInput, mainFocus: string[])
   // in which case it must not also appear here — that would double it up. It stays an inclusion when
   // folded into the visit price (Brett/Stella "included", or James with no separate greenwaste price).
   const greenwasteIsSeparateLine = separateGreenwasteAmount(input) != null
+  // An extra shown as its own priced line (M4) must not also appear as a service inclusion.
+  const itemisedExtraTriggers = itemisedMaintenanceExtraTriggers(input.rawTranscript ?? null)
 
   const focusKeys = new Set(mainFocus.map((item) => item.toLowerCase()))
   return unique([...pricingIncludes, ...transcriptIncludes])
     .map(normalizeServiceItem)
     .filter((item) => !focusKeys.has(item.toLowerCase()))
     .filter((item) => !(greenwasteIsSeparateLine && /\bgreen\s*waste|greenwaste\b/i.test(item)))
+    .filter((item) => !itemisedExtraTriggers.some((trigger) => trigger.test(item)))
 }
 
 function ongoingMaintenanceItems(input: CustomerQuoteAssemblyInput, mainFocus: string[]) {
@@ -260,6 +264,21 @@ function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
     ? ` (range ${moneyVisit(greenwasteRange.low)}–${moneyVisit(greenwasteRange.high)})`
     : ""
   return [`Removal of greenwaste — ${moneyVisit(amount)}${range}`]
+}
+
+/**
+ * Extras line(s) (M4). A separately priced extra (Nadia sprays $10 / tool servicing $12, Brett
+ * petrol $7) shows as its own line; a bare mention with no price is flagged "price to confirm".
+ * Extras folded into the visit price ("included") are omitted here — they stay service inclusions.
+ */
+function extrasSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+  return resolveMaintenanceExtras(input.rawTranscript ?? null)
+    .filter((extra) => !extra.included)
+    .map((extra) =>
+      extra.amount != null && extra.amount > 0
+        ? `${extra.name} — ${moneyVisit(extra.amount)}`
+        : `${extra.name} — price to confirm`,
+    )
 }
 
 function money(value: number) {
@@ -388,6 +407,7 @@ export function assembleMaintenanceCustomerQuote(input: CustomerQuoteAssemblyInp
     section("Ongoing Maintenance", ongoingMaintenanceItems(input, mainFocus)),
     section("Price", perVisitPriceItems(input)),
     section("Green Waste", greenwasteSectionItems(input)),
+    section("Extras", extrasSectionItems(input)),
     section("Site Notes", siteNotes(input)),
     section("Exclusions", input.quote.exclusions),
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)

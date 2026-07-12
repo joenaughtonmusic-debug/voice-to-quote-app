@@ -804,3 +804,40 @@ test("M3 — the greenwaste line is identical across repeat runs (deterministic)
     assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste"), assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste"))
   }
 })
+
+// ── M4 — priced extras: fold when included, itemise as own line when separately priced ──────
+
+test("M4 Nadia — sprays $10 and tool servicing $12 each itemise as their own line", () => {
+  const extras = assemblySection(M1_NADIA_TRANSCRIPT, "Extras")
+  assert.deepEqual(extras, ["Sprays / extras — $10", "Tool servicing — $12"], extras.join(" | "))
+  // Not double-counted under Service Includes.
+  const includes = assemblySection(M1_NADIA_TRANSCRIPT, "Service Includes")
+  assert.ok(!includes.some((i) => /spray|tool/i.test(i)), `Itemised extras must not double up. Got: ${includes.join(" | ")}`)
+})
+
+test("M4 Brett — petrol $7 itemises as its own line", () => {
+  assert.deepEqual(assemblySection(M1_BRETT_TRANSCRIPT, "Extras"), ["Petrol — $7"])
+})
+
+test("M4 Stella — herbicide spraying is included in the visit price, so it does not itemise", () => {
+  const transcript = acceptanceTranscript()
+  const extras = assemblySection(transcript, "Extras")
+  assert.ok(!extras.some((i) => /spray|herbicide/i.test(i)), `Included herbicide must not itemise. Got: ${extras.join(" | ")}`)
+  // It remains a service inclusion (per the MVP acceptance).
+  const includes = assemblySection(transcript, "Service Includes")
+  assert.ok(includes.some((i) => /spray|herbicide/i.test(i)), `Stella's included spraying should stay a service inclusion. Got: ${includes.join(" | ")}`)
+})
+
+test("M4 — an extra mentioned with no price is flagged, never guessed", () => {
+  const extras = assemblySection(
+    "Six-weekly maintenance for Ivy. $260 per visit. Weeding and pruning. Petrol for the mower each visit.",
+    "Extras",
+  )
+  assert.deepEqual(extras, ["Petrol — price to confirm"])
+})
+
+test("M4 — the extras lines are identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Extras"), ["Sprays / extras — $10", "Tool servicing — $12"])
+  }
+})
