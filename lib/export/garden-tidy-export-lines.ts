@@ -5,6 +5,8 @@ import {
   type ExportableQuoteLine,
 } from "./exportable-line"
 import { resolveLabourExportPrice } from "./labour-line-builder"
+import { resolveTidyExtras } from "./tidy-extras"
+import { extractTidyPricingFacts } from "./tidy-pricing-facts"
 import {
   greenwasteDescriptionFromAssembly,
   resolveGreenwasteExportPrice,
@@ -107,6 +109,9 @@ function shouldExportGreenwasteLine(
 function gardenTidyAssembly(quote: XeroPayloadQuote) {
   return assembleCustomerQuote({
     quote: xeroQuoteAsProcessedQuote(quote),
+    // Pass the transcript so the Xero-side assembly resolves the same transcript-derived
+    // labour/greenwaste/extras as the customer draft (keeps the two in parity).
+    rawTranscript: quote.raw_transcript ?? null,
     pricingFacts: quote.pricing_facts,
     selectedTemplate: quote.selected_template,
   })
@@ -166,40 +171,65 @@ export function buildGardenTidyExportableLines(quote: XeroPayloadQuote): Exporta
     ),
   ]
 
-  if (!exportGreenwaste) return lines
+  if (exportGreenwaste) {
+    const wastePrice = resolveGreenwasteExportPrice(quote)
+    const wasteCode = xeroItemCode(
+      wasteItem?.item_code,
+      wasteItem?.source_system,
+      wasteItem?.item_name,
+      wasteItem?.description,
+    )
 
-  const wastePrice = resolveGreenwasteExportPrice(quote)
-  const wasteCode = xeroItemCode(
-    wasteItem?.item_code,
-    wasteItem?.source_system,
-    wasteItem?.item_name,
-    wasteItem?.description,
-  )
+    lines.push(
+      applyQuoteLineItemMetadata(
+        {
+          lineId: "garden-tidy-greenwaste",
+          role: "waste",
+          category: "waste",
+          label: "Greenwaste",
+          xeroDescription: greenwasteDescriptionFromAssembly(
+            assemblySectionItems(assembly, "Green Waste"),
+            quote,
+            wasteItem,
+          ),
+          quantity: wastePrice.quantity,
+          unitAmount: wastePrice.unitAmountWasDefaulted ? 0 : (wastePrice.unitAmount ?? 0),
+          itemCode: wasteCode.itemCode,
+          omittedItemCode: wasteCode.omittedItemCode,
+          itemCodeSource: wasteItem?.source_system,
+          gstRate: wasteItem?.gst_rate ?? null,
+          pricingSource: wastePrice.pricingSource,
+          unitAmountWasDefaulted: wastePrice.unitAmountWasDefaulted,
+        },
+        wasteItem ?? undefined,
+      ),
+    )
+  }
 
-  lines.push(
-    applyQuoteLineItemMetadata(
-      {
-        lineId: "garden-tidy-greenwaste",
-        role: "waste",
-        category: "waste",
-        label: "Greenwaste",
-        xeroDescription: greenwasteDescriptionFromAssembly(
-          assemblySectionItems(assembly, "Green Waste"),
-          quote,
-          wasteItem,
-        ),
-        quantity: wastePrice.quantity,
-        unitAmount: wastePrice.unitAmountWasDefaulted ? 0 : (wastePrice.unitAmount ?? 0),
-        itemCode: wasteCode.itemCode,
-        omittedItemCode: wasteCode.omittedItemCode,
-        itemCodeSource: wasteItem?.source_system,
-        gstRate: wasteItem?.gst_rate ?? null,
-        pricingSource: wastePrice.pricingSource,
-        unitAmountWasDefaulted: wastePrice.unitAmountWasDefaulted,
-      },
-      wasteItem ?? undefined,
-    ),
-  )
+  // T6 — export each priced extra (e.g. weedkiller $6) as its own line so the Xero total matches
+  // the customer draft. A flagged/unlisted extra exports at $0 with the standard "price not
+  // captured" warning, so it is never silently dropped.
+  const transcript = quote.raw_transcript ?? null
+  resolveTidyExtras(extractTidyPricingFacts(transcript), transcript).forEach((extra, index) => {
+    const priced = extra.amount != null && extra.amount > 0
+    lines.push(
+      applyQuoteLineItemMetadata(
+        {
+          lineId: `garden-tidy-extra-${index}`,
+          role: "materials",
+          category: "materials",
+          label: extra.name,
+          xeroDescription: extra.name,
+          quantity: 1,
+          unitAmount: priced ? (extra.amount as number) : 0,
+          gstRate: null,
+          pricingSource: priced ? "resolver" : "unpriced",
+          unitAmountWasDefaulted: !priced,
+        },
+        undefined,
+      ),
+    )
+  })
 
   return lines
 }

@@ -419,12 +419,20 @@ until an extras export line is added (parity); (2) the labour-paragraph merge (s
 single "Labour – main scope" line, removing the separate Scope-of-Work section) with Xero
 description repointed. Both touch the Xero renderer, so they belong in one focused batch.
 
-### T6 — Xero extras-line parity + invoice labour paragraph
-(1) Add an extras export line to the garden-tidy Xero renderer so the Xero total matches the draft
-(Xavier $1,336, GST $174.26). (2) Merge scope into a single "Labour – main scope" line (prose
-description + $), remove the standalone Scope-of-Work section, and repoint `labourXeroDescription`
-/ `buildGardenTidyExportableLines` to the new source. Update the Scope-of-Work / Xero-parity tests
-transparently.
+### T6 — Xero extras-line parity
+Add an extras export line to the garden-tidy Xero renderer so the Xero total matches the customer
+draft. Also passes the transcript into the Xero-side assembly and reorders so extras always export
+(a flagged extra exports at $0 with the "price not captured" warning). Xavier: Xero total
+**$1,336 = draft $1,336**; a per-quote parity test asserts it.
+
+**Status: done — pending commit.** Shirley (no extras) unchanged; all export suites green.
+
+### T7 — invoice labour paragraph (split out of T6)
+Merge scope into a single "Labour – main scope" line (prose description + $), remove the standalone
+Scope-of-Work section, and repoint `labourXeroDescription` / `buildGardenTidyExportableLines`.
+Scoped out of T6 because it **invalidates the premise of ~20 tidy tests** that assert scope and
+labour are separate sections (e.g. "Scope of Work excludes labour") — those need per-test rework,
+not a mechanical rename, so it deserves its own focused batch rather than a rushed change.
 
 **Status: approved — queued.**
 

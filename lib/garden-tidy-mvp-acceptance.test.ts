@@ -679,6 +679,20 @@ test("T5 — totals are identical across repeat runs (deterministic)", () => {
   }
 })
 
+// T6 — Xero export includes an extras line so its total matches the customer draft, and the
+// labour is a single "Labour - main scope" prose line.
+
+test("T6 Xavier — Xero export total matches the customer draft total (parity, $1,336)", () => {
+  const quote = t1TidyQuote()
+  const previewInput = buildCustomerPreviewQuoteInput({ processedQuote: quote, rawTranscript: T5_XAVIER })
+  const payload = buildXeroQuotePayload(previewInput)
+  const xeroTotal = payload.quote.xeroLineItemsArray.reduce((sum, li) => sum + (Number(li.UnitAmount) || 0), 0)
+  assert.equal(Math.round(xeroTotal * 100) / 100, 1336, JSON.stringify(payload.quote.xeroLineItemsArray))
+
+  const totals = assemblySectionItems("Totals", currentDraftPreviewModel(T5_XAVIER, quote))
+  assert.ok(totals.includes("Total (NZD): $1,336.00"), totals.join(" | "))
+})
+
 test("Shirley live handoff — Green Waste dedupes repeated two-trailer lines", () => {
   const baseQuote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,
