@@ -81,13 +81,22 @@ export function transcriptMentionsHedgeTrimming(transcript: string) {
 }
 
 /**
- * A distinct NON-PLANTING structural-trade area in the transcript (paving/retaining/decking/
- * hard fill). Deliberately a tight allow-list of unambiguous construction nouns — it must NOT
- * match planting-adjacent edging like a "timber board border" around a planting bed, so a pure
- * planting job (Michelia / Client A) is never mistaken for a mixed one.
+ * The single source of truth for distinct NON-PLANTING structural-trade items. A tight allow-list
+ * of unambiguous construction nouns — it must NOT match planting-adjacent edging like a "timber
+ * board border" around a planting bed, so a pure planting job (Michelia / Client A) is never
+ * mistaken for a mixed one. Both the AI-0 classification guard and the AI-0b extraction coverage
+ * check derive from this list, so "what should be there" is deterministic, never an AI guess.
  */
+export const NON_PLANTING_STRUCTURAL_TRADES: ReadonlyArray<{ label: string; pattern: RegExp }> = [
+  { label: "paving / paver area", pattern: /\b(pavers?|paving|paved\s+area)\b/i },
+  { label: "retaining wall", pattern: /\bretaining\s+wall\b/i },
+  { label: "decking", pattern: /\bdecking\b/i },
+  { label: "hard fill", pattern: /\bhard\s?fill\b/i },
+]
+
+/** True when the transcript mentions any distinct non-planting structural trade (see the list). */
 export function transcriptMentionsNonPlantingStructuralTrade(transcript: string) {
-  return /\b(pavers?|paving|paved\s+area|retaining\s+wall|decking|hard\s?fill)\b/i.test(transcript)
+  return NON_PLANTING_STRUCTURAL_TRADES.some((trade) => trade.pattern.test(transcript))
 }
 
 /**

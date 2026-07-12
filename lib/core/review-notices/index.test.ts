@@ -39,7 +39,7 @@ test("text with no measurements returns no notices for now", () => {
 })
 
 test("review notice registry includes measurement and active trade contributors", () => {
-  assert.deepEqual(reviewNoticeContributors.map((contributor) => contributor.id), ["measurement", "decking", "retaining"])
+  assert.deepEqual(reviewNoticeContributors.map((contributor) => contributor.id), ["coverage", "measurement", "decking", "retaining"])
 })
 
 test("decking quote with missing estimating details creates decking notices", () => {

@@ -38,6 +38,7 @@
     "test:customer-optional-works": "tsc --project lib/customer-optional-works.tsconfig.test.json && node --test .tmp/customer-optional-works-tests/lib/customer-optional-works.test.js",
     "test:renderer-intent": "tsc --project lib/customer-renderer-intent.tsconfig.test.json && node --test .tmp/customer-renderer-intent-tests/lib/customer-renderer-intent.test.js",
     "test:classification": "tsc --project lib/quote-classification.tsconfig.test.json && node --test .tmp/quote-classification-tests/lib/quote-classification.test.js",
+    "test:extraction-coverage": "tsc --project lib/core/extraction-coverage.tsconfig.test.json && node --test .tmp/extraction-coverage-tests/lib/core/extraction-coverage.test.js",
     "test:api-auth": "tsc --project lib/api-auth.tsconfig.test.json && node --test .tmp/api-auth-tests/lib/api-auth.test.js",
     "test:xero-export": "tsc --project lib/xero-export.tsconfig.test.json && node --test .tmp/xero-export-tests/lib/xero-export.test.js",
     "test:route-auth": "tsc --project lib/route-auth.tsconfig.test.json && node --require ./scripts/route-alias.cjs --test .tmp/route-auth-tests/lib/route-auth.test.js",

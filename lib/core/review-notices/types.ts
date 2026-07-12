@@ -1,6 +1,6 @@
 export type ReviewNoticeSeverity = "info" | "warning" | "error"
 
-export type ReviewNoticeSource = "core" | "measurement" | "trade"
+export type ReviewNoticeSource = "core" | "measurement" | "trade" | "coverage"
 
 export type ReviewNoticeCategory =
   | "measurement"

@@ -1,4 +1,5 @@
 export * from "./types"
 export * from "./measurement-notices"
+export * from "./coverage-notices"
 export * from "./registry"
 export * from "./quote-review"

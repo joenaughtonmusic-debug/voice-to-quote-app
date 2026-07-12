@@ -33,6 +33,7 @@ import {
   refineMixedLandscapingClassification,
 } from "../quote-classification"
 import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "../core/labour-allowance-extraction"
+import { extractWithCoverageRetry, findMissingStructuralCoverage, attachCoverageWarnings } from "../core/extraction-coverage"
 import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "../export/labour-line-builder"
 import { auditProcessedQuote } from "../quote-auditor"
 import { buildQuotePlan } from "../quote-plan/build-plan"
@@ -3032,52 +3033,54 @@ async function runQuoteExtractionAttempt(
   }
 }
 
-async function extractQuoteWithRetry(context: QuoteExtractionContext) {
-  let lastError: QuoteExtractionError | null = null
+// Up to 3 attempts: retried on a retryable error OR on an extraction-coverage miss (AI-0b).
+const MAX_EXTRACTION_ATTEMPTS = 3
 
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      const result = await runQuoteExtractionAttempt(context, attempt)
-      console.log("process-quote extraction reliability", {
-        attempt,
-        model: QUOTE_MODEL,
-        prompt_length: result.promptLength,
-        response_length: result.responseLength,
-        transcript_length: context.transcript.length,
-        extraction_time_ms: result.elapsedMs,
-        reliability_metric: result.reliabilityMetric,
-        retry_result: attempt > 1 ? "retry succeeded" : "not retried",
-      })
-      return result
-    } catch (error) {
-      if (error instanceof QuoteExtractionError) {
-        lastError = error
-        logQuoteExtractionFailure(error, attempt)
+async function extractQuoteWithRetry(context: QuoteExtractionContext) {
+  return extractWithCoverageRetry({
+    transcript: context.transcript,
+    maxAttempts: MAX_EXTRACTION_ATTEMPTS,
+    attempt: async (attempt) => {
+      try {
+        const result = await runQuoteExtractionAttempt(context, attempt)
         console.log("process-quote extraction reliability", {
           attempt,
           model: QUOTE_MODEL,
+          prompt_length: result.promptLength,
+          response_length: result.responseLength,
           transcript_length: context.transcript.length,
-          reliability_metric: attempt === 1 && error.retryable ? "failed_retrying" : "failed",
-          retry_result: attempt === 1 && error.retryable ? "retry scheduled" : "retry unavailable or failed",
-          failed_stage: error.stage,
-          error_message: error.message,
+          extraction_time_ms: result.elapsedMs,
+          reliability_metric: result.reliabilityMetric,
+          retry_result: attempt > 1 ? "retry" : "not retried",
         })
-        if (attempt === 1 && error.retryable) continue
-        throw error
+        return result
+      } catch (error) {
+        if (error instanceof QuoteExtractionError) {
+          logQuoteExtractionFailure(error, attempt)
+          throw error
+        }
+        const wrapped = new QuoteExtractionError("Unexpected quote extraction error.", "unexpected_extraction_error", false, {
+          model: QUOTE_MODEL,
+          transcript_length: context.transcript.length,
+          error_message: error instanceof Error ? error.message : String(error),
+        })
+        logQuoteExtractionFailure(wrapped, attempt)
+        throw wrapped
       }
-
-      const wrapped = new QuoteExtractionError("Unexpected quote extraction error.", "unexpected_extraction_error", false, {
+    },
+    isRetryableError: (error) => error instanceof QuoteExtractionError && error.retryable,
+    onAttempt: ({ attemptNumber, missing, error }) => {
+      if (error || missing.length === 0) return
+      // A successful extraction that is missing a described structural item: retry, or (on the
+      // last attempt) accept with a loud coverage warning attached by extractWithCoverageRetry.
+      console.log("process-quote extraction coverage", {
+        attempt: attemptNumber,
         model: QUOTE_MODEL,
-        transcript_length: context.transcript.length,
-        error_message: error instanceof Error ? error.message : String(error),
+        missing,
+        action: attemptNumber < MAX_EXTRACTION_ATTEMPTS ? "retrying (coverage miss)" : "accepted with loud coverage warning",
       })
-      lastError = wrapped
-      logQuoteExtractionFailure(wrapped, attempt)
-      throw wrapped
-    }
-  }
-
-  throw lastError ?? new QuoteExtractionError("Quote extraction failed.", "unknown", false)
+    },
+  })
 }
 
 export type ProcessTranscriptInput = {
@@ -3437,6 +3440,16 @@ export async function processTranscriptToQuote(
 
       if (!leadDetails.site_address && !quote.missing_information.includes("Site address not captured")) {
         quote.missing_information.push("Site address not captured")
+      }
+
+      // Final coverage safety net (AI-0b): a structural item the transcript described but the
+      // FULLY-ASSEMBLED quote is still missing — because extraction retries could not recover it,
+      // OR a later normaliser dropped it after the extraction-time check — must be surfaced loudly,
+      // never silently. Same deterministic detector as the extraction retry.
+      const finalCoverageMissing = findMissingStructuralCoverage(transcript, quote)
+      if (finalCoverageMissing.length > 0) {
+        attachCoverageWarnings(quote, finalCoverageMissing)
+        log.log("process-quote final coverage miss (loud review notice attached)", { missing: finalCoverageMissing })
       }
 
       console.log("process-quote completed", {

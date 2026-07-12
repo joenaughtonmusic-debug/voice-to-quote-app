@@ -1,9 +1,14 @@
 import { deckingReviewNotices } from "../../trades/decking/review-notices"
 import { retainingReviewNotices } from "../../trades/retaining/review-notices"
+import { coverageReviewNotices } from "./coverage-notices"
 import { measurementReviewNotices } from "./measurement-notices"
 import type { ReviewNotice, ReviewNoticeContributor, ReviewNoticeInput } from "./types"
 
 export const reviewNoticeContributors: ReviewNoticeContributor[] = [
+  {
+    id: "coverage",
+    buildReviewNotices: coverageReviewNotices,
+  },
   {
     id: "measurement",
     buildReviewNotices: measurementReviewNotices,
