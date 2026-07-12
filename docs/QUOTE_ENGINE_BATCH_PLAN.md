@@ -235,6 +235,30 @@ Done criteria:
 
 **Status: approved — active (next, before AI-1).**
 
+### AI-0c — extend coverage-check-retry beyond structural nouns
+Context: AI-0b's coverage check is deliberately scoped to the tight AI-0 structural-noun set
+(paver/paving/retaining wall/decking/hard fill). The extraction non-determinism is almost
+certainly NOT paver-specific — other distinct work items are just as droppable. AI-0b must not
+quietly become the whole fix.
+
+Goal:
+- Reuse the SAME AI-0b coverage-check-retry + loud-notice machinery, but broaden the deterministic
+  "what should be there" set to other distinct work items:
+  - **labour lines** (per-task hour allowances / people×days the transcript states),
+  - **optional works** (explicit "optional"/"option for" items),
+  - **green waste** (stated green-waste allowance/amount),
+  - **measured sub-areas** (distinct areas with dimensions, e.g. "1.5m x 3.5m").
+- Keep each detector DETERMINISTIC (transcript-derived, not an AI guess) and over-trigger-safe.
+
+Notes:
+- Sequence after AI-0b proves the mechanism on the tight set and after we see the real
+  cross-transcript miss profile from the 5-transcript verification (Tacoma hedge, optional
+  water-blasting, "privet", green-waste details were all dropped too).
+- Likely reuses existing deterministic extractors (labour-allowance-extraction, review-notices
+  measurement detectors) as the "expected" source rather than new regexes where possible.
+
+**Status: approved — queued after AI-0b (broaden coverage; do NOT fold into AI-0b's v1).**
+
 ### AI-1 — render_intent mixed-trade guard (controlled-mode regression)
 Context: controlled mode (`ENABLE_AI_QUOTE_PLAN`, dev-only) lets an accepted/normalised AI
 QuotePlan drive the quote. Live verification of 5 real transcripts found one customer-facing
