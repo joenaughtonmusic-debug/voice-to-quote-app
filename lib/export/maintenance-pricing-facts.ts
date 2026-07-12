@@ -90,7 +90,14 @@ export function extractMaintenancePricingFacts(
   // "$405 per visit" / "$405 a visit" (leading), or "per visit $405" / "price per visit $405"
   // (trailing). Never matches a greenwaste "$26.50" — that requires the word "visit" adjacent.
   const perVisitLeading = firstAmount(text, /\$\s?([\d,]+(?:\.\d+)?)\s+(?:per|a)\s+visit\b/i)
-  const perVisitTrailing = firstAmount(text, /\bper\s+visit\b\s*(?:is|of|at|:)?\s*\$\s?([\d,]+(?:\.\d+)?)/i)
+  // The trailing form excludes an hourly rate stated after "per visit" ("per visit at $75 an hour"):
+  // that $75 is the rate feeding the computed price (M2), not the per-visit total.
+  // (?![\d.,]) ensures the whole number is captured before the rate lookahead runs — otherwise the
+  // engine backtracks to a truncated capture ("$75 an hour" → "7") once the full number is rejected.
+  const perVisitTrailing = firstAmount(
+    text,
+    /\bper\s+visit\b\s*(?:is|of|at|:)?\s*\$\s?([\d,]+(?:\.\d+)?)(?![\d.,])(?!\s*(?:per|an|\/)\s*(?:hour|hr))/i,
+  )
   const spokenPerVisitPrice = perVisitLeading ?? perVisitTrailing
 
   // ── Cadence (M5) ─────────────────────────────────────────────────────────

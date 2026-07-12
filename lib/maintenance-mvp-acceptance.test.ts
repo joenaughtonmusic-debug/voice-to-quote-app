@@ -4,7 +4,9 @@ import test from "node:test"
 
 import { extractAddressDetails } from "./address-extraction"
 import { extractClientNameFromTranscript } from "./client-name-extraction"
+import { assembleMaintenanceCustomerQuote } from "./customer-quote-assembly/maintenance"
 import { extractMaintenancePricingFacts } from "./export/maintenance-pricing-facts"
+import { resolveMaintenanceVisitPrice } from "./export/maintenance-visit-price"
 import { buildPricingReviewNotices, extractPricing } from "./core/pricing-extraction"
 import type { QuoteFact, QuoteFactCategory } from "./core/quote-facts"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
@@ -693,5 +695,63 @@ test("M1 — the same transcript yields identical facts across repeated runs (de
   for (const _ of [1, 2, 3, 4, 5]) {
     assert.deepEqual(extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT), extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT))
     assert.deepEqual(extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT), extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT))
+  }
+})
+
+// ── M2 — per-visit price anchor (reuses the tidy labour engine) ─────────────
+// A spoken per-visit total wins; otherwise the tidy engine computes hours × people × rate. The
+// computed rule number is graded on correct computation + being editable (Joe adjusts by feel).
+
+function resolveVisitPrice(transcript: string) {
+  return resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+}
+
+function priceLine(transcript: string) {
+  const assembly = assembleMaintenanceCustomerQuote({ quote: EMPTY_PROCESSED_QUOTE, rawTranscript: transcript })
+  return assembly.sections.find((s) => s.title === "Price")?.items ?? []
+}
+
+test("M2 — a spoken per-visit total wins (Stella $405, Nadia $285, Brett $467.50)", () => {
+  const stella = resolveVisitPrice(acceptanceTranscript())
+  assert.deepEqual([stella.pricingSource, stella.amount], ["spoken_per_visit", 405])
+  const nadia = resolveVisitPrice(M1_NADIA_TRANSCRIPT)
+  assert.deepEqual([nadia.pricingSource, nadia.amount], ["spoken_per_visit", 285])
+  const brett = resolveVisitPrice(M1_BRETT_TRANSCRIPT)
+  assert.deepEqual([brett.pricingSource, brett.amount], ["spoken_per_visit", 467.5])
+})
+
+test("M2 — with no spoken total, the price is computed as hours × rate via the tidy engine", () => {
+  // "3 hours per visit at $75 an hour" → 3 × 1 × 75 = $225. The "$75 an hour" is the rate, not the
+  // per-visit total, so it must NOT be read as a spoken price.
+  const resolved = resolveVisitPrice("Fortnightly maintenance for Tom. Allow 3 hours per visit at $75 an hour.")
+  assert.equal(resolved.pricingSource, "computed_day_rate")
+  assert.equal(resolved.amount, 225)
+})
+
+test("M2 — a per-visit rate PER PERSON multiplies by crew size (full-day rule reused)", () => {
+  // "full day, two people at $80/hr" → 7.5h × 2 × $80 = $1,200 (the tidy day-rate rule, reused).
+  const resolved = resolveVisitPrice("Weekly maintenance. Full day, two people at $80 an hour.")
+  assert.equal(resolved.pricingSource, "computed_day_rate")
+  assert.equal(resolved.amount, 1200)
+})
+
+test("M2 — no spoken total and no rate stays unpriced (flagged, never guessed)", () => {
+  // Stella's "4.5 hours labour per visit" alone (no rate) computes nothing — but she DOES state a
+  // spoken $405, so isolate the rate-less case here.
+  const resolved = resolveVisitPrice("Monthly maintenance for Kate. Allow 4.5 hours labour per visit.")
+  assert.equal(resolved.pricingSource, "unpriced")
+  assert.equal(resolved.amount, 0)
+})
+
+test("M2 — the assembled customer quote shows a deterministic '$X per visit' line", () => {
+  assert.deepEqual(priceLine(M1_NADIA_TRANSCRIPT), ["$285 per visit"])
+  assert.deepEqual(priceLine(M1_BRETT_TRANSCRIPT), ["$467.50 per visit"])
+  assert.deepEqual(priceLine(acceptanceTranscript()), ["$405 per visit"])
+})
+
+test("M2 — the resolved per-visit price is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.equal(resolveVisitPrice(M1_NADIA_TRANSCRIPT).amount, 285)
+    assert.equal(resolveVisitPrice("Fortnightly maintenance. Allow 3 hours per visit at $75 an hour.").amount, 225)
   }
 })

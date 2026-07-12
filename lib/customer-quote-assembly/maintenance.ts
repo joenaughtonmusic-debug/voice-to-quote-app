@@ -1,4 +1,6 @@
 import type { PricingFact } from "../core/pricing-extraction"
+import { extractMaintenancePricingFacts } from "../export/maintenance-pricing-facts"
+import { resolveMaintenanceVisitPrice } from "../export/maintenance-visit-price"
 import type { SelectedQuoteTemplate } from "../template-renderer"
 import { isTeamSiteNote } from "./internal-scope-signals"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
@@ -208,11 +210,42 @@ function priceItems(pricingFacts: PricingFact[] | undefined) {
   )
 }
 
+/**
+ * Per-visit price line (M2 — the maintenance anchor). Resolved deterministically from the raw
+ * transcript: a spoken per-visit total wins, else the tidy labour engine computes hours × people ×
+ * rate. Falls back to the AI-narrated pricing facts only when the transcript yields no per-visit
+ * price, so no existing quote regresses. The per-visit total is the anchor — no downstream total is
+ * shown (M6) until this is priced.
+ */
+function perVisitPriceItems(input: CustomerQuoteAssemblyInput): string[] {
+  const transcript = input.rawTranscript ?? null
+  const resolved = resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+  if (resolved.pricingSource !== "unpriced" && resolved.amount > 0) {
+    return [`${moneyVisit(resolved.amount)} per visit`]
+  }
+  return priceItems(input.pricingFacts)
+}
+
 function money(value: number) {
   return new Intl.NumberFormat("en-NZ", {
     style: "currency",
     currency: "NZD",
     minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+/**
+ * Per-visit price format: whole dollars show no cents ("$405"), fractional amounts show two
+ * decimals ("$467.50") rather than one ("$467.5"). The full GST-inclusive 2dp invoice format
+ * across every line is the M6 pass; this keeps M2 consistent with the existing "$405 per visit".
+ */
+function moneyVisit(value: number) {
+  const hasCents = Math.round(value * 100) % 100 !== 0
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: hasCents ? 2 : 0,
     maximumFractionDigits: 2,
   }).format(value)
 }
@@ -317,7 +350,7 @@ export function assembleMaintenanceCustomerQuote(input: CustomerQuoteAssemblyInp
     section("Main Focus", mainFocus),
     section("Service Includes", serviceIncludes(input, mainFocus)),
     section("Ongoing Maintenance", ongoingMaintenanceItems(input, mainFocus)),
-    section("Price", priceItems(input.pricingFacts)),
+    section("Price", perVisitPriceItems(input)),
     section("Site Notes", siteNotes(input)),
     section("Exclusions", input.quote.exclusions),
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)
