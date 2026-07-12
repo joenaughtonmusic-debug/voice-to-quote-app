@@ -428,13 +428,16 @@ draft. Also passes the transcript into the Xero-side assembly and reorders so ex
 **Status: done — pending commit.** Shirley (no extras) unchanged; all export suites green.
 
 ### T7 — invoice labour paragraph (split out of T6)
-Merge scope into a single "Labour – main scope" line (prose description + $), remove the standalone
-Scope-of-Work section, and repoint `labourXeroDescription` / `buildGardenTidyExportableLines`.
-Scoped out of T6 because it **invalidates the premise of ~20 tidy tests** that assert scope and
-labour are separate sections (e.g. "Scope of Work excludes labour") — those need per-test rework,
-not a mechanical rename, so it deserves its own focused batch rather than a rushed change.
+Merged scope into a single "Labour – main scope" line (scope prose + the priced $ or a
+rate-stripped crew allowance), removed the standalone Scope-of-Work section, and repointed the Xero
+labour description via a shared `isLabourFinalLine` predicate (the scope for the Xero description
+excludes the final $/crew line, so a crew allowance never leaks into the export). ~27 tests across
+garden-tidy + customer-assembly reworked to the merged structure — intent preserved (greenwaste /
+service boilerplate still kept OUT of the labour line; Xero desc still crew-free), none weakened.
 
-**Status: approved — queued.**
+**Status: done — pending commit.** Live Xavier now renders one "Labour - main scope" line
+(scope + $1,200.00) → Green Waste $130.00 → Extras → Includes GST $174.26 → Total $1,336.00, like
+QU-0572. All suites green + build clean.
 
 ### Later — KB / Price List Schema v2
 Goal:

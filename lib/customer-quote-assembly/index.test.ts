@@ -5,6 +5,7 @@ import { extractAddressDetails } from "../address-extraction"
 import { extractClientNameFromTranscript } from "../client-name-extraction"
 import { extractPricing } from "../core/pricing-extraction"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
+import { isLabourFinalLine } from "./garden-tidy"
 import { assembleCustomerQuote } from "./index"
 
 const transcript = `Monthly maintenance for Stella at 6 Tarawera Terrace, St Heliers.
@@ -35,6 +36,12 @@ function maintenanceQuote(): ProcessedQuote {
 
 function sectionItems(title: string, assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
   return assembly.sections.find((section) => section.title === title)?.items ?? []
+}
+
+// T7 — the tidy scope work items live on the merged "Labour - main scope" line, before the final
+// labour figure ($ amount or crew/duration allowance).
+function tidyScope(assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
+  return sectionItems("Labour - main scope", assembly).filter((item) => !isLabourFinalLine(item))
 }
 
 function renderedAssembly(assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
@@ -267,12 +274,12 @@ Greenwaste to be removed from site.`
     assert.ok(assembly, `${jobType} should use garden tidy assembly`)
     assert.equal(assembly.title, "One-Off Garden Tidy")
     assert.deepEqual(assembly.sections.map((section) => section.title), [
-      "Scope of Work",
+      "Labour - main scope",
       "Service Includes",
       "Price",
       "Site Notes",
     ])
-    assert.deepEqual(sectionItems("Scope of Work", assembly), [
+    assert.deepEqual(tidyScope(assembly), [
       "Remove overgrowth around boundary",
       "Cut back shrubs",
       "Weed garden beds",
@@ -335,7 +342,7 @@ Greenwaste to be removed from site.`
 
   assert.ok(assembly)
   assert.equal(assembly.title, "One-Off Garden Tidy")
-  assert.deepEqual(sectionItems("Scope of Work", assembly), [
+  assert.deepEqual(tidyScope(assembly), [
     "Remove overgrowth around boundary",
     "Cut back shrubs",
     "Weed garden beds",
@@ -777,7 +784,7 @@ test("Shirley one-off tidy renders Scope of Work with all three work items", () 
   })
 
   assert.ok(assembly)
-  const scope = sectionItems("Scope of Work", assembly)
+  const scope = tidyScope(assembly)
   assert.ok(scope.length > 0, "Scope of Work section must exist")
   assert.ok(
     scope.some((item) => /mexican\s+elder/i.test(item)),
@@ -809,7 +816,7 @@ test("Shirley one-off tidy renders Labour Allowance section", () => {
   })
 
   assert.ok(assembly)
-  const labour = sectionItems("Labour Allowance", assembly)
+  const labour = sectionItems("Labour - main scope", assembly)
   assert.ok(labour.length > 0, "Labour Allowance section must exist")
   assert.ok(
     labour.some((item) => /two\s+people|2\s+people/i.test(item)),
@@ -868,11 +875,11 @@ test("Shirley one-off tidy is not limited to only Service Includes Greenwaste re
 
   assert.ok(
     assembly.sections.length >= 3,
-    `Quote must have at least 3 sections (Scope of Work, Labour Allowance, Service Includes). Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
+    `Quote must have at least 3 sections (Labour - main scope, Green Waste, Service Includes). Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
   )
   assert.ok(
-    assembly.sections.some((s) => s.title === "Scope of Work"),
-    "Scope of Work section must be present",
+    assembly.sections.some((s) => s.title === "Labour - main scope"),
+    "Labour - main scope section must be present",
   )
   assert.ok(
     /mexican\s+elder/i.test(rendered),
@@ -945,8 +952,8 @@ test("hedge_trimming + One-Off Garden Tidy selectedTemplate object activates gar
 
   assert.ok(assembly)
   assert.equal(assembly.title, "One-Off Garden Tidy")
-  assert.ok(sectionItems("Scope of Work", assembly).some((item) => /mexican\s+elder/i.test(item)))
-  assert.ok(sectionItems("Labour Allowance", assembly).some((item) => /two\s+people/i.test(item)))
+  assert.ok(tidyScope(assembly).some((item) => /mexican\s+elder/i.test(item)))
+  assert.ok(sectionItems("Labour - main scope", assembly).some((item) => /two\s+people/i.test(item)))
   assert.ok(sectionItems("Green Waste", assembly).some((item) => /trailer/i.test(item)))
   assert.ok(sectionItems("Service Includes", assembly).some((item) => /greenwaste\s+removal/i.test(item)))
 })
@@ -967,9 +974,9 @@ test("hedge_trimming + selected_template_name only (no template object) still ac
     assembly.sections.length > 1,
     `selected_template_name fallback must produce more than 1 section. Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
   )
-  assert.ok(sectionItems("Scope of Work", assembly).some((item) => /blowdown/i.test(item)))
+  assert.ok(tidyScope(assembly).some((item) => /blowdown/i.test(item)))
   assert.equal(
-    sectionItems("Scope of Work", assembly).some((item) => /^labour note$/i.test(item)),
+    tidyScope(assembly).some((item) => /^labour note$/i.test(item)),
     false,
     "Bare labour note placeholder must not appear in Scope of Work",
   )

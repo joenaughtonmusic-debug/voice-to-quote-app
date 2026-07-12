@@ -10,7 +10,7 @@ import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { extractTidyPricingFacts } from "./export/tidy-pricing-facts"
-import { computeTidyTotals } from "./customer-quote-assembly/garden-tidy"
+import { computeTidyTotals, isLabourFinalLine } from "./customer-quote-assembly/garden-tidy"
 import { resolveTidyExtras } from "./export/tidy-extras"
 import { greenwasteRulePrice } from "./export/waste-line-builder"
 import { buildGardenTidyProcessedQuote } from "./garden-tidy-processing"
@@ -103,6 +103,22 @@ function includesText(text: string, expected: string) {
 
 function assemblySectionItems(title: string, model: { assembly: { sections: Array<{ title: string; items: string[] }> } | null }) {
   return model.assembly?.sections.find((section) => section.title === title)?.items ?? []
+}
+
+// T7 — the merged "Labour - main scope" section carries the scope work items followed by a single
+// final labour figure: a $ amount, or a rate-stripped crew/duration allowance when no total is
+// derivable. These split the two so assertions stay precise.
+function isMoneyLine(value: string) {
+  return /^\$[\d,]+\.\d{2}$/.test(value.trim())
+}
+function labourMainScope(model: Parameters<typeof assemblySectionItems>[1]) {
+  return assemblySectionItems("Labour - main scope", model)
+}
+function labourAmountLines(model: Parameters<typeof assemblySectionItems>[1]) {
+  return labourMainScope(model).filter(isMoneyLine)
+}
+function tidyScopeWork(model: Parameters<typeof assemblySectionItems>[1]) {
+  return labourMainScope(model).filter((item) => !isLabourFinalLine(item))
 }
 
 function currentDeterministicGardenTidyQuote(transcript: string): ProcessedQuote {
@@ -203,7 +219,7 @@ function assertShirleyGardenTidyXeroParity(
   assert.ok(draftModel.assembly, "Customer assembly must activate for Shirley parity")
   assert.equal(draftModel.assembly?.title, "One-Off Garden Tidy")
 
-  const scopeItems = assemblySectionItems("Scope of Work", draftModel)
+  const scopeItems = tidyScopeWork(draftModel)
   const greenWasteItems = assemblySectionItems("Green Waste", draftModel)
   assert.ok(scopeItems.length >= 3, `Expected scope items, got: ${scopeItems.join(" | ")}`)
   assert.ok(greenWasteItems.length > 0, `Expected green waste items, got: ${greenWasteItems.join(" | ")}`)
@@ -300,8 +316,8 @@ test("garden tidy MVP: Shirley live handoff — visible review scope reaches ass
   assert.ok((model.assembly?.sections.length ?? 0) > 1)
 
   const rendered = renderCustomerDraftPreviewText(model)
-  assert.match(rendered, /Scope of Work/i)
-  assert.match(rendered, /Labour Allowance/i)
+  assert.match(rendered, /Labour - main scope/i)
+  assert.match(rendered, /Labour - main scope/i)
   assert.match(rendered, /Green Waste/i)
   assert.match(rendered, /Service Includes/i)
   assert.match(rendered, /Mexican elder trees/i)
@@ -343,24 +359,22 @@ test("Shirley live handoff — Scope of Work excludes labour and greenwaste quan
   ].join("\n")
 
   const { model } = simulateReviewToDraftHandoff(baseQuote, customerScopeItems, primaryQuoteSectionContent)
-  const scope = assemblySectionItems("Scope of Work", model)
-  const labour = assemblySectionItems("Labour Allowance", model)
+  // T7 — the merged "Labour - main scope" line carries the scope work items and the labour
+  // allowance; greenwaste quantities and service boilerplate must still be kept OUT of it.
+  const labourLine = labourMainScope(model)
   const greenwaste = assemblySectionItems("Green Waste", model)
   const includes = assemblySectionItems("Service Includes", model)
 
-  assert.equal(scope.length, 3, `Scope of Work should contain work items only. Got: ${scope.join(" | ")}`)
-  assert.ok(scope.some((item) => /mexican elder/i.test(item)))
-  assert.ok(scope.some((item) => /trim/i.test(item)))
-  assert.ok(scope.some((item) => /blowdown|tidy/i.test(item)))
-  assert.ok(!scope.some((item) => /two people|one and a quarter days/i.test(item)), `Labour must not appear in Scope of Work: ${scope.join(" | ")}`)
-  assert.ok(!scope.some((item) => /trailer load/i.test(item)), `Greenwaste quantities must not appear in Scope of Work: ${scope.join(" | ")}`)
+  assert.ok(labourLine.some((item) => /mexican elder/i.test(item)))
+  assert.ok(labourLine.some((item) => /trim/i.test(item)))
+  assert.ok(labourLine.some((item) => /blowdown|tidy/i.test(item)))
+  assert.ok(labourLine.some((item) => /two people/i.test(item)), "labour allowance is part of the labour line")
+  assert.ok(!labourLine.some((item) => /trailer load/i.test(item)), `Greenwaste quantities must not appear in the labour line: ${labourLine.join(" | ")}`)
   assert.ok(
-    !scope.some((item) => /including greenwaste removal/i.test(item)),
-    `Service include boilerplate must not appear in Scope of Work: ${scope.join(" | ")}`,
+    !labourLine.some((item) => /including greenwaste removal/i.test(item)),
+    `Service include boilerplate must not appear in the labour line: ${labourLine.join(" | ")}`,
   )
 
-  assert.ok(labour.length > 0)
-  assert.ok(labour.some((item) => /two people/i.test(item)))
   assert.ok(greenwaste.length > 0)
   assert.ok(greenwaste.some((item) => /trailer/i.test(item)))
   assert.ok(includes.some((item) => /greenwaste removal/i.test(item)))
@@ -401,8 +415,9 @@ test("B1 David tidy — internal notes never reach customer scope; labour priced
   }
 
   const model = currentDraftPreviewModel("", david)
-  const scope = assemblySectionItems("Scope of Work", model)
-  const labour = assemblySectionItems("Labour Allowance", model)
+  // David's labour is priced ($400), so the scope-work portion is the labour line minus the $ line.
+  const scope = tidyScopeWork(model)
+  const labour = labourAmountLines(model)
 
   // Scope of Work: work items only — no Friday, hourly rate, labour hours, dump rate or greenwaste.
   assert.ok(scope.length >= 4, `Expected work items in scope. Got: ${scope.join(" | ")}`)
@@ -448,11 +463,12 @@ test("B1 Xavier tidy — labour rate stripped when no total spoken; greenwaste p
   }
 
   const model = currentDraftPreviewModel("", xavier)
-  const scope = assemblySectionItems("Scope of Work", model)
-  const labour = assemblySectionItems("Labour Allowance", model)
+  // Xavier's labour is unpriced, so the crew allowance is the labour line's final item.
+  const scope = labourMainScope(model)
+  const labour = labourMainScope(model)
   const greenwaste = assemblySectionItems("Green Waste", model)
 
-  // Scope excludes the labour basis, greenwaste and the planning-meta chatter.
+  // The labour line excludes the labour basis rate, greenwaste and the planning-meta chatter.
   assert.ok(!scope.some((item) => /per hour|\$\s?80|full day with two people/i.test(item)), `Labour leaked to scope: ${scope.join(" | ")}`)
   assert.ok(!scope.some((item) => /green\s*waste|\$\s?130/i.test(item)), `Greenwaste leaked to scope: ${scope.join(" | ")}`)
   assert.ok(!scope.some((item) => /tentative|versions? of the job/i.test(item)), `Planning-meta leaked to scope: ${scope.join(" | ")}`)
@@ -519,7 +535,7 @@ test("T1 extractTidyPricingFacts parses spoken totals and foundation facts deter
 
 test("T1 David — labour $400 comes from the spoken transcript total, with the AI fields empty", () => {
   const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
-  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400.00"])
+  assert.deepEqual(labourAmountLines(model), ["$400.00"])
 })
 
 test("T1 Xavier — greenwaste $130 comes from the spoken transcript total, with the AI fields empty", () => {
@@ -531,7 +547,7 @@ test("T1 Xavier — greenwaste $130 comes from the spoken transcript total, with
 test("T1 — the same transcript yields the same priced figures across repeated runs", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
-    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400.00"])
+    assert.deepEqual(labourAmountLines(model), ["$400.00"])
   }
 })
 
@@ -543,18 +559,18 @@ const T2_XAVIER_FULL_TRANSCRIPT =
 
 test("T2 Xavier — labour computes 7.5h × 2 people × $80 = $1,200 (full-day rule beats the reduced-option '11 hours')", () => {
   const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
-  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200.00"])
+  assert.deepEqual(labourAmountLines(model), ["$1,200.00"])
 })
 
 test("T2 David — a spoken labour total ($400) still wins over the day-rate rule", () => {
   const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
-  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400.00"])
+  assert.deepEqual(labourAmountLines(model), ["$400.00"])
 })
 
 test("T2 — the computed labour figure is identical across repeat runs (deterministic)", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
-    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200.00"])
+    assert.deepEqual(labourAmountLines(model), ["$1,200.00"])
   }
 })
 
@@ -820,7 +836,7 @@ test("garden tidy MVP renders customer-ready quote draft", () => {
   const renderedText = currentRenderedDraft(transcript, quote)
 
   assert.equal(includesText(renderedText, "One-Off Garden Tidy"), true, renderedText)
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Remove overgrowth around boundary"), true, renderedText)
   assert.equal(includesText(renderedText, "Cut back shrubs"), true, renderedText)
   assert.equal(includesText(renderedText, "Weed garden beds"), true, renderedText)
@@ -850,20 +866,19 @@ test("garden tidy live-equivalent one_off_tidy draft matches acceptance output",
   const model = currentDraftPreviewModel(transcript, liveQuote)
   const renderedText = renderCustomerDraftPreviewText(model)
 
-  // Labour allowance from the MVP acceptance transcript ("1 day, 2 staff") now
-  // appears as a Labour Allowance section in the rendered draft.
+  // T7 — the scope work items and the labour allowance ("1 day, 2 staff") are now one merged
+  // "Labour - main scope" line in the rendered draft.
   const expected = [
     "Prepared for",
     "Sarah",
     "44 Amy Street",
     "Quote",
     "One-Off Garden Tidy",
-    "Scope of Work",
+    "Labour - main scope",
     "Remove overgrowth around boundary",
     "Cut back shrubs",
     "Weed garden beds",
     "Remove self-seeded plants",
-    "Labour Allowance",
     "1 day, 2 staff",
     "Service Includes",
     "Greenwaste removal",
@@ -904,7 +919,7 @@ test("garden tidy live manual template activates assembly when job type fields a
   assert.equal(model.assembly ? "assembly" : "legacy", "assembly")
   assert.ok(model.assembly, "Assembly exists: yes")
   assert.equal(includesText(renderedText, "One-Off Garden Tidy"), true, renderedText)
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Greenwaste removal"), true, renderedText)
   assert.equal(includesText(renderedText, "$1,440"), true, renderedText)
   assert.equal(includesText(renderedText, "Renderer path: legacy"), false, renderedText)
@@ -948,7 +963,7 @@ test("Shirley one-off tidy — live path renders Scope of Work with all captured
   const renderedText = currentRenderedDraft(shirleyRawTranscript, quote)
 
   assert.equal(includesText(renderedText, "One-Off Garden Tidy"), true, renderedText)
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Mexican elder"), true, renderedText)
   assert.equal(includesText(renderedText, "Trim hedge"), true, renderedText)
   assert.equal(includesText(renderedText, "Blowdown"), true, renderedText)
@@ -958,7 +973,7 @@ test("Shirley one-off tidy — live path renders Labour Allowance section", () =
   const quote = shirleyProcessedQuote()
   const renderedText = currentRenderedDraft(shirleyRawTranscript, quote)
 
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Two people"), true, renderedText)
   assert.equal(includesText(renderedText, "one and a quarter"), true, renderedText)
 })
@@ -1014,7 +1029,7 @@ test("Shirley Use-Template-As-Quote — Scope of Work and items appear in templa
   const quote = shirleyProcessedQuote()
   const renderedText = renderCustomerDraftPreviewText(currentDraftPreviewModel(shirleyRawTranscript, quote, gardenTidyTemplate))
 
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Mexican elder"), true, renderedText)
   assert.equal(includesText(renderedText, "Trim hedge"), true, renderedText)
   assert.equal(includesText(renderedText, "Blowdown"), true, renderedText)
@@ -1024,7 +1039,7 @@ test("Shirley Use-Template-As-Quote — Labour Allowance and Green Waste appear 
   const quote = shirleyProcessedQuote()
   const renderedText = renderCustomerDraftPreviewText(currentDraftPreviewModel(shirleyRawTranscript, quote, gardenTidyTemplate))
 
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "two people"), true, renderedText)
   assert.equal(includesText(renderedText, "Green Waste"), true, renderedText)
   assert.equal(includesText(renderedText, "trailer"), true, renderedText)
@@ -1039,7 +1054,7 @@ test("Shirley live path — Xero export scope parallels customer assembly (Use T
   const { draftModel, payload } = quoteReviewExportPayload(quote, shirleyRawTranscript, gardenTidyTemplate)
 
   assertShirleyGardenTidyXeroParity(draftModel, payload)
-  assert.equal(includesText(renderCustomerDraftPreviewText(draftModel), "Labour Allowance"), true)
+  assert.equal(includesText(renderCustomerDraftPreviewText(draftModel), "Labour - main scope"), true)
   assert.equal(includesText(renderCustomerDraftPreviewText(draftModel), "Green Waste"), true)
 })
 
@@ -1139,7 +1154,7 @@ test("Shirley thin-extraction — assembly still produces Scope of Work without 
   const quote = shirleyThinProcessedQuote()
   const renderedText = currentRenderedDraft(shirleyRawTranscript, quote)
 
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Mexican elder"), true, renderedText)
   assert.equal(includesText(renderedText, "Trim hedge"), true, renderedText)
   assert.equal(includesText(renderedText, "Blowdown"), true, renderedText)
@@ -1149,7 +1164,7 @@ test("Shirley thin-extraction — Labour Allowance from primary_quote.notes fall
   const quote = shirleyThinProcessedQuote()
   const renderedText = currentRenderedDraft(shirleyRawTranscript, quote)
 
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "one and a quarter"), true, renderedText)
 })
 
@@ -1171,8 +1186,8 @@ test("Shirley thin-extraction with template — all sections still appear", () =
     (model.assembly?.sections.length ?? 0) > 1,
     `Must produce more than 1 section with thin extraction + template. Got: ${model.assembly?.sections.map((s) => s.title).join(", ")}`,
   )
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Green Waste"), true, renderedText)
   assert.equal(includesText(renderedText, "Service Includes"), true, renderedText)
 })
@@ -1238,7 +1253,7 @@ test("Shirley hedge_trimming + One-Off Garden Tidy template — Scope of Work co
   const quote = shirleyHedgeTrimmingProcessedQuote()
   const renderedText = renderCustomerDraftPreviewText(currentDraftPreviewModel(shirleyRawTranscript, quote, gardenTidyTemplate))
 
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Mexican elder"), true, renderedText)
   assert.equal(includesText(renderedText, "Trim back side"), true, renderedText)
   assert.equal(includesText(renderedText, "Blowdown"), true, renderedText)
@@ -1250,7 +1265,7 @@ test("Shirley hedge_trimming + One-Off Garden Tidy template — Labour Allowance
   const quote = shirleyHedgeTrimmingProcessedQuote()
   const renderedText = renderCustomerDraftPreviewText(currentDraftPreviewModel(shirleyRawTranscript, quote, gardenTidyTemplate))
 
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "two people"), true, renderedText)
   assert.equal(includesText(renderedText, "one and a quarter"), true, renderedText)
 })
@@ -1299,8 +1314,8 @@ test("Shirley hedge_trimming + selected_template_name only — assembly activate
     (model.assembly?.sections.length ?? 0) > 1,
     `selected_template_name-only path must produce more than 1 section. Got: ${model.assembly?.sections.map((s) => s.title).join(", ")}`,
   )
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Green Waste"), true, renderedText)
 })
 
@@ -1461,8 +1476,8 @@ test("Shirley live handoff — customer_scope overlay only with empty section st
   assert.ok(model.assemblyInputDebug!.primary_quote_scope.length > 0)
   assert.ok(model.assemblyInputDebug!.primary_quote_notes.length > 0)
   assert.ok((model.assembly?.sections.length ?? 0) > 1)
-  assert.match(rendered, /Scope of Work/i)
-  assert.match(rendered, /Labour Allowance/i)
+  assert.match(rendered, /Labour - main scope/i)
+  assert.match(rendered, /Labour - main scope/i)
   assert.match(rendered, /Green Waste/i)
   assert.match(rendered, /Service Includes/i)
 })
@@ -1478,8 +1493,8 @@ test("Shirley hedge_trimming editable review round-trip preserves scope for manu
   assert.ok(model.assemblyInputDebug)
   assert.ok(model.assemblyInputDebug!.primary_quote_scope.length > 0)
   assert.ok((model.assembly?.sections.length ?? 0) > 1)
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Green Waste"), true, renderedText)
   assert.equal(includesText(renderedText, "Service Includes"), true, renderedText)
 })
@@ -1569,15 +1584,15 @@ test("Monash hedge trimming — live path is One-Off Garden Tidy without fake pr
   assert.equal(includesText(renderedText, "silkies"), false, renderedText)
   assert.equal(includesText(renderedText, "loppers"), false, renderedText)
   assert.equal(includesText(renderedText, "[]"), false, renderedText)
-  assert.equal(includesText(renderedText, "Scope of Work"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "Pittosporum"), true, renderedText)
   assert.equal(includesText(renderedText, "Griselinia"), true, renderedText)
-  assert.equal(includesText(renderedText, "Labour Allowance"), true, renderedText)
+  assert.equal(includesText(renderedText, "Labour - main scope"), true, renderedText)
   assert.equal(includesText(renderedText, "two people"), true, renderedText)
   assert.equal(includesText(renderedText, "Green Waste"), true, renderedText)
   assert.equal(includesText(renderedText, "two trailer"), true, renderedText)
 
-  const scopeItems = assemblySectionItems("Scope of Work", model)
+  const scopeItems = tidyScopeWork(model)
   assert.equal(scopeItems.filter((item) => /Pittosporum top by 50cm/i.test(item)).length, 1)
   assert.equal(scopeItems.some((item) => /chainsaw|silkies|loppers/i.test(item)), false)
   assert.equal(scopeItems.some((item) => item === "[]"), false)

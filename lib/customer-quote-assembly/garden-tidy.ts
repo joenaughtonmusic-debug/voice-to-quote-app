@@ -273,7 +273,34 @@ function quoteWithTranscript(input: CustomerQuoteAssemblyInput): XeroPayloadQuot
   return { ...input.quote, raw_transcript: input.rawTranscript ?? null } as unknown as XeroPayloadQuote
 }
 
-function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+/** True when a labour-line item is a money amount rather than a scope/allowance description line. */
+export function isLabourAmountLine(value: string) {
+  return /^\$[\d,]+\.\d{2}$/.test(value.trim())
+}
+
+/**
+ * True when an item on the "Labour - main scope" line is the FINAL labour figure — a $ amount or a
+ * crew/duration allowance ("1 day, 2 staff", "Two people…") — rather than a scope work item. Used
+ * to recover just the scope for the Xero labour description (the amount/allowance is carried
+ * separately), so a crew/duration allowance never leaks into the exported description.
+ */
+export function isLabourFinalLine(value: string) {
+  const v = value.trim()
+  return (
+    isLabourAmountLine(v) ||
+    /\bfull\s+day\b/i.test(v) ||
+    /\b(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:people|persons?|staff|men|man|days?|hours?|hrs?)\b/i.test(v)
+  )
+}
+
+/**
+ * Customer "Labour – main scope" line (T7): the scope of work as the description, followed by a
+ * single final line — the priced labour $ when a total is derivable, otherwise the crew/duration
+ * allowance with the hourly rate stripped. This is Joe's QU-0572 structure: one labour line that
+ * carries the scope, not a separate bullet "Scope of Work" section. The scope items are the same
+ * internal-signal-filtered set as before; only the final line differs.
+ */
+function labourFinalLine(input: CustomerQuoteAssemblyInput): string[] {
   const resolved = resolveLabourExportPrice(quoteWithTranscript(input))
   if (
     (resolved.pricingSource === "spoken_fixed" ||
@@ -285,6 +312,10 @@ function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
   }
 
   return labourAllowanceItems(input).map(stripLabourRate).filter(Boolean)
+}
+
+function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+  return [...scopeOfWorkItems(input), ...labourFinalLine(input)]
 }
 
 /**
@@ -461,8 +492,7 @@ function section(title: string, items: string[]): CustomerQuoteAssemblySection |
 
 export function assembleGardenTidyCustomerQuote(input: CustomerQuoteAssemblyInput): CustomerQuoteAssembly {
   const sections = [
-    section("Scope of Work", scopeOfWorkItems(input)),
-    section("Labour Allowance", labourSectionItems(input)),
+    section("Labour - main scope", labourSectionItems(input)),
     section("Green Waste", greenwasteSectionItems(input)),
     section("Extras", extrasSectionItems(input)),
     section("Totals", tidyTotalsItems(input)),

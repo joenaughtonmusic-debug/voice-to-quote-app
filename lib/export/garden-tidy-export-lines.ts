@@ -1,4 +1,5 @@
 import { assembleCustomerQuote, type CustomerQuoteAssembly } from "../customer-quote-assembly"
+import { isLabourFinalLine } from "../customer-quote-assembly/garden-tidy"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
 import {
   applyQuoteLineItemMetadata,
@@ -77,8 +78,14 @@ function isGreenwasteRemovalInclude(item: string) {
   return /^greenwaste removal$/i.test(item.trim())
 }
 
+/** The scope-of-work lines from the merged "Labour - main scope" section — excludes the final
+ * labour figure ($ amount or crew/duration allowance), which is carried separately. */
+function tidyScopeItems(assembly: CustomerQuoteAssembly) {
+  return assemblySectionItems(assembly, "Labour - main scope").filter((item) => !isLabourFinalLine(item))
+}
+
 function labourXeroDescription(assembly: CustomerQuoteAssembly, hasSeparateGreenwasteLine: boolean) {
-  const scope = assemblySectionItems(assembly, "Scope of Work")
+  const scope = tidyScopeItems(assembly)
   const serviceIncludes = assemblySectionItems(assembly, "Service Includes").filter((item) => {
     if (hasSeparateGreenwasteLine && isGreenwasteRemovalInclude(item)) return false
     return true
@@ -126,7 +133,7 @@ export function buildGardenTidyExportableLines(quote: XeroPayloadQuote): Exporta
   const assembly = gardenTidyAssembly(quote)
   if (!assembly || assembly.title !== "One-Off Garden Tidy") return []
 
-  const scopeItems = assemblySectionItems(assembly, "Scope of Work")
+  const scopeItems = tidyScopeItems(assembly)
   const hasStructuredContent =
     scopeItems.length > 0 ||
     assembly.sections.some(
