@@ -37,6 +37,7 @@
     "test:quote-plan": "tsc --project lib/quote-plan/tsconfig.test.json && node --test .tmp/quote-plan-tests/lib/quote-plan/build-plan.test.js .tmp/quote-plan-tests/lib/quote-plan/optional-priced-works.test.js .tmp/quote-plan-tests/lib/quote-plan/validate.test.js .tmp/quote-plan-tests/lib/quote-plan/shadow.test.js .tmp/quote-plan-tests/lib/quote-plan/ai-planner.test.js .tmp/quote-plan-tests/lib/quote-plan/shadow-report-store.test.js .tmp/quote-plan-tests/lib/quote-plan/shadow-card-model.test.js",
     "test:customer-optional-works": "tsc --project lib/customer-optional-works.tsconfig.test.json && node --test .tmp/customer-optional-works-tests/lib/customer-optional-works.test.js",
     "test:renderer-intent": "tsc --project lib/customer-renderer-intent.tsconfig.test.json && node --test .tmp/customer-renderer-intent-tests/lib/customer-renderer-intent.test.js",
+    "test:classification": "tsc --project lib/quote-classification.tsconfig.test.json && node --test .tmp/quote-classification-tests/lib/quote-classification.test.js",
     "test:api-auth": "tsc --project lib/api-auth.tsconfig.test.json && node --test .tmp/api-auth-tests/lib/api-auth.test.js",
     "test:xero-export": "tsc --project lib/xero-export.tsconfig.test.json && node --test .tmp/xero-export-tests/lib/xero-export.test.js",
     "test:route-auth": "tsc --project lib/route-auth.tsconfig.test.json && node --require ./scripts/route-alias.cjs --test .tmp/route-auth-tests/lib/route-auth.test.js",

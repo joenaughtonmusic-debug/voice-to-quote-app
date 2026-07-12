@@ -30,6 +30,7 @@ import {
   transcriptMentionsHedgePlanting,
   transcriptMentionsHedgeTrimming,
   transcriptMentionsRecurringWork,
+  refineMixedLandscapingClassification,
 } from "../quote-classification"
 import { extractPerTaskHourAllowances, summarisePerTaskHourAllowances } from "../core/labour-allowance-extraction"
 import { normaliseDaysLabourLineItem, recoverMissingLabourLineItem } from "../export/labour-line-builder"
@@ -3216,6 +3217,19 @@ export async function processTranscriptToQuote(
         primary_trade: primaryTrade,
       })
     }
+
+    // AI-0 mixed-trade guard: a planting job that ALSO has a distinct non-planting structural
+    // trade (paving/retaining/decking/hard fill) is a MIXED landscaping job — route it to the
+    // landscaping specialist so its extraction captures ALL scope (the paver would otherwise be
+    // dropped by the planting specialist). No-op for pure planting and for any other class.
+    const refinedClassification = refineMixedLandscapingClassification(classification, transcript)
+    if (refinedClassification.specialist !== classification.specialist) {
+      log.log("process-quote classification refined (mixed landscaping)", {
+        from: classification.specialist,
+        to: refinedClassification.specialist,
+      })
+    }
+    classification = refinedClassification
 
     const specialistInstructions = getSpecialistInstructions(classification.specialist)
     const totalQuoteStartedAt = Date.now()

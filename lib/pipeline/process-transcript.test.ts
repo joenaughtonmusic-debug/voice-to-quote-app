@@ -130,6 +130,26 @@ test("processTranscriptToQuote does not turn '5 bags of garden mix' into a $5 li
   assert.equal(bogus, false, "5 bags must never become a $5 rate/total")
 })
 
+// ── AI-0: the mixed-trade classification guard applies inside the pipeline ─────
+test("AI-0: a planting+paver transcript is re-routed to landscaping by the pipeline guard", async () => {
+  const paverTranscript =
+    "Planting quote. 11.5m planting area of Ficus Tuffi, 25L and 45L. Lower paver area: 1.5m x 3.5m. Include hard fill / removal of old soil."
+  // testDeps() classifies "planting"; the deterministic AI-0 guard must override to landscaping.
+  const { classification } = await processTranscriptToQuote(
+    { transcript: paverTranscript, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    testDeps(),
+  )
+  assert.equal(classification.specialist, "landscaping", "planting + paver must re-route to landscaping")
+})
+
+test("AI-0: a pure planting transcript (timber border only) stays planting", async () => {
+  const { classification } = await processTranscriptToQuote(
+    { transcript: MICHELIA_TRANSCRIPT, knowledgeItemContext: KNOWLEDGE_ITEMS },
+    testDeps(),
+  )
+  assert.equal(classification.specialist, "planting", "pure planting must not be re-routed")
+})
+
 // ── QuotePlan Slice 2: optional-only labour must not become main labour ───────
 const OPTIONAL_LABOUR_TRANSCRIPT =
   "Quote for a garden at 12 Test Road. The main job is to lay a new lawn across the back garden. " +
