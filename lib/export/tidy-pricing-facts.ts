@@ -42,6 +42,8 @@ export type TidyPricingFacts = {
   labourDays: number | null
   /** Crew size — "two people". Foundation for T2. */
   labourPeople: number | null
+  /** True when the stated hours are a whole-crew total ("12 hours total") — don't ×people. */
+  labourHoursAreTotal: boolean
   /** Spoken greenwaste dollar total — "$130 of green waste". Wired (T1). */
   spokenGreenwasteTotal: number | null
   /** Greenwaste bag count — "two bags of green waste". Foundation for T3. */
@@ -84,13 +86,24 @@ export function extractTidyPricingFacts(transcript: string | null | undefined): 
   )
 
   // ── Labour basis (foundation, T2) ────────────────────────────────────────
-  const labourRate = firstMatchNumber(text, /\$\s?([\d,]+(?:\.\d+)?)\s*(?:an|per|\/)\s*hour/i)
+  const labourRate = firstMatchNumber(text, /\$\s?([\d,]+(?:\.\d+)?)\s*(?:an|per|\/)\s*(?:hour|hr)s?\b/i)
   const labourHours = firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s*(?:hours?|hrs?)\\b`, "i"))
   const labourPeople = firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s+(?:people|persons?|men|man|staff)\\b`, "i"))
+  // "12 hours total / in total / altogether / between them" — the hours are the whole-crew total,
+  // so they must NOT be multiplied by the crew size again.
+  const labourHoursAreTotal =
+    /\b\d+(?:\.\d+)?\s*(?:hours?|hrs?)\s+(?:total|in\s+total|altogether|combined|between\s+them)\b/i.test(text) ||
+    /\b(?:total|altogether)\s+of\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/i.test(text)
 
   let labourDays: number | null = null
   if (/\bfull\s+day\b/i.test(text)) {
     labourDays = 1
+  } else if (/\bhalf\s+(?:a\s+)?day\b/i.test(text)) {
+    labourDays = 0.5
+  } else if (/\bthree\s+quarters?\s+(?:of\s+)?(?:a\s+)?day\b/i.test(text)) {
+    labourDays = 0.75
+  } else if (/\b(?:a\s+)?quarter\s+(?:of\s+)?(?:a\s+)?day\b/i.test(text)) {
+    labourDays = 0.25
   } else {
     const half = text.match(new RegExp(`\\b(${NUM})\\s+and\\s+a\\s+(half|quarter)\\s+days?\\b`, "i"))
     if (half) {
@@ -133,6 +146,7 @@ export function extractTidyPricingFacts(transcript: string | null | undefined): 
     labourHours,
     labourDays,
     labourPeople,
+    labourHoursAreTotal,
     spokenGreenwasteTotal,
     greenwasteBags,
     greenwasteTrailers,

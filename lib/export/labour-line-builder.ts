@@ -272,10 +272,13 @@ export function dayRateLabourPrice(facts: TidyPricingFacts): ResolvedLabourPrice
   const rate = facts.labourRate
   if (rate == null || rate <= 0) return null
 
-  const hours = facts.labourDays != null ? facts.labourDays * FULL_DAY_HOURS : facts.labourHours
+  const hoursFromDays = facts.labourDays != null
+  const hours = hoursFromDays ? (facts.labourDays as number) * FULL_DAY_HOURS : facts.labourHours
   if (hours == null || hours <= 0) return null
 
-  const people = facts.labourPeople ?? 1
+  // Stated whole-crew total hours ("12 hours total, 2 people") already cover the crew, so they are
+  // NOT multiplied by crew size again. Per-person hours and day allowances still ×people.
+  const people = facts.labourHoursAreTotal && !hoursFromDays ? 1 : (facts.labourPeople ?? 1)
   const amount = hours * people * rate
   if (!Number.isFinite(amount) || amount <= 0) return null
 

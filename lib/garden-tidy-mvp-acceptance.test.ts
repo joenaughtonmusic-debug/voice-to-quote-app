@@ -11,6 +11,7 @@ import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { extractTidyPricingFacts } from "./export/tidy-pricing-facts"
 import { computeTidyTotals, isLabourFinalLine } from "./customer-quote-assembly/garden-tidy"
+import { dayRateLabourPrice } from "./export/labour-line-builder"
 import { resolveTidyExtras } from "./export/tidy-extras"
 import { greenwasteRulePrice } from "./export/waste-line-builder"
 import { buildGardenTidyProcessedQuote } from "./garden-tidy-processing"
@@ -707,6 +708,34 @@ test("T6 Xavier — Xero export total matches the customer draft total (parity, 
 
   const totals = assemblySectionItems("Totals", currentDraftPreviewModel(T5_XAVIER, quote))
   assert.ok(totals.includes("Total (NZD): $1,336.00"), totals.join(" | "))
+})
+
+// Phrasing robustness — natural labour phrasings compute the right $ deterministically. From the
+// tidy phrasing-test session (scorecard 18/18).
+
+function labourRuleDollars(transcript: string) {
+  const resolved = dayRateLabourPrice(extractTidyPricingFacts(transcript))
+  return resolved ? resolved.amount : null
+}
+
+test("phrasing — labour day-rate handles natural phrasings (incl. '12 hours total, 2 people' → $960)", () => {
+  // Whole-crew total hours are NOT multiplied by crew size again.
+  assert.equal(labourRuleDollars("12 hours total, 2 people, 6 hours each, at $80 an hour"), 960)
+  assert.equal(labourRuleDollars("10 hours total at $80 an hour"), 800)
+  // "half a day" is 0.5 day (not misread as "a day" = 1).
+  assert.equal(labourRuleDollars("half a day, one person, at $80 per hour"), 300)
+  // "$80/hr" abbreviation is a valid rate.
+  assert.equal(labourRuleDollars("two people for a full day at $80/hr"), 1200)
+  assert.equal(labourRuleDollars("3 hours at $90 an hour"), 270)
+  assert.equal(labourRuleDollars("about 4 hours for two people at $80 an hour"), 640)
+})
+
+test("phrasing — the underlying facts parse the rate abbreviation, half-day, and total-hours flag", () => {
+  assert.equal(extractTidyPricingFacts("two people for a full day at $80/hr").labourRate, 80)
+  assert.equal(extractTidyPricingFacts("half a day at $80 per hour").labourDays, 0.5)
+  assert.equal(extractTidyPricingFacts("quarter of a day at $80 per hour").labourDays, 0.25)
+  assert.equal(extractTidyPricingFacts("12 hours total, 2 people").labourHoursAreTotal, true)
+  assert.equal(extractTidyPricingFacts("5 hours at $80 per hour").labourHoursAreTotal, false)
 })
 
 test("Shirley live handoff — Green Waste dedupes repeated two-trailer lines", () => {

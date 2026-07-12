@@ -439,6 +439,16 @@ service boilerplate still kept OUT of the labour line; Xero desc still crew-free
 (scope + $1,200.00) → Green Waste $130.00 → Extras → Includes GST $174.26 → Total $1,336.00, like
 QU-0572. All suites green + build clean.
 
+### Tidy phrasing robustness (test session)
+A deterministic scorecard over 18 natural labour/greenwaste/extras phrasings (test only, tiny
+verified fixes). Found and fixed three labour gaps: "N hours total, M people" was multiplying the
+whole-crew total by crew again (12h total, 2 people @ $80 → now **$960** not $1,920); "half a day"
+was misread as "a day" = 1 (→ now 0.5 day, $300 not $600); and a "$80/hr" abbreviation wasn't a
+valid rate (now parsed). Greenwaste and extras phrasings already scored 100%. Locked by regression
+tests; scorecard 18/18.
+
+**Status: done — pending commit.**
+
 ### Later — KB / Price List Schema v2
 Goal:
 - canonical item names
