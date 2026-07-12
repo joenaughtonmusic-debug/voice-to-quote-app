@@ -15,6 +15,8 @@ export type ExportPricingSource =
   | "spoken_fixed"
   | "line_item_total"
   | "structured_allowance"
+  | "inline_hours_rate"
+  | "spoken_greenwaste"
   | "resolver"
   | "unpriced"
 

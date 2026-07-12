@@ -7,10 +7,26 @@ import type { XeroPayloadQuote } from "./xero/types"
 
 export type ResolvedWastePrice = {
   amount: number | null
-  pricingSource: "line_item_total" | "unpriced"
+  pricingSource: "line_item_total" | "spoken_greenwaste" | "unpriced"
   quantity: number
   unitAmount: number | undefined
   unitAmountWasDefaulted: boolean
+}
+
+/**
+ * Deterministic greenwaste total spoken in the greenwaste field — e.g.
+ * "Estimated $130 of green waste" → $130 (spoken price wins). Reads ONLY the greenwaste
+ * field, so a dump/tip rate spoken elsewhere ("$5 of dump rate") is never mistaken for the
+ * greenwaste price. Returns null when the field carries no dollar figure (e.g. "1.5 days"),
+ * so that case stays unpriced and flagged rather than guessed.
+ */
+export function spokenGreenwasteAmount(quote: Pick<XeroPayloadQuote, "greenwaste">): number | null {
+  const text = quote.greenwaste?.trim()
+  if (!text) return null
+  const match = text.match(/\$\s?(\d[\d,]*(?:\.\d+)?)/)
+  if (!match) return null
+  const amount = Number((match[1] ?? "").replace(/,/g, ""))
+  return Number.isFinite(amount) && amount > 0 ? amount : null
 }
 
 export function resolveGreenwasteExportPrice(quote: XeroPayloadQuote): ResolvedWastePrice {
@@ -23,6 +39,17 @@ export function resolveGreenwasteExportPrice(quote: XeroPayloadQuote): ResolvedW
       pricingSource: "line_item_total",
       quantity: 1,
       unitAmount: amount,
+      unitAmountWasDefaulted: false,
+    }
+  }
+
+  const spoken = spokenGreenwasteAmount(quote)
+  if (spoken !== null) {
+    return {
+      amount: spoken,
+      pricingSource: "spoken_greenwaste",
+      quantity: 1,
+      unitAmount: spoken,
       unitAmountWasDefaulted: false,
     }
   }

@@ -362,6 +362,106 @@ test("Shirley live handoff — Scope of Work excludes labour and greenwaste quan
   assert.ok(includes.some((item) => /greenwaste removal/i.test(item)))
 })
 
+// B1 — notes→customer-scope leak fix + priced labour/greenwaste from what was spoken.
+// PRODUCTION_DIRECTION: internal notes must NEVER reach the customer; labour/greenwaste
+// become $ lines from spoken figures. Deterministic fixtures (no live extraction).
+
+test("B1 David tidy — internal notes never reach customer scope; labour priced from spoken hours×rate", () => {
+  const david: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "David",
+    site_address: "88B Kurahaupo Street, Orakei",
+    job_type: "one_off_tidy",
+    quote_title: "One-off tidy",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "one_off_tidy",
+      scope: [
+        "Tidy the leaves",
+        "Cut back the roses",
+        "Weed the steps and the pathway",
+        "Cut and paste the dam line",
+        "Weed the front side",
+        "Prune hydrangeas",
+      ],
+      notes: [
+        "Estimate: 5 hours of work",
+        "Labour rate: $80 an hour",
+        "Green waste allowance: 1.5 days",
+        "Dump rate: $5",
+        "Blowdown on Friday added to labour",
+      ],
+    },
+    labour_allowance: "5 hours at $80 per hour",
+    greenwaste: "1.5 days",
+  }
+
+  const model = currentDraftPreviewModel("", david)
+  const scope = assemblySectionItems("Scope of Work", model)
+  const labour = assemblySectionItems("Labour Allowance", model)
+
+  // Scope of Work: work items only — no Friday, hourly rate, labour hours, dump rate or greenwaste.
+  assert.ok(scope.length >= 4, `Expected work items in scope. Got: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /friday/i.test(item)), `Friday leaked to scope: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /per hour|\$\s?80|\bhours?\b/i.test(item)), `Labour basis leaked to scope: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /dump\s+rate/i.test(item)), `Dump rate leaked to scope: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /green\s*waste/i.test(item)), `Greenwaste leaked to scope: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /labou?r\s+note/i.test(item)), `Labour note leaked to scope: ${scope.join(" | ")}`)
+
+  // Labour: priced $ total from "5 hours at $80 per hour" = $400, never a raw rate.
+  assert.deepEqual(labour, ["$400"], `Labour should be the spoken $ total. Got: ${labour.join(" | ")}`)
+
+  // Nothing internal leaked anywhere the customer sees (rendered draft).
+  const rendered = renderCustomerDraftPreviewText(model)
+  assert.equal(/friday/i.test(rendered), false, rendered)
+  assert.equal(/dump\s+rate/i.test(rendered), false, rendered)
+  assert.equal(/\$\s?80\s*(?:per|an|\/)\s*hour/i.test(rendered), false, rendered)
+})
+
+test("B1 Xavier tidy — labour rate stripped when no total spoken; greenwaste priced from spoken $", () => {
+  const xavier: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Xavier Begg",
+    site_address: "90a Owens Road, Mount Eden",
+    job_type: "one_off_tidy",
+    quote_title: "One-off tidy",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "one_off_tidy",
+      scope: [
+        "Spray the kumara vine with extra strength weed killer",
+        "Trim the hedge in the driveway",
+        "Weeding by the Nikau",
+      ],
+      notes: [
+        "Estimated a full day with two people at $80 an hour",
+        "Estimated $130 of green waste",
+        "Tentative plans for larger and smaller versions of the job",
+      ],
+    },
+    labour_allowance: "Two people at $80 per hour",
+    greenwaste: "Estimated $130 of green waste",
+  }
+
+  const model = currentDraftPreviewModel("", xavier)
+  const scope = assemblySectionItems("Scope of Work", model)
+  const labour = assemblySectionItems("Labour Allowance", model)
+  const greenwaste = assemblySectionItems("Green Waste", model)
+
+  // Scope excludes the labour basis, greenwaste and the planning-meta chatter.
+  assert.ok(!scope.some((item) => /per hour|\$\s?80|full day with two people/i.test(item)), `Labour leaked to scope: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /green\s*waste|\$\s?130/i.test(item)), `Greenwaste leaked to scope: ${scope.join(" | ")}`)
+  assert.ok(!scope.some((item) => /tentative|versions? of the job/i.test(item)), `Planning-meta leaked to scope: ${scope.join(" | ")}`)
+
+  // Labour: no spoken total → crew shown WITHOUT the hourly rate (never a rate leak).
+  assert.ok(labour.length > 0, "Labour section should be present")
+  assert.ok(labour.some((item) => /two people/i.test(item)), `Expected crew allowance. Got: ${labour.join(" | ")}`)
+  assert.ok(!labour.some((item) => /per hour|\$\s?80/i.test(item)), `Hourly rate leaked in Labour: ${labour.join(" | ")}`)
+
+  // Greenwaste: its own priced line from the spoken "$130 of green waste".
+  assert.ok(greenwaste.some((item) => /\$130\b/.test(item)), `Greenwaste should be priced $130. Got: ${greenwaste.join(" | ")}`)
+})
+
 test("Shirley live handoff — Green Waste dedupes repeated two-trailer lines", () => {
   const baseQuote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,

@@ -38,7 +38,7 @@ export type LabourAllowanceWorkings = {
 
 export type ResolvedLabourPrice = {
   amount: number
-  pricingSource: "spoken_fixed" | "structured_allowance" | "unpriced"
+  pricingSource: "spoken_fixed" | "structured_allowance" | "inline_hours_rate" | "unpriced"
   quantity: number
   unitAmount: number
   unitAmountWasDefaulted: boolean
@@ -210,6 +210,52 @@ export function structuredAllowanceLabourPrice(quote: XeroPayloadQuote): Resolve
   }
 }
 
+/**
+ * Deterministic labour total from an inline "N hours at $R (per hour)" allowance —
+ * e.g. "5 hours at $80 per hour" → 5 × 80 = $400. Both the hours and the rate are stated
+ * in the same spoken labour context, so this is the spoken labour total (spoken price
+ * wins), not an assumed crew×day computation. Returns null unless BOTH an hours count and
+ * an hourly rate are present (so "full day, two people at $80/hr" — no hours — stays
+ * unpriced and gets flagged rather than guessed).
+ */
+export function inlineHoursRateLabourPrice(
+  quote: Pick<XeroPayloadQuote, "labour_allowance" | "primary_quote">,
+): ResolvedLabourPrice | null {
+  const context = [
+    quote.labour_allowance,
+    ...(quote.primary_quote?.notes ?? []),
+    ...(quote.primary_quote?.scope ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+
+  const hoursMatch = context.match(/\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b/i)
+  const rateMatch = context.match(/\$\s?(\d[\d,]*(?:\.\d+)?)\s*(?:per|an|\/)\s*(?:hour|hr)\b/i)
+  if (!hoursMatch || !rateMatch) return null
+
+  const hours = Number(hoursMatch[1])
+  const rate = Number((rateMatch[1] ?? "").replace(/,/g, ""))
+  const amount = hours * rate
+  if (!Number.isFinite(amount) || amount <= 0) return null
+
+  return {
+    amount,
+    pricingSource: "inline_hours_rate",
+    quantity: 1,
+    unitAmount: amount,
+    unitAmountWasDefaulted: false,
+    allowanceWorkings: {
+      people: 1,
+      days: 0,
+      hoursPerPerson: hours,
+      totalHours: hours,
+      rate,
+      rateUnit: "hours",
+      sourceText: `${hoursMatch[0]} at ${rateMatch[0]}`,
+    },
+  }
+}
+
 export function resolveLabourExportPrice(
   quote: Pick<XeroPayloadQuote, "pricing_facts" | "labour_allowance" | "primary_quote" | "line_items">,
 ): ResolvedLabourPrice {
@@ -226,6 +272,9 @@ export function resolveLabourExportPrice(
 
   const structured = structuredAllowanceLabourPrice(quote as XeroPayloadQuote)
   if (structured) return structured
+
+  const inline = inlineHoursRateLabourPrice(quote)
+  if (inline) return inline
 
   return {
     amount: 0,
