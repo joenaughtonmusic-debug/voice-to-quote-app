@@ -49,6 +49,8 @@ export type CustomerPreviewQuote = {
   plant_calculator_results?: PlantCalculatorResult[]
   selected_template?: SelectedQuoteTemplate | null
   pricing_facts?: PricingFact[]
+  /** Raw transcript — fixed source for deterministic tidy pricing facts (T1). */
+  raw_transcript?: string | null
 }
 
 export type CustomerPreviewPlantOption = {

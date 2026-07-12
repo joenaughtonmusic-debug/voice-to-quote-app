@@ -1,3 +1,4 @@
+import { extractTidyPricingFacts } from "./tidy-pricing-facts"
 import {
   greenwasteLineItem,
   numberFromValue,
@@ -30,6 +31,20 @@ export function spokenGreenwasteAmount(quote: Pick<XeroPayloadQuote, "greenwaste
 }
 
 export function resolveGreenwasteExportPrice(quote: XeroPayloadQuote): ResolvedWastePrice {
+  // T1 — a greenwaste total spoken in the raw transcript ("$130 of green waste") is parsed
+  // deterministically from a fixed string, so it is stable run-to-run and wins (spoken price
+  // priority). Independent of the AI-narrated greenwaste field / line items.
+  const spokenTranscriptTotal = extractTidyPricingFacts(quote.raw_transcript).spokenGreenwasteTotal
+  if (typeof spokenTranscriptTotal === "number" && spokenTranscriptTotal > 0) {
+    return {
+      amount: spokenTranscriptTotal,
+      pricingSource: "spoken_greenwaste",
+      quantity: 1,
+      unitAmount: spokenTranscriptTotal,
+      unitAmountWasDefaulted: false,
+    }
+  }
+
   const wasteItem = greenwasteLineItem(quote)
   const amount = pricedAmountFromLineItem(wasteItem)
 

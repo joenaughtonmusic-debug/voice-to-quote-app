@@ -1,4 +1,5 @@
 import type { PricingFact } from "../core/pricing-extraction"
+import { extractTidyPricingFacts } from "./tidy-pricing-facts"
 import {
   labourLineItem,
   numberFromValue,
@@ -257,8 +258,24 @@ export function inlineHoursRateLabourPrice(
 }
 
 export function resolveLabourExportPrice(
-  quote: Pick<XeroPayloadQuote, "pricing_facts" | "labour_allowance" | "primary_quote" | "line_items">,
+  quote: Pick<XeroPayloadQuote, "pricing_facts" | "labour_allowance" | "primary_quote" | "line_items"> & {
+    raw_transcript?: string | null
+  },
 ): ResolvedLabourPrice {
+  // T1 — a labour total spoken in the raw transcript ("$400 for labour") is the most reliable
+  // source: parsed deterministically from a fixed string, so it is stable run-to-run and wins
+  // (spoken price priority). Independent of the AI-narrated labour_allowance/line_items.
+  const spokenLabourTotal = extractTidyPricingFacts(quote.raw_transcript).spokenLabourTotal
+  if (typeof spokenLabourTotal === "number" && spokenLabourTotal > 0) {
+    return {
+      amount: spokenLabourTotal,
+      pricingSource: "spoken_fixed",
+      quantity: 1,
+      unitAmount: spokenLabourTotal,
+      unitAmountWasDefaulted: false,
+    }
+  }
+
   const spoken = spokenCustomerFixedPrice(quote)
   if (typeof spoken?.amount === "number" && Number.isFinite(spoken.amount)) {
     return {

@@ -265,8 +265,14 @@ function stripLabourRate(text: string) {
  * format. Otherwise the crew/duration allowance is shown with the hourly rate stripped
  * (never leak a rate); the export layer flags the missing price for review.
  */
+/** The quote passed to the export resolvers, with the transcript the assembler was given so the
+ * deterministic transcript-parsed spoken totals (T1) fire in the customer draft too. */
+function quoteWithTranscript(input: CustomerQuoteAssemblyInput): XeroPayloadQuote {
+  return { ...input.quote, raw_transcript: input.rawTranscript ?? null } as unknown as XeroPayloadQuote
+}
+
 function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
-  const resolved = resolveLabourExportPrice(input.quote as unknown as XeroPayloadQuote)
+  const resolved = resolveLabourExportPrice(quoteWithTranscript(input))
   if (
     (resolved.pricingSource === "spoken_fixed" || resolved.pricingSource === "inline_hours_rate") &&
     resolved.amount > 0
@@ -284,7 +290,7 @@ function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
  * business-rule greenwaste pricing is a separate follow-up (B2).
  */
 function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
-  const resolved = resolveGreenwasteExportPrice(input.quote as unknown as XeroPayloadQuote)
+  const resolved = resolveGreenwasteExportPrice(quoteWithTranscript(input))
   // Only a greenwaste total spoken in the greenwaste field is reliable enough to show the
   // customer as a $ line. A greenwaste line_item total is skipped here because AI extraction
   // can misread a time-unit quantity ("1.5 days") as a dollar amount ($1.50); business-rule

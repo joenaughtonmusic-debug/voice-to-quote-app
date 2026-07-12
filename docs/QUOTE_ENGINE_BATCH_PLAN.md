@@ -352,6 +352,48 @@ internal view only).
 
 **Status: approved — queued (do NOT build yet).**
 
+## Tidy send-ready (T-series)
+
+Goal: make ONE-OFF TIDY fully send-ready against Xavier (QU-0572) and David (QU-0570) —
+priced labour, greenwaste, extras, subtotal, GST, TOTAL in the line-item format, and
+reliable (same transcript → same figures run-to-run). Tidy-only; does NOT touch maintenance
+or paver batches. Joe's pricing rules: full day = 7.5h; hourly rate PER PERSON; spoken $ wins;
+greenwaste $26.50/bag (6 bags = 1 trailer), flag odd units ("1.5 days"); weedkiller
+extra-strength = $6.
+
+### T1 — deterministic tidy pricing-facts layer (reliability foundation)
+New `lib/export/tidy-pricing-facts.ts` parses pricing-relevant facts (spoken labour/greenwaste
+totals, rate, hours, days, people, greenwaste qty, extras) straight from the RAW transcript.
+Spoken totals wired as top priority in the labour/greenwaste resolvers (transcript threaded via
+`raw_transcript` on the preview quote, so draft AND Xero export stay in parity).
+
+**Status: done — pending commit.** Live: David labour **$400 6/6** (was ~4/6), Xavier greenwaste
+**$130 6/6**, 0 leaks. (Xavier labour still varies — no spoken total; that is T2.)
+
+### T2 — labour pricing rule (day-rate / crew → hours → $)
+Full day = 7.5h; rate per person; spoken total wins. Xavier "full day, 2 people, $80/hr" →
+7.5 × 2 × 80 = **$1,200** (computed + editable; NOT graded on his manually-adjusted $720).
+David spoken $400 flows through. Clean priced labour line + description.
+
+**Status: approved — queued (rules provided).**
+
+### T3 — greenwaste pricing rule (folds in B2)
+$26.50/bag; 6 bags = 1 trailer; spoken $ wins; flag odd units ("1.5 days") rather than guess.
+Xavier $130 (spoken), David "1.5 days" → flagged. **This is B2.**
+
+**Status: approved — queued (rules provided).**
+
+### T4 — priced extras / consumables
+Small tidy price list. For now: weedkiller extra-strength = $6 (Xavier). More to come from Joe.
+
+**Status: approved — queued (partial price list provided).**
+
+### T5 — subtotal + GST + TOTAL in the line-item format
+Aggregate priced lines → subtotal, GST 15% inclusive, TOTAL, rendered as the invoice-style
+table. Answer keys: Xavier $798.88 / GST $104.20; David $479.75 / GST $62.57. Depends on T1–T4.
+
+**Status: approved — queued (after T2–T4).**
+
 ### Later — KB / Price List Schema v2
 Goal:
 - canonical item names

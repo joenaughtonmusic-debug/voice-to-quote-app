@@ -9,6 +9,7 @@ import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
+import { extractTidyPricingFacts } from "./export/tidy-pricing-facts"
 import { buildGardenTidyProcessedQuote } from "./garden-tidy-processing"
 import type { ProcessedQuote } from "./processed-quote"
 import {
@@ -460,6 +461,75 @@ test("B1 Xavier tidy — labour rate stripped when no total spoken; greenwaste p
 
   // Greenwaste: its own priced line from the spoken "$130 of green waste".
   assert.ok(greenwaste.some((item) => /\$130\b/.test(item)), `Greenwaste should be priced $130. Got: ${greenwaste.join(" | ")}`)
+})
+
+// T1 — deterministic tidy pricing facts. Spoken totals are parsed from the RAW transcript so the
+// same transcript yields the SAME figures every run (not dependent on AI-narrated fields).
+
+const T1_DAVID_TRANSCRIPT =
+  "This is a one-off tidy and it's five hours, we're gonna do it $80 an hour, so $400 for labour, 1.5 days of green waste, and $5 of dump rate. And a blowdown on Friday to add to the labour note."
+const T1_XAVIER_TRANSCRIPT =
+  "Probably a full day with two people at $80 an hour. I'd probably say $130 of green waste. Spray the kumara vine with the extra strength weed killer."
+
+function t1TidyQuote(): ProcessedQuote {
+  return {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Test",
+    site_address: "1 Test St",
+    job_type: "one_off_tidy",
+    quote_title: "One-off tidy",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      job_type: "one_off_tidy",
+      scope: ["Tidy the leaves", "Weed the steps and pathway", "Prune hydrangeas"],
+      notes: [],
+    },
+    // Deliberately empty: the priced figures must come from the transcript, not these fields.
+    labour_allowance: "",
+    greenwaste: "",
+  }
+}
+
+test("T1 extractTidyPricingFacts parses spoken totals and foundation facts deterministically", () => {
+  const david = extractTidyPricingFacts(T1_DAVID_TRANSCRIPT)
+  assert.equal(david.spokenLabourTotal, 400)
+  assert.equal(david.labourRate, 80)
+  assert.equal(david.labourHours, 5)
+  assert.equal(david.spokenGreenwasteTotal, null, "'1.5 days' is not a dollar total")
+  assert.equal(david.greenwasteOddUnit, "1.5 days")
+  assert.equal(david.labourDays, null, "the greenwaste '1.5 days' must not be read as labour days")
+
+  const xavier = extractTidyPricingFacts(T1_XAVIER_TRANSCRIPT)
+  assert.equal(xavier.spokenLabourTotal, null, "no '$N for labour' spoken")
+  assert.equal(xavier.labourRate, 80)
+  assert.equal(xavier.labourDays, 1)
+  assert.equal(xavier.labourPeople, 2)
+  assert.equal(xavier.spokenGreenwasteTotal, 130)
+  assert.deepEqual(xavier.extras, [{ name: "Weedkiller - extra strength" }])
+
+  assert.equal(extractTidyPricingFacts("two bags of green waste per visit").greenwasteBags, 2)
+  assert.equal(extractTidyPricingFacts("half a trailer load of greenwaste").greenwasteTrailers, 0.5)
+
+  // Determinism: same input → identical facts every call.
+  assert.deepEqual(extractTidyPricingFacts(T1_DAVID_TRANSCRIPT), extractTidyPricingFacts(T1_DAVID_TRANSCRIPT))
+})
+
+test("T1 David — labour $400 comes from the spoken transcript total, with the AI fields empty", () => {
+  const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
+  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400"])
+})
+
+test("T1 Xavier — greenwaste $130 comes from the spoken transcript total, with the AI fields empty", () => {
+  const model = currentDraftPreviewModel(T1_XAVIER_TRANSCRIPT, t1TidyQuote())
+  const greenwaste = assemblySectionItems("Green Waste", model)
+  assert.ok(greenwaste.some((item) => /\$130\b/.test(item)), `Expected $130 greenwaste. Got: ${greenwaste.join(" | ")}`)
+})
+
+test("T1 — the same transcript yields the same priced figures across repeated runs", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
+    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400"])
+  }
 })
 
 test("Shirley live handoff — Green Waste dedupes repeated two-trailer lines", () => {
