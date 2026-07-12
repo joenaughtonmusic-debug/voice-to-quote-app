@@ -184,7 +184,56 @@ Done criteria:
   classification + golden + general-landscaping suites green.
 - `npm run build`; commit on its own.
 
-**Status: approved — active (next). Was AI-1's precondition, discovered during AI-1 diagnosis.**
+**Status: done** (commit `38e5614` — "Route mixed planting+structural jobs to landscaping (AI-0)"). Classifies Sarah `landscaping` 10/10; planting goldens unchanged. Discovered downstream: the extraction then drops the paver ~30-40% of the time regardless of model — handled by AI-0b.
+
+### AI-0b — extraction coverage-check retry (paver drop is non-deterministic, not a model gap)
+Context: with AI-0 the Sarah/Ellerslie job classifies `landscaping` **10/10**, but the extraction
+**non-deterministically drops the paver sub-area**. Measured live: gpt-4o-mini **6/10** captured,
+gpt-5.2 **4/10** — so a stronger model does NOT help (worse), confirming it is a prompt/extraction
+weakness, not model capability. Fix the reliability, not the model.
+
+Goal:
+- Deterministically detect distinct work items the extraction should contain and, when one is
+  missing, retry extraction; if STILL missing after the retry cap, surface a LOUD review notice —
+  never a silent drop.
+
+Requirements (from approval):
+1. The coverage check is **deterministic** — "what should be there" is derived from the transcript
+   by **reusing the AI-0 `transcriptMentionsNonPlantingStructuralTrade` detector** (and its noun
+   set), NOT by asking an AI. v1 scope: verify each detected non-planting structural trade area
+   (paver/paving/retaining wall/decking/hard fill) present in the transcript also appears in the
+   extracted scope/materials.
+2. If an item is still missing after retries, emit a `severity: "error"` review notice (loud,
+   internal review) so it is never silently dropped.
+
+Plan:
+- Extend `extractQuoteWithRetry` (currently retries only on parse/API errors) so a SUCCESSFUL but
+  **coverage-incomplete** extraction is also retryable, up to a cap (propose 2 coverage retries →
+  3 attempts total; configurable).
+- On exhaustion with a still-missing item: attach a loud coverage review notice (new
+  `source: "coverage"`), listing the specific missing item(s).
+
+Expected capture math (per-attempt capture p ≈ 0.6, gpt-4o-mini, treating attempts as ~independent):
+- 1 attempt (today):      capture 60%, **silent** miss 40%
+- 2 attempts (1 retry):   capture 1 − 0.4² = **84%**
+- 3 attempts (2 retries): capture 1 − 0.4³ = **93.6%**
+- Residual (~6%) is NOT silent — it becomes a loud review notice. Net: **0% silent drops.**
+
+Cost / latency of extra attempts:
+- Per extraction attempt ≈ gpt-4o-mini, ~2.1k input + ~3.5k output tokens ≈ **$0.0024** and **~12s**.
+- Retries fire ONLY when a structural item is detected AND that attempt missed it — pure
+  planting/maintenance/etc. jobs never trigger (zero overhead).
+- Expected extra for a mixed-structural job ≈ 0.4 + 0.16 ≈ **~0.56 extra attempts** (~+7s, ~+$0.001);
+  worst case 2 retries (~+24s, ~+$0.005). Negligible cost; bounded, subset-only latency.
+
+Done criteria:
+- Live Sarah re-run (10×): capture rate rises to ≥ ~90%, and on any residual miss a loud
+  coverage review notice fires (verified) — no silent drop in any of the 10.
+- Deterministic coverage-check unit tests; retry-on-miss + notice-on-exhaustion tests (mocked
+  extraction, no live OpenAI).
+- Regression: golden / general-landscaping / planting / core green; `npm run build`. Commit on its own.
+
+**Status: approved — active (next, before AI-1).**
 
 ### AI-1 — render_intent mixed-trade guard (controlled-mode regression)
 Context: controlled mode (`ENABLE_AI_QUOTE_PLAN`, dev-only) lets an accepted/normalised AI
@@ -217,7 +266,7 @@ Done criteria:
   actually back in the customer scope** (not just unit tests passing).
 - `npm run build`; commit on its own.
 
-**Status: approved — queued after AI-0 (render_intent guard; keeps the now-captured non-planting scope in the customer preview).**
+**Status: approved — queued after AI-0b (render_intent guard; keeps the now-captured non-planting scope in the customer preview).**
 
 ### AI-2 — AI-plan optional-works passthrough
 Context: same verification found the AI plan's optional buckets (Finn's water-blasting, Dane's
