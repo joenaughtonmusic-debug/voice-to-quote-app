@@ -49,6 +49,8 @@ export type MaintenancePricingFacts = {
   greenwasteIncluded: boolean
   /** Spoken greenwaste dollar total — "removal of greenwaste $26.50". Foundation for the greenwaste line (M3). */
   spokenGreenwasteTotal: number | null
+  /** Greenwaste fluctuation range — "ranging from $26.50 up to $66.25" → shown as a note beside the line (M3). */
+  greenwasteRange: { low: number; high: number } | null
   /** Greenwaste bag count — foundation for the greenwaste rule (M3). */
   greenwasteBags: number | null
   /** Named extras mentioned — sprays/extras, tool servicing, petrol. Foundation for priced extras (M4). */
@@ -115,6 +117,18 @@ export function extractMaintenancePricingFacts(
   const gwTrailing = firstAmount(text, /green\s?waste[^.$]{0,40}?\$\s?([\d,]+(?:\.\d+)?)/i)
   const spokenGreenwasteTotal = greenwasteIncluded ? null : (gwLeading ?? gwTrailing ?? tidy.spokenGreenwasteTotal)
 
+  // Greenwaste fluctuation range — "$26.50 (to|up to|–|and) $66.25". Tied to greenwaste by anchoring
+  // the low end to the spoken greenwaste total, so an unrelated price range is never picked up.
+  let greenwasteRange: { low: number; high: number } | null = null
+  const rangeMatch = text.match(/\$\s?([\d,]+(?:\.\d+)?)\s*(?:up\s+to|to|–|-|and)\s*\$\s?([\d,]+(?:\.\d+)?)/i)
+  if (rangeMatch && spokenGreenwasteTotal != null) {
+    const low = parseAmount(rangeMatch[1])
+    const high = parseAmount(rangeMatch[2])
+    if (low != null && high != null && high > low && Math.abs(low - spokenGreenwasteTotal) < 0.005) {
+      greenwasteRange = { low, high }
+    }
+  }
+
   // ── Extras / consumables mentioned (foundation, M4) ──────────────────────
   // Name-only capture, mirroring the tidy extras foundation. Whether each renders as its own line
   // (Nadia sprays/tool, Brett petrol) or folds into the visit price (Stella's herbicide) is the
@@ -132,6 +146,7 @@ export function extractMaintenancePricingFacts(
     labourPeople: tidy.labourPeople,
     greenwasteIncluded,
     spokenGreenwasteTotal,
+    greenwasteRange,
     greenwasteBags: tidy.greenwasteBags,
     extras,
   }

@@ -755,3 +755,52 @@ test("M2 — the resolved per-visit price is identical across repeat runs (deter
     assert.equal(resolveVisitPrice("Fortnightly maintenance. Allow 3 hours per visit at $75 an hour.").amount, 225)
   }
 })
+
+// ── M3 — greenwaste line: separate priced line by default, folded when "included" ───────────
+// Applies Joe's rule: fold greenwaste into the visit price when spoken as included (Brett/Stella);
+// itemise it as its own priced line when charged separately (Nadia $26.50, with the range note).
+
+function assemblySection(transcript: string, title: string) {
+  const assembly = assembleMaintenanceCustomerQuote({ quote: EMPTY_PROCESSED_QUOTE, rawTranscript: transcript })
+  return assembly.sections.find((s) => s.title === title)?.items ?? []
+}
+
+test("M3 Nadia — greenwaste is its own $26.50 line with the range note, not folded into the service", () => {
+  const greenWaste = assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste")
+  assert.equal(greenWaste.length, 1, greenWaste.join(" | "))
+  assert.match(greenWaste[0] ?? "", /\$26\.50/)
+  assert.match(greenWaste[0] ?? "", /range \$26\.50–\$66\.25/)
+  // Not also duplicated in Service Includes when it is a separate priced line.
+  const includes = assemblySection(M1_NADIA_TRANSCRIPT, "Service Includes")
+  assert.ok(!includes.some((i) => /green\s*waste/i.test(i)), `Greenwaste must not double up in Service Includes. Got: ${includes.join(" | ")}`)
+})
+
+test("M3 Brett — greenwaste is included in the service, so there is no separate Green Waste line", () => {
+  const greenWaste = assemblySection(M1_BRETT_TRANSCRIPT, "Green Waste")
+  assert.deepEqual(greenWaste, [], `Included greenwaste must not show a priced line. Got: ${greenWaste.join(" | ")}`)
+})
+
+test("M3 Stella — greenwaste is included ($405 covers it), so no separate line but still a service inclusion", () => {
+  const transcript = acceptanceTranscript()
+  assert.deepEqual(assemblySection(transcript, "Green Waste"), [])
+  const includes = assemblySection(transcript, "Service Includes")
+  assert.ok(includes.some((i) => /green\s*waste/i.test(i)), `Stella's included greenwaste should remain a service inclusion. Got: ${includes.join(" | ")}`)
+})
+
+test("M3 — a stated bag/trailer quantity prices greenwaste via the tidy rule when no $ is spoken", () => {
+  // "two bags of greenwaste" → 2 × $26.50 = $53.00 (tidy rule, reused). Not spoken as included.
+  const greenWaste = assemblySection(
+    "Six-weekly maintenance for Ken. $300 per visit. Weeding and pruning. Two bags of greenwaste removed each visit.",
+    "Green Waste",
+  )
+  assert.equal(greenWaste.length, 1, greenWaste.join(" | "))
+  // "$53" (whole dollars, no cents) is consistent with the per-visit format; M6 standardises every
+  // line to 2dp ("$53.00") as part of the GST/TOTAL invoice pass.
+  assert.match(greenWaste[0] ?? "", /\$53\b/)
+})
+
+test("M3 — the greenwaste line is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste"), assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste"))
+  }
+})

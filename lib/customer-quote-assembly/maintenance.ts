@@ -1,6 +1,8 @@
 import type { PricingFact } from "../core/pricing-extraction"
 import { extractMaintenancePricingFacts } from "../export/maintenance-pricing-facts"
 import { resolveMaintenanceVisitPrice } from "../export/maintenance-visit-price"
+import { extractTidyPricingFacts } from "../export/tidy-pricing-facts"
+import { greenwasteRulePrice } from "../export/waste-line-builder"
 import type { SelectedQuoteTemplate } from "../template-renderer"
 import { isTeamSiteNote } from "./internal-scope-signals"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
@@ -123,10 +125,16 @@ function serviceIncludes(input: CustomerQuoteAssemblyInput, mainFocus: string[])
     return items
   })
 
+  // Greenwaste is a service inclusion unless it is charged as its own priced Green Waste line (M3),
+  // in which case it must not also appear here — that would double it up. It stays an inclusion when
+  // folded into the visit price (Brett/Stella "included", or James with no separate greenwaste price).
+  const greenwasteIsSeparateLine = separateGreenwasteAmount(input) != null
+
   const focusKeys = new Set(mainFocus.map((item) => item.toLowerCase()))
   return unique([...pricingIncludes, ...transcriptIncludes])
     .map(normalizeServiceItem)
     .filter((item) => !focusKeys.has(item.toLowerCase()))
+    .filter((item) => !(greenwasteIsSeparateLine && /\bgreen\s*waste|greenwaste\b/i.test(item)))
 }
 
 function ongoingMaintenanceItems(input: CustomerQuoteAssemblyInput, mainFocus: string[]) {
@@ -224,6 +232,34 @@ function perVisitPriceItems(input: CustomerQuoteAssemblyInput): string[] {
     return [`${moneyVisit(resolved.amount)} per visit`]
   }
   return priceItems(input.pricingFacts)
+}
+
+/**
+ * The greenwaste charge shown as its OWN line, or null when greenwaste folds into the visit price.
+ * Greenwaste is a separate line only when it has its own price signal — a spoken greenwaste total
+ * (Nadia $26.50) or a bag/trailer quantity to price by the tidy rule. When it is spoken as included
+ * (Brett/Stella) OR merely mentioned as part of the service with no price of its own (James: "all
+ * greenwaste removed", one visit price), it is covered by the visit price — no separate line, and it
+ * stays a service inclusion instead.
+ */
+function separateGreenwasteAmount(input: CustomerQuoteAssemblyInput): number | null {
+  const transcript = input.rawTranscript ?? null
+  const facts = extractMaintenancePricingFacts(transcript)
+  if (facts.greenwasteIncluded) return null
+  const amount = facts.spokenGreenwasteTotal ?? greenwasteRulePrice(extractTidyPricingFacts(transcript ?? ""))
+  return amount != null && amount > 0 ? amount : null
+}
+
+/** Green Waste line (M3): the separate priced line (with Nadia's range note), or nothing when folded. */
+function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+  const amount = separateGreenwasteAmount(input)
+  if (amount == null) return []
+
+  const { greenwasteRange } = extractMaintenancePricingFacts(input.rawTranscript ?? null)
+  const range = greenwasteRange
+    ? ` (range ${moneyVisit(greenwasteRange.low)}–${moneyVisit(greenwasteRange.high)})`
+    : ""
+  return [`Removal of greenwaste — ${moneyVisit(amount)}${range}`]
 }
 
 function money(value: number) {
@@ -351,6 +387,7 @@ export function assembleMaintenanceCustomerQuote(input: CustomerQuoteAssemblyInp
     section("Service Includes", serviceIncludes(input, mainFocus)),
     section("Ongoing Maintenance", ongoingMaintenanceItems(input, mainFocus)),
     section("Price", perVisitPriceItems(input)),
+    section("Green Waste", greenwasteSectionItems(input)),
     section("Site Notes", siteNotes(input)),
     section("Exclusions", input.quote.exclusions),
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)
