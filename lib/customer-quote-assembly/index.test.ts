@@ -139,6 +139,8 @@ Keep gates closed due to dog.`
     "Service Includes",
     "Ongoing Maintenance",
     "Price",
+    // M5: the GST-inclusive + TOTAL block (James's $495 shows its GST component).
+    "Totals",
   ])
   assert.deepEqual(sectionItems("Main Focus", assembly), ["Pruning", "Trimming"])
   assert.deepEqual(sectionItems("Service Includes", assembly), [

@@ -1,9 +1,9 @@
 import type { PricingFact } from "../core/pricing-extraction"
 import { itemisedMaintenanceExtraTriggers, resolveMaintenanceExtras } from "../export/maintenance-extras"
+import { resolveMaintenanceGreenwaste } from "../export/maintenance-greenwaste"
 import { extractMaintenancePricingFacts } from "../export/maintenance-pricing-facts"
 import { resolveMaintenanceVisitPrice } from "../export/maintenance-visit-price"
-import { extractTidyPricingFacts } from "../export/tidy-pricing-facts"
-import { greenwasteRulePrice } from "../export/waste-line-builder"
+import { computeTidyTotals } from "./garden-tidy"
 import type { SelectedQuoteTemplate } from "../template-renderer"
 import { isTeamSiteNote } from "./internal-scope-signals"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
@@ -247,23 +247,16 @@ function perVisitPriceItems(input: CustomerQuoteAssemblyInput): string[] {
  * stays a service inclusion instead.
  */
 function separateGreenwasteAmount(input: CustomerQuoteAssemblyInput): number | null {
-  const transcript = input.rawTranscript ?? null
-  const facts = extractMaintenancePricingFacts(transcript)
-  if (facts.greenwasteIncluded) return null
-  const amount = facts.spokenGreenwasteTotal ?? greenwasteRulePrice(extractTidyPricingFacts(transcript ?? ""))
-  return amount != null && amount > 0 ? amount : null
+  return resolveMaintenanceGreenwaste(input.rawTranscript ?? null).amount
 }
 
 /** Green Waste line (M3): the separate priced line (with Nadia's range note), or nothing when folded. */
 function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
-  const amount = separateGreenwasteAmount(input)
+  const { amount, range } = resolveMaintenanceGreenwaste(input.rawTranscript ?? null)
   if (amount == null) return []
 
-  const { greenwasteRange } = extractMaintenancePricingFacts(input.rawTranscript ?? null)
-  const range = greenwasteRange
-    ? ` (range ${moneyVisit(greenwasteRange.low)}–${moneyVisit(greenwasteRange.high)})`
-    : ""
-  return [`Removal of greenwaste — ${moneyVisit(amount)}${range}`]
+  const rangeNote = range ? ` (range ${moneyVisit(range.low)}–${moneyVisit(range.high)})` : ""
+  return [`Removal of greenwaste — ${moneyVisit(amount)}${rangeNote}`]
 }
 
 /**
@@ -279,6 +272,39 @@ function extrasSectionItems(input: CustomerQuoteAssemblyInput): string[] {
         ? `${extra.name} — ${moneyVisit(extra.amount)}`
         : `${extra.name} — price to confirm`,
     )
+}
+
+/**
+ * Totals block (M5). Sums the priced per-visit lines (visit price + separate greenwaste + itemised
+ * extras — all GST-INCLUSIVE) into the per-visit TOTAL, with the GST line the SUM of each line's
+ * GST portion (amount × 3/23 rounded, per line) — the same rule as tidy (T5), matching Xero and the
+ * answer keys. The visit price is the anchor: no total until it is priced. Any line still to be
+ * confirmed (a flagged extra) is noted and excluded, never silently rolled in.
+ */
+function maintenanceTotalsItems(input: CustomerQuoteAssemblyInput): string[] {
+  const transcript = input.rawTranscript ?? null
+  const visit = resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+  if (visit.pricingSource === "unpriced" || visit.amount <= 0) return []
+
+  const priced: number[] = [visit.amount]
+  let pending = false
+
+  const greenwaste = resolveMaintenanceGreenwaste(transcript).amount
+  if (greenwaste != null) priced.push(greenwaste)
+
+  for (const extra of resolveMaintenanceExtras(transcript)) {
+    if (extra.included) continue
+    if (extra.amount != null && extra.amount > 0) priced.push(extra.amount)
+    else pending = true
+  }
+
+  const { total, gst } = computeTidyTotals(priced)
+
+  const items: string[] = []
+  if (pending) items.push("Total covers the priced lines above; any line still to be confirmed is excluded.")
+  items.push(`Includes GST (15%): ${money2(gst)}`)
+  items.push(`Total (NZD): ${money2(total)} per visit`)
+  return items
 }
 
 function money(value: number) {
@@ -301,6 +327,16 @@ function moneyVisit(value: number) {
     style: "currency",
     currency: "NZD",
     minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+/** Always-2dp currency for the Totals block (M5), matching the tidy invoice format and the keys. */
+function money2(value: number) {
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
 }
@@ -408,6 +444,7 @@ export function assembleMaintenanceCustomerQuote(input: CustomerQuoteAssemblyInp
     section("Price", perVisitPriceItems(input)),
     section("Green Waste", greenwasteSectionItems(input)),
     section("Extras", extrasSectionItems(input)),
+    section("Totals", maintenanceTotalsItems(input)),
     section("Site Notes", siteNotes(input)),
     section("Exclusions", input.quote.exclusions),
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)

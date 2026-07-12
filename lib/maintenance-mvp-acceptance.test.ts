@@ -378,7 +378,9 @@ test("maintenance MVP uses the real customer preview/template path", () => {
 
   for (const model of [standardPreviewModel, templatePreviewModel]) {
     const sectionTitles = model.assembly?.sections.map((section) => section.title) ?? []
-    assert.deepEqual(sectionTitles, ["Main Focus", "Service Includes", "Ongoing Maintenance", "Price", "Site Notes"])
+    // M5 adds the Totals block (GST-inclusive + TOTAL) — Stella's $405 shows its GST component even
+    // though greenwaste and extras are folded into the single visit price.
+    assert.deepEqual(sectionTitles, ["Main Focus", "Service Includes", "Ongoing Maintenance", "Price", "Totals", "Site Notes"])
     assert.deepEqual(model.assembly?.sections.find((section) => section.title === "Main Focus")?.items, [
       "Weeding",
       "Pruning",
@@ -839,5 +841,28 @@ test("M4 — an extra mentioned with no price is flagged, never guessed", () => 
 test("M4 — the extras lines are identical across repeat runs (deterministic)", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Extras"), ["Sprays / extras — $10", "Tool servicing — $12"])
+  }
+})
+
+// ── M5 — subtotal + GST-inclusive + TOTAL (per-line GST, matches the answer keys) ───────────
+
+test("M5 Nadia — TOTAL $333.50 with GST $43.50 (285 + 26.50 + 10 + 12)", () => {
+  const totals = assemblySection(M1_NADIA_TRANSCRIPT, "Totals")
+  assert.deepEqual(totals, ["Includes GST (15%): $43.50", "Total (NZD): $333.50 per visit"], totals.join(" | "))
+})
+
+test("M5 Brett — TOTAL $474.50 with GST $61.89 (467.50 + 7)", () => {
+  const totals = assemblySection(M1_BRETT_TRANSCRIPT, "Totals")
+  assert.deepEqual(totals, ["Includes GST (15%): $61.89", "Total (NZD): $474.50 per visit"], totals.join(" | "))
+})
+
+test("M5 — no TOTAL until the visit price is priced (the visit price is the anchor)", () => {
+  // A rate-less "4.5 hours" with no spoken per-visit price computes nothing → no totals block.
+  assert.deepEqual(assemblySection("Monthly maintenance for Kate. Allow 4.5 hours labour per visit.", "Totals"), [])
+})
+
+test("M5 — the totals block is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Totals"), ["Includes GST (15%): $43.50", "Total (NZD): $333.50 per visit"])
   }
 })

@@ -1,3 +1,7 @@
+import { resolveMaintenanceExtras } from "../maintenance-extras"
+import { resolveMaintenanceGreenwaste } from "../maintenance-greenwaste"
+import { extractMaintenancePricingFacts } from "../maintenance-pricing-facts"
+import { resolveMaintenanceVisitPrice } from "../maintenance-visit-price"
 import {
   accountCodeFromLineItem,
   labourLineItem,
@@ -160,25 +164,76 @@ function maintenanceDescription(quote: XeroPayloadQuote) {
 export function buildMaintenanceXeroExportLineItems(quote: XeroPayloadQuote): XeroExportLineItem[] {
   if (!isMaintenanceQuote(quote)) return []
 
-  const price = spokenFixedPrice(quote)
-  if (!price || typeof price.amount !== "number") return []
+  // Per-visit price: the deterministic resolver (spoken per-visit total → computed hours × rate)
+  // when a transcript is present, else the AI pricing-facts fixed price so quotes without a
+  // transcript on the export path (e.g. the Stella acceptance) keep their single $405 line.
+  const transcript = quote.raw_transcript ?? null
+  const resolvedVisit = resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+  const spoken = spokenFixedPrice(quote)
+  const visitAmount =
+    resolvedVisit.pricingSource !== "unpriced" && resolvedVisit.amount > 0
+      ? resolvedVisit.amount
+      : typeof spoken?.amount === "number"
+        ? spoken.amount
+        : null
+  if (visitAmount == null) return []
 
   const labourItem = labourLineItem(quote)
   const code = xeroItemCode(labourItem?.item_code, labourItem?.source_system, labourItem?.item_name, labourItem?.description)
+  const accountCode = accountCodeFromLineItem(labourItem)
+  const taxType = taxTypeFromLineItem(labourItem)
+  const gstRate = labourItem?.gst_rate ?? null
 
-  return [
+  const lines: XeroExportLineItem[] = [
     {
       category: "labour",
       description: cadenceHeaderLine(quote),
       xeroDescription: maintenanceDescription(quote),
       quantity: 1,
-      unitAmount: price.amount,
+      unitAmount: visitAmount,
       itemCode: code.itemCode,
       omittedItemCode: code.omittedItemCode,
       itemCodeSource: labourItem?.source_system,
-      xeroAccountCode: accountCodeFromLineItem(labourItem),
-      xeroTaxType: taxTypeFromLineItem(labourItem),
-      gstRate: labourItem?.gst_rate ?? null,
+      xeroAccountCode: accountCode,
+      xeroTaxType: taxType,
+      gstRate,
     },
   ]
+
+  // Greenwaste as its own line (M5) when charged separately, so the Xero total matches the customer
+  // draft. Folded/"included" greenwaste (Brett/Stella) adds no line.
+  const greenwaste = resolveMaintenanceGreenwaste(transcript)
+  if (greenwaste.amount != null) {
+    lines.push({
+      category: "waste",
+      description: "Removal of greenwaste",
+      xeroDescription: "Removal of greenwaste",
+      quantity: 1,
+      unitAmount: greenwaste.amount,
+      xeroAccountCode: accountCode,
+      xeroTaxType: taxType,
+      gstRate,
+    })
+  }
+
+  // Each itemised extra as its own line (Nadia sprays/tool, Brett petrol) for parity. A flagged
+  // extra (no price captured) exports at $0 rather than being silently dropped; folded/"included"
+  // extras add no line.
+  for (const extra of resolveMaintenanceExtras(transcript)) {
+    if (extra.included) continue
+    const priced = extra.amount != null && extra.amount > 0
+    lines.push({
+      category: "materials",
+      description: extra.name,
+      xeroDescription: extra.name,
+      quantity: 1,
+      unitAmount: priced ? (extra.amount as number) : 0,
+      unitAmountWasDefaulted: !priced,
+      xeroAccountCode: accountCode,
+      xeroTaxType: taxType,
+      gstRate,
+    })
+  }
+
+  return lines
 }
