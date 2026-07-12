@@ -10,6 +10,7 @@ import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { extractTidyPricingFacts } from "./export/tidy-pricing-facts"
+import { computeTidyTotals } from "./customer-quote-assembly/garden-tidy"
 import { resolveTidyExtras } from "./export/tidy-extras"
 import { greenwasteRulePrice } from "./export/waste-line-builder"
 import { buildGardenTidyProcessedQuote } from "./garden-tidy-processing"
@@ -412,7 +413,7 @@ test("B1 David tidy — internal notes never reach customer scope; labour priced
   assert.ok(!scope.some((item) => /labou?r\s+note/i.test(item)), `Labour note leaked to scope: ${scope.join(" | ")}`)
 
   // Labour: priced $ total from "5 hours at $80 per hour" = $400, never a raw rate.
-  assert.deepEqual(labour, ["$400"], `Labour should be the spoken $ total. Got: ${labour.join(" | ")}`)
+  assert.deepEqual(labour, ["$400.00"], `Labour should be the spoken $ total. Got: ${labour.join(" | ")}`)
 
   // Nothing internal leaked anywhere the customer sees (rendered draft).
   const rendered = renderCustomerDraftPreviewText(model)
@@ -518,7 +519,7 @@ test("T1 extractTidyPricingFacts parses spoken totals and foundation facts deter
 
 test("T1 David — labour $400 comes from the spoken transcript total, with the AI fields empty", () => {
   const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
-  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400"])
+  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400.00"])
 })
 
 test("T1 Xavier — greenwaste $130 comes from the spoken transcript total, with the AI fields empty", () => {
@@ -530,7 +531,7 @@ test("T1 Xavier — greenwaste $130 comes from the spoken transcript total, with
 test("T1 — the same transcript yields the same priced figures across repeated runs", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
-    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400"])
+    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400.00"])
   }
 })
 
@@ -542,18 +543,18 @@ const T2_XAVIER_FULL_TRANSCRIPT =
 
 test("T2 Xavier — labour computes 7.5h × 2 people × $80 = $1,200 (full-day rule beats the reduced-option '11 hours')", () => {
   const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
-  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200"])
+  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200.00"])
 })
 
 test("T2 David — a spoken labour total ($400) still wins over the day-rate rule", () => {
   const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
-  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400"])
+  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400.00"])
 })
 
 test("T2 — the computed labour figure is identical across repeat runs (deterministic)", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
-    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200"])
+    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200.00"])
   }
 })
 
@@ -578,7 +579,7 @@ test("T3 Xavier — spoken greenwaste $130 wins over the bag/trailer rule", () =
 
 test("T3 bags — a stated bag quantity prices at $26.50/bag", () => {
   const model = currentDraftPreviewModel("One-off tidy. Weed the beds and prune the shrubs. Three bags of green waste.", t1TidyQuote())
-  assert.ok(greenWasteLine(model).some((item) => /79\.5\b/.test(item)), greenWasteLine(model).join(" | "))
+  assert.ok(greenWasteLine(model).some((item) => /79\.50\b/.test(item)), greenWasteLine(model).join(" | "))
 })
 
 test("T3 David — an odd greenwaste unit ('1.5 days') is flagged, not guessed (no $ line)", () => {
@@ -590,7 +591,7 @@ test("T3 David — an odd greenwaste unit ('1.5 days') is flagged, not guessed (
 test("T3 — the computed greenwaste figure is identical across repeat runs (deterministic)", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel("One-off tidy. Weed the beds. Half a trailer load of greenwaste.", t1TidyQuote())
-    assert.ok(greenWasteLine(model).some((item) => /79\.5\b/.test(item)), greenWasteLine(model).join(" | "))
+    assert.ok(greenWasteLine(model).some((item) => /79\.50\b/.test(item)), greenWasteLine(model).join(" | "))
   }
 })
 
@@ -619,7 +620,7 @@ test("T4 extras — a spoken $ next to the extra wins over the price list", () =
 
 test("T4 Xavier-style — extras render as priced ($6) and flagged lines in the customer draft", () => {
   const extras = extrasLine(currentDraftPreviewModel(T4_TWO_WEEDKILLERS, t1TidyQuote()))
-  assert.ok(extras.some((item) => /Weedkiller - extra strength — \$6\b/.test(item)), extras.join(" | "))
+  assert.ok(extras.some((item) => /Weedkiller - extra strength — \$6\.00\b/.test(item)), extras.join(" | "))
   assert.ok(extras.some((item) => /Weedkiller - organic — price to confirm/.test(item)), extras.join(" | "))
 })
 
@@ -631,9 +632,50 @@ test("T4 — a tidy with no extras has no Extras section", () => {
 test("T4 — the extras figures are identical across repeat runs (deterministic)", () => {
   for (const _ of [1, 2, 3, 4, 5]) {
     assert.deepEqual(extrasLine(currentDraftPreviewModel(T4_TWO_WEEDKILLERS, t1TidyQuote())), [
-      "Weedkiller - extra strength — $6",
+      "Weedkiller - extra strength — $6.00",
       "Weedkiller - organic — price to confirm",
     ])
+  }
+})
+
+// T5 — GST-inclusive totals in the line-item format. Line amounts include GST; TOTAL is their
+// sum; the GST line is the SUM of each line's GST portion (per-line rounding, like Xero/Joe's
+// quotes), NOT total × 3/23.
+
+const T5_XAVIER =
+  "Probably a full day with two people at $80 an hour. I'd probably say $130 of green waste. Spray with the extra strength weed killer and the organic weed killer."
+
+test("T5 GST — per-line inclusive GST matches the answer keys (Xavier $104.20, David $62.57)", () => {
+  assert.deepEqual(computeTidyTotals([720, 72.88, 6]), { total: 798.88, gst: 104.2 })
+  assert.deepEqual(computeTidyTotals([440, 39.75]), { total: 479.75, gst: 62.57 })
+  // Per-line rounding is what the answer key uses; total × 3/23 would give David $62.58 instead.
+  assert.equal(Math.round(((479.75 * 3) / 23) * 100) / 100, 62.58)
+})
+
+test("T5 Xavier — priced lines total with per-line GST, in 2dp", () => {
+  const totals = assemblySectionItems("Totals", currentDraftPreviewModel(T5_XAVIER, t1TidyQuote()))
+  assert.ok(totals.includes("Total (NZD): $1,336.00"), totals.join(" | "))
+  assert.ok(totals.includes("Includes GST (15%): $174.26"), totals.join(" | "))
+  assert.ok(totals.some((item) => /still to be confirmed/.test(item)), "organic weedkiller is flagged → pending note")
+})
+
+test("T5 David — total covers priced labour ($400); unpriced greenwaste is excluded and noted", () => {
+  const totals = assemblySectionItems("Totals", currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote()))
+  assert.ok(totals.includes("Total (NZD): $400.00"), totals.join(" | "))
+  assert.ok(totals.includes("Includes GST (15%): $52.17"), totals.join(" | "))
+  assert.ok(totals.some((item) => /still to be confirmed/.test(item)))
+})
+
+test("T5 — no total is shown until labour is priced (labour is the anchor line)", () => {
+  // A crew/duration allowance with no rate → labour unpriced → no Totals section.
+  const model = currentDraftPreviewModel("One-off tidy. Weed the beds. Two people for the day.", t1TidyQuote())
+  assert.equal(model.assembly?.sections.some((s) => s.title === "Totals"), false)
+})
+
+test("T5 — totals are identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    const totals = assemblySectionItems("Totals", currentDraftPreviewModel(T5_XAVIER, t1TidyQuote()))
+    assert.ok(totals.includes("Total (NZD): $1,336.00"), totals.join(" | "))
   }
 })
 
@@ -812,7 +854,7 @@ test("garden tidy live-equivalent one_off_tidy draft matches acceptance output",
     "Service Includes",
     "Greenwaste removal",
     "Price",
-    "$1,440",
+    "$1,440.00",
     "Site Notes",
     "Greenwaste removed from site",
   ].join("\n")

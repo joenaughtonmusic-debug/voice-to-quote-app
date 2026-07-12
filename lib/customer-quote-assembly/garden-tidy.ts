@@ -326,6 +326,63 @@ function extrasSectionItems(input: CustomerQuoteAssemblyInput): string[] {
   )
 }
 
+/** The priced labour amount that counts toward the total, or null when labour is shown as an
+ * unpriced crew/duration allowance. */
+function labourPricedAmount(input: CustomerQuoteAssemblyInput): number | null {
+  const r = resolveLabourExportPrice(quoteWithTranscript(input))
+  return (r.pricingSource === "spoken_fixed" || r.pricingSource === "inline_hours_rate" || r.pricingSource === "computed_day_rate") &&
+    r.amount > 0
+    ? r.amount
+    : null
+}
+
+/** The priced greenwaste amount that counts toward the total, or null when unpriced/flagged. */
+function greenwastePricedAmount(input: CustomerQuoteAssemblyInput): number | null {
+  const r = resolveGreenwasteExportPrice(quoteWithTranscript(input))
+  return (r.pricingSource === "spoken_greenwaste" || r.pricingSource === "computed_greenwaste") &&
+    typeof r.amount === "number" &&
+    r.amount > 0
+    ? r.amount
+    : null
+}
+
+/**
+ * Totals block (T5). Sums the priced line amounts (all GST-INCLUSIVE) into the TOTAL, and the GST
+ * line is the SUM of each line's GST portion (amount × 3/23, rounded) — matching Xero and Joe's
+ * quotes, not total × 3/23. When a line is shown but not yet priced (e.g. greenwaste "1.5 days" or
+ * an unlisted extra), the total notes that it excludes those flagged items — never a silent total.
+ */
+function tidyTotalsItems(input: CustomerQuoteAssemblyInput): string[] {
+  // Labour is the anchor line; a tidy total is meaningless without it, so no total is shown until
+  // labour is priced (otherwise Joe just sees the priced lines + any unpriced allowance and totals
+  // it after review).
+  const labourAmt = labourPricedAmount(input)
+  if (labourAmt == null) return []
+
+  const transcript = input.rawTranscript ?? null
+  const facts = extractTidyPricingFacts(transcript)
+  const priced: number[] = [labourAmt]
+  let pending = false
+
+  const greenwasteAmt = greenwastePricedAmount(input)
+  if (greenwasteAmt != null) priced.push(greenwasteAmt)
+  // Greenwaste mentioned (a qty line, or an odd unit like "1.5 days") but not priced → note it.
+  else if (greenwasteSectionItems(input).length > 0 || facts.greenwasteOddUnit) pending = true
+
+  for (const extra of resolveTidyExtras(facts, transcript)) {
+    if (extra.amount != null && extra.amount > 0) priced.push(extra.amount)
+    else pending = true
+  }
+
+  const { total, gst } = computeTidyTotals(priced)
+
+  const items: string[] = []
+  if (pending) items.push("Total covers the priced lines above; any line still to be confirmed is excluded.")
+  items.push(`Includes GST (15%): ${money(gst)}`)
+  items.push(`Total (NZD): ${money(total)}`)
+  return items
+}
+
 function serviceIncludes(input: CustomerQuoteAssemblyInput) {
   const pricingIncludes = (input.pricingFacts ?? []).flatMap((fact) => fact.inclusions)
   const greenwasteMentioned = [
@@ -353,9 +410,34 @@ function money(value: number) {
   return new Intl.NumberFormat("en-NZ", {
     style: "currency",
     currency: "NZD",
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+function round2(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100
+}
+
+/**
+ * GST portion of a single GST-INCLUSIVE line amount (NZ 15%): amount × 3/23, rounded to cents.
+ * The quote total's GST is the SUM of the per-line GST (matching Xero), NOT total × 3/23 — e.g.
+ * David $440 + $39.75 gives $57.39 + $5.18 = $62.57, whereas $479.75 × 3/23 rounds to $62.58.
+ */
+function lineGst(inclusiveAmount: number) {
+  return round2((inclusiveAmount * 3) / 23)
+}
+
+/**
+ * Totals for a set of GST-INCLUSIVE line amounts. TOTAL is their sum; GST is the SUM of each
+ * line's GST portion (per-line rounding, matching Xero and Joe's quotes). Verified on the answer
+ * keys: [720, 72.88, 6] → total 798.88 / GST 104.20; [440, 39.75] → total 479.75 / GST 62.57.
+ */
+export function computeTidyTotals(inclusiveAmounts: number[]): { total: number; gst: number } {
+  return {
+    total: round2(inclusiveAmounts.reduce((sum, amount) => sum + amount, 0)),
+    gst: round2(inclusiveAmounts.reduce((sum, amount) => sum + lineGst(amount), 0)),
+  }
 }
 
 function siteNotes(input: CustomerQuoteAssemblyInput) {
@@ -383,6 +465,7 @@ export function assembleGardenTidyCustomerQuote(input: CustomerQuoteAssemblyInpu
     section("Labour Allowance", labourSectionItems(input)),
     section("Green Waste", greenwasteSectionItems(input)),
     section("Extras", extrasSectionItems(input)),
+    section("Totals", tidyTotalsItems(input)),
     section("Service Includes", serviceIncludes(input)),
     section("Price", priceItems(input.pricingFacts)),
     section("Site Notes", siteNotes(input)),

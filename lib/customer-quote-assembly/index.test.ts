@@ -280,7 +280,7 @@ Greenwaste to be removed from site.`
     ])
     assert.equal(renderedAssembly(assembly).includes("Scope:"), false)
     assert.deepEqual(sectionItems("Service Includes", assembly), ["Greenwaste removal"])
-    assert.deepEqual(sectionItems("Price", assembly), ["$1,440"])
+    assert.deepEqual(sectionItems("Price", assembly), ["$1,440.00"])
     assert.deepEqual(sectionItems("Site Notes", assembly), ["Greenwaste removed from site"])
   }
 })

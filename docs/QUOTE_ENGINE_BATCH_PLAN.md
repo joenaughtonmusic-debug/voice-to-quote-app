@@ -405,10 +405,28 @@ extra-strength = $6.
 (not in the list) → flagged; a spoken "$8" beside the extra overrides the list; deterministic.
 
 ### T5 — subtotal + GST + TOTAL in the line-item format
-Aggregate priced lines → subtotal, GST 15% inclusive, TOTAL, rendered as the invoice-style
-table. Answer keys: Xavier $798.88 / GST $104.20; David $479.75 / GST $62.57. Depends on T1–T4.
+Aggregate priced lines → TOTAL, GST 15% INCLUSIVE (per-line: each line × 3/23 rounded, summed —
+matches Xero and the answer keys; total × 3/23 would give David $62.58 not $62.57), rendered as a
+Totals block. 2-decimal currency. Labour is the anchor: no total until labour is priced; unpriced
+lines are noted, never silently excluded. `computeTidyTotals` is exported and unit-tested against
+the keys ([720,72.88,6]→798.88/104.20; [440,39.75]→479.75/62.57).
 
-**Status: approved — queued (after T2–T4).**
+**Status: core done (2dp + GST/TOTAL) — pending commit.** Live Xavier draft: Labour $1,200.00,
+Greenwaste $130.00, Extras weedkiller $6.00 (+ organic flagged), Includes GST $174.26, Total
+$1,336.00 — deterministic. **Two finale pieces remain (T6):** (1) the Xero garden-tidy renderer
+exports only labour + greenwaste, so it omits the extras line — draft total $1,336 vs Xero $1,330
+until an extras export line is added (parity); (2) the labour-paragraph merge (scope-as-prose on a
+single "Labour – main scope" line, removing the separate Scope-of-Work section) with Xero
+description repointed. Both touch the Xero renderer, so they belong in one focused batch.
+
+### T6 — Xero extras-line parity + invoice labour paragraph
+(1) Add an extras export line to the garden-tidy Xero renderer so the Xero total matches the draft
+(Xavier $1,336, GST $174.26). (2) Merge scope into a single "Labour – main scope" line (prose
+description + $), remove the standalone Scope-of-Work section, and repoint `labourXeroDescription`
+/ `buildGardenTidyExportableLines` to the new source. Update the Scope-of-Work / Xero-parity tests
+transparently.
+
+**Status: approved — queued.**
 
 ### Later — KB / Price List Schema v2
 Goal:
