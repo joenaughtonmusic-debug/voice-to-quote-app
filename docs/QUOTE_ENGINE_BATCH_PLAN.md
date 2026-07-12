@@ -373,9 +373,14 @@ Spoken totals wired as top priority in the labour/greenwaste resolvers (transcri
 ### T2 — labour pricing rule (day-rate / crew → hours → $)
 Full day = 7.5h; rate per person; spoken total wins. Xavier "full day, 2 people, $80/hr" →
 7.5 × 2 × 80 = **$1,200** (computed + editable; NOT graded on his manually-adjusted $720).
-David spoken $400 flows through. Clean priced labour line + description.
+David spoken $400 flows through. `dayRateLabourPrice` reads the deterministic T1 transcript
+facts and sits above the AI-field allowance/inline paths (which vary); a stated "full day"
+takes precedence over a bare "N hours" that belongs to a reduced-scope option.
 
-**Status: approved — queued (rules provided).**
+**Status: done (computation) — pending commit.** Live: Xavier **$1,200 5/5**, David **$400 3/3**,
+0 leaks. The professional description-paragraph presentation (scope-as-prose on the labour line,
+no separate bullet Scope-of-Work) is the invoice-format work — folded into **T5** with the
+greenwaste/extras/subtotal/GST/TOTAL lines and Xero parity, rather than half-done here.
 
 ### T3 — greenwaste pricing rule (folds in B2)
 $26.50/bag; 6 bags = 1 trailer; spoken $ wins; flag odd units ("1.5 days") rather than guess.

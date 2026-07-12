@@ -1,5 +1,5 @@
 import type { PricingFact } from "../core/pricing-extraction"
-import { extractTidyPricingFacts } from "./tidy-pricing-facts"
+import { extractTidyPricingFacts, type TidyPricingFacts } from "./tidy-pricing-facts"
 import {
   labourLineItem,
   numberFromValue,
@@ -39,12 +39,15 @@ export type LabourAllowanceWorkings = {
 
 export type ResolvedLabourPrice = {
   amount: number
-  pricingSource: "spoken_fixed" | "structured_allowance" | "inline_hours_rate" | "unpriced"
+  pricingSource: "spoken_fixed" | "structured_allowance" | "inline_hours_rate" | "computed_day_rate" | "unpriced"
   quantity: number
   unitAmount: number
   unitAmountWasDefaulted: boolean
   allowanceWorkings?: LabourAllowanceWorkings
 }
+
+/** Business rule (T2): a spoken "full day" of labour is 7.5 hours. */
+export const FULL_DAY_HOURS = 7.5
 
 function parseWordNumber(value: string) {
   const normalized = value.trim().toLowerCase()
@@ -257,21 +260,59 @@ export function inlineHoursRateLabourPrice(
   }
 }
 
+/**
+ * Deterministic labour total from a rate + duration stated in the transcript (T2). Applies Joe's
+ * rule: a "full day" is 7.5 hours and the hourly rate is PER PERSON, so
+ * total = hours × people × rate. "full day, 2 people at $80/hr" → 7.5 × 2 × 80 = $1,200.
+ * A stated "full day"/days count takes precedence over a bare "N hours" (which may belong to a
+ * reduced-scope option, not the main labour). Reads the fixed transcript facts, so it is stable
+ * run-to-run. Returns null unless BOTH a rate and a duration are stated.
+ */
+export function dayRateLabourPrice(facts: TidyPricingFacts): ResolvedLabourPrice | null {
+  const rate = facts.labourRate
+  if (rate == null || rate <= 0) return null
+
+  const hours = facts.labourDays != null ? facts.labourDays * FULL_DAY_HOURS : facts.labourHours
+  if (hours == null || hours <= 0) return null
+
+  const people = facts.labourPeople ?? 1
+  const amount = hours * people * rate
+  if (!Number.isFinite(amount) || amount <= 0) return null
+
+  return {
+    amount,
+    pricingSource: "computed_day_rate",
+    quantity: 1,
+    unitAmount: amount,
+    unitAmountWasDefaulted: false,
+    allowanceWorkings: {
+      people,
+      days: facts.labourDays ?? 0,
+      hoursPerPerson: facts.labourDays != null ? FULL_DAY_HOURS : (facts.labourHours ?? 0),
+      totalHours: hours * people,
+      rate,
+      rateUnit: "hours",
+      sourceText: `${people} person(s) × ${hours}h × $${rate}/hr`,
+    },
+  }
+}
+
 export function resolveLabourExportPrice(
   quote: Pick<XeroPayloadQuote, "pricing_facts" | "labour_allowance" | "primary_quote" | "line_items"> & {
     raw_transcript?: string | null
   },
 ): ResolvedLabourPrice {
+  const tidyFacts = extractTidyPricingFacts(quote.raw_transcript)
+
   // T1 — a labour total spoken in the raw transcript ("$400 for labour") is the most reliable
   // source: parsed deterministically from a fixed string, so it is stable run-to-run and wins
   // (spoken price priority). Independent of the AI-narrated labour_allowance/line_items.
-  const spokenLabourTotal = extractTidyPricingFacts(quote.raw_transcript).spokenLabourTotal
-  if (typeof spokenLabourTotal === "number" && spokenLabourTotal > 0) {
+  if (typeof tidyFacts.spokenLabourTotal === "number" && tidyFacts.spokenLabourTotal > 0) {
     return {
-      amount: spokenLabourTotal,
+      amount: tidyFacts.spokenLabourTotal,
       pricingSource: "spoken_fixed",
       quantity: 1,
-      unitAmount: spokenLabourTotal,
+      unitAmount: tidyFacts.spokenLabourTotal,
       unitAmountWasDefaulted: false,
     }
   }
@@ -286,6 +327,11 @@ export function resolveLabourExportPrice(
       unitAmountWasDefaulted: false,
     }
   }
+
+  // T2 — deterministic day-rate computation from the transcript facts, above the AI-field
+  // allowance/inline paths (which vary run-to-run).
+  const dayRate = dayRateLabourPrice(tidyFacts)
+  if (dayRate) return dayRate
 
   const structured = structuredAllowanceLabourPrice(quote as XeroPayloadQuote)
   if (structured) return structured

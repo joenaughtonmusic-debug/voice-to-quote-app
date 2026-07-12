@@ -532,6 +532,29 @@ test("T1 — the same transcript yields the same priced figures across repeated 
   }
 })
 
+// T2 — labour day-rate rule: full day = 7.5h, rate PER PERSON, spoken total wins. Computed from
+// the deterministic T1 transcript facts, so it is stable run-to-run.
+
+const T2_XAVIER_FULL_TRANSCRIPT =
+  "Probably a full day with two people at $80 an hour. I'd probably say $130 of green waste. We could probably reduce the smaller version to 11 hours labour and then green waste 90."
+
+test("T2 Xavier — labour computes 7.5h × 2 people × $80 = $1,200 (full-day rule beats the reduced-option '11 hours')", () => {
+  const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
+  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200"])
+})
+
+test("T2 David — a spoken labour total ($400) still wins over the day-rate rule", () => {
+  const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
+  assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$400"])
+})
+
+test("T2 — the computed labour figure is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
+    assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200"])
+  }
+})
+
 test("Shirley live handoff — Green Waste dedupes repeated two-trailer lines", () => {
   const baseQuote: ProcessedQuote = {
     ...EMPTY_PROCESSED_QUOTE,

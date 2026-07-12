@@ -274,7 +274,9 @@ function quoteWithTranscript(input: CustomerQuoteAssemblyInput): XeroPayloadQuot
 function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
   const resolved = resolveLabourExportPrice(quoteWithTranscript(input))
   if (
-    (resolved.pricingSource === "spoken_fixed" || resolved.pricingSource === "inline_hours_rate") &&
+    (resolved.pricingSource === "spoken_fixed" ||
+      resolved.pricingSource === "inline_hours_rate" ||
+      resolved.pricingSource === "computed_day_rate") &&
     resolved.amount > 0
   ) {
     return [money(resolved.amount)]
