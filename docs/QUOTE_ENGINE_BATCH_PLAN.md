@@ -395,9 +395,14 @@ $26.50/bag ($318 for 2 trailers, $79.50 for 3 bags / ½ trailer), David "1.5 day
 (no $), deterministic across repeat runs. Cents-formatting to 2dp is the T5 invoice-format pass.
 
 ### T4 — priced extras / consumables
-Small tidy price list. For now: weedkiller extra-strength = $6 (Xavier). More to come from Joe.
+`lib/export/tidy-extras.ts` — a small, extensible price list (`TIDY_EXTRAS_PRICE_LIST`, add a row
+to price a new extra). T1 captures which extras were mentioned; `resolveTidyExtras` prices each:
+spoken $ next to the extra wins → price list → else flagged ("price to confirm"), never guessed.
+Renders a customer "Extras" section (only when extras are present). For now: weedkiller
+extra-strength = $6.
 
-**Status: approved — queued (partial price list provided).**
+**Status: done — pending commit.** Xavier extra-strength weedkiller → **$6**; organic weedkiller
+(not in the list) → flagged; a spoken "$8" beside the extra overrides the list; deterministic.
 
 ### T5 — subtotal + GST + TOTAL in the line-item format
 Aggregate priced lines → subtotal, GST 15% inclusive, TOTAL, rendered as the invoice-style

@@ -10,6 +10,7 @@ import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { extractTidyPricingFacts } from "./export/tidy-pricing-facts"
+import { resolveTidyExtras } from "./export/tidy-extras"
 import { greenwasteRulePrice } from "./export/waste-line-builder"
 import { buildGardenTidyProcessedQuote } from "./garden-tidy-processing"
 import type { ProcessedQuote } from "./processed-quote"
@@ -590,6 +591,49 @@ test("T3 — the computed greenwaste figure is identical across repeat runs (det
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel("One-off tidy. Weed the beds. Half a trailer load of greenwaste.", t1TidyQuote())
     assert.ok(greenWasteLine(model).some((item) => /79\.5\b/.test(item)), greenWasteLine(model).join(" | "))
+  }
+})
+
+// T4 — priced tidy extras: a small extensible price list, spoken $ wins, unmatched extras flagged.
+
+const T4_TWO_WEEDKILLERS =
+  "One-off tidy. Spray the kumara vine with the extra strength weed killer and the wall with the organic weed killer. Weed the beds."
+
+function extrasLine(model: ReturnType<typeof currentDraftPreviewModel>) {
+  return assemblySectionItems("Extras", model)
+}
+
+test("T4 extras — price list resolves listed extras and flags unmatched ones", () => {
+  const resolved = resolveTidyExtras(extractTidyPricingFacts(T4_TWO_WEEDKILLERS), T4_TWO_WEEDKILLERS)
+  assert.deepEqual(resolved, [
+    { name: "Weedkiller - extra strength", amount: 6 },
+    { name: "Weedkiller - organic", amount: null },
+  ])
+})
+
+test("T4 extras — a spoken $ next to the extra wins over the price list", () => {
+  const transcript = "One-off tidy. Spray with the extra strength weed killer for $8."
+  const resolved = resolveTidyExtras(extractTidyPricingFacts(transcript), transcript)
+  assert.deepEqual(resolved, [{ name: "Weedkiller - extra strength", amount: 8 }])
+})
+
+test("T4 Xavier-style — extras render as priced ($6) and flagged lines in the customer draft", () => {
+  const extras = extrasLine(currentDraftPreviewModel(T4_TWO_WEEDKILLERS, t1TidyQuote()))
+  assert.ok(extras.some((item) => /Weedkiller - extra strength — \$6\b/.test(item)), extras.join(" | "))
+  assert.ok(extras.some((item) => /Weedkiller - organic — price to confirm/.test(item)), extras.join(" | "))
+})
+
+test("T4 — a tidy with no extras has no Extras section", () => {
+  const model = currentDraftPreviewModel("One-off tidy. Weed the beds and prune the shrubs.", t1TidyQuote())
+  assert.equal(model.assembly?.sections.some((s) => s.title === "Extras"), false)
+})
+
+test("T4 — the extras figures are identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(extrasLine(currentDraftPreviewModel(T4_TWO_WEEDKILLERS, t1TidyQuote())), [
+      "Weedkiller - extra strength — $6",
+      "Weedkiller - organic — price to confirm",
+    ])
   }
 })
 

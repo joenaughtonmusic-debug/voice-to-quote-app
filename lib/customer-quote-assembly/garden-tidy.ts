@@ -1,5 +1,7 @@
 import type { PricingFact } from "../core/pricing-extraction"
 import { resolveLabourExportPrice } from "../export/labour-line-builder"
+import { extractTidyPricingFacts } from "../export/tidy-pricing-facts"
+import { resolveTidyExtras } from "../export/tidy-extras"
 import { resolveGreenwasteExportPrice } from "../export/waste-line-builder"
 import type { XeroPayloadQuote } from "../export/xero/types"
 import { hasInternalScopeSignal } from "./internal-scope-signals"
@@ -308,6 +310,22 @@ function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
   return greenwasteQuantityItems(input)
 }
 
+/**
+ * Customer Extras section (T4). Consumables mentioned in the transcript (e.g. extra-strength
+ * weedkiller) become their own priced line from the tidy extras price list — a spoken $ wins.
+ * An extra with no spoken $ and no price-list entry stays flagged ("price to confirm"), never
+ * guessed and never silently dropped.
+ */
+function extrasSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+  const transcript = input.rawTranscript ?? null
+  const extras = resolveTidyExtras(extractTidyPricingFacts(transcript), transcript)
+  return extras.map((extra) =>
+    extra.amount != null && extra.amount > 0
+      ? `${extra.name} — ${money(extra.amount)}`
+      : `${extra.name} — price to confirm`,
+  )
+}
+
 function serviceIncludes(input: CustomerQuoteAssemblyInput) {
   const pricingIncludes = (input.pricingFacts ?? []).flatMap((fact) => fact.inclusions)
   const greenwasteMentioned = [
@@ -364,6 +382,7 @@ export function assembleGardenTidyCustomerQuote(input: CustomerQuoteAssemblyInpu
     section("Scope of Work", scopeOfWorkItems(input)),
     section("Labour Allowance", labourSectionItems(input)),
     section("Green Waste", greenwasteSectionItems(input)),
+    section("Extras", extrasSectionItems(input)),
     section("Service Includes", serviceIncludes(input)),
     section("Price", priceItems(input.pricingFacts)),
     section("Site Notes", siteNotes(input)),
