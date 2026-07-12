@@ -384,9 +384,15 @@ greenwaste/extras/subtotal/GST/TOTAL lines and Xero parity, rather than half-don
 
 ### T3 — greenwaste pricing rule (folds in B2)
 $26.50/bag; 6 bags = 1 trailer; spoken $ wins; flag odd units ("1.5 days") rather than guess.
-Xavier $130 (spoken), David "1.5 days" → flagged. **This is B2.**
+`greenwasteRulePrice` computes from the deterministic T1 quantity facts; only a SINGLE
+unambiguous quantity is priced (multiple quantities, e.g. Shirley's "two trailer loads … three
+quarters", stay a qty display rather than being part-priced). An odd unit stays unpriced and is
+flagged by the audit, never falling through to a line-item that could misread "1.5 days" as $1.50.
+**This was B2.**
 
-**Status: approved — queued (rules provided).**
+**Status: done — pending commit.** Xavier $130 (spoken wins), a stated bag/trailer quantity →
+$26.50/bag ($318 for 2 trailers, $79.50 for 3 bags / ½ trailer), David "1.5 days" → flagged
+(no $), deterministic across repeat runs. Cents-formatting to 2dp is the T5 invoice-format pass.
 
 ### T4 — priced extras / consumables
 Small tidy price list. For now: weedkiller extra-strength = $6 (Xavier). More to come from Joe.

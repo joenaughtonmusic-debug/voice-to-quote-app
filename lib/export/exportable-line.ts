@@ -18,6 +18,7 @@ export type ExportPricingSource =
   | "inline_hours_rate"
   | "computed_day_rate"
   | "spoken_greenwaste"
+  | "computed_greenwaste"
   | "resolver"
   | "unpriced"
 

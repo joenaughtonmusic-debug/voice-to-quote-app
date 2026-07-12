@@ -293,12 +293,11 @@ function labourSectionItems(input: CustomerQuoteAssemblyInput): string[] {
  */
 function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
   const resolved = resolveGreenwasteExportPrice(quoteWithTranscript(input))
-  // Only a greenwaste total spoken in the greenwaste field is reliable enough to show the
-  // customer as a $ line. A greenwaste line_item total is skipped here because AI extraction
-  // can misread a time-unit quantity ("1.5 days") as a dollar amount ($1.50); business-rule
-  // greenwaste pricing is the separate B2 batch.
+  // Show a $ greenwaste line for a spoken total (T1) or a quantity priced by the business rule
+  // (T3). A raw line_item total is deliberately NOT shown, because AI extraction can misread a
+  // time-unit quantity ("1.5 days") as a dollar amount ($1.50) — those stay flagged/unpriced.
   if (
-    resolved.pricingSource === "spoken_greenwaste" &&
+    (resolved.pricingSource === "spoken_greenwaste" || resolved.pricingSource === "computed_greenwaste") &&
     typeof resolved.amount === "number" &&
     resolved.amount > 0
   ) {

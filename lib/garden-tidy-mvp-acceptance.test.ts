@@ -10,6 +10,7 @@ import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview } from "./customer-quote-preview"
 import { extractTidyPricingFacts } from "./export/tidy-pricing-facts"
+import { greenwasteRulePrice } from "./export/waste-line-builder"
 import { buildGardenTidyProcessedQuote } from "./garden-tidy-processing"
 import type { ProcessedQuote } from "./processed-quote"
 import {
@@ -552,6 +553,43 @@ test("T2 — the computed labour figure is identical across repeat runs (determi
   for (const _ of [1, 2, 3, 4, 5]) {
     const model = currentDraftPreviewModel(T2_XAVIER_FULL_TRANSCRIPT, t1TidyQuote())
     assert.deepEqual(assemblySectionItems("Labour Allowance", model), ["$1,200"])
+  }
+})
+
+// T3 — greenwaste business rule: $26.50/bag, 6 bags = 1 trailer, spoken $ wins, odd units flagged.
+
+function greenWasteLine(model: ReturnType<typeof currentDraftPreviewModel>) {
+  return assemblySectionItems("Green Waste", model)
+}
+
+test("T3 greenwaste rule — bags and trailers price deterministically from the transcript facts", () => {
+  assert.equal(greenwasteRulePrice(extractTidyPricingFacts("three bags of green waste")), 79.5)
+  assert.equal(greenwasteRulePrice(extractTidyPricingFacts("half a trailer load of greenwaste")), 79.5)
+  assert.equal(greenwasteRulePrice(extractTidyPricingFacts("one trailer load of greenwaste")), 159)
+  assert.equal(greenwasteRulePrice(extractTidyPricingFacts("two trailer loads of green waste")), 318)
+  assert.equal(greenwasteRulePrice(extractTidyPricingFacts("1.5 days of green waste")), null, "odd unit is not priced by the rule")
+})
+
+test("T3 Xavier — spoken greenwaste $130 wins over the bag/trailer rule", () => {
+  const model = currentDraftPreviewModel(T1_XAVIER_TRANSCRIPT, t1TidyQuote())
+  assert.ok(greenWasteLine(model).some((item) => /\$130\b/.test(item)), greenWasteLine(model).join(" | "))
+})
+
+test("T3 bags — a stated bag quantity prices at $26.50/bag", () => {
+  const model = currentDraftPreviewModel("One-off tidy. Weed the beds and prune the shrubs. Three bags of green waste.", t1TidyQuote())
+  assert.ok(greenWasteLine(model).some((item) => /79\.5\b/.test(item)), greenWasteLine(model).join(" | "))
+})
+
+test("T3 David — an odd greenwaste unit ('1.5 days') is flagged, not guessed (no $ line)", () => {
+  const model = currentDraftPreviewModel(T1_DAVID_TRANSCRIPT, t1TidyQuote())
+  const greenwaste = greenWasteLine(model)
+  assert.ok(!greenwaste.some((item) => /\$/.test(item)), `David greenwaste must not be priced. Got: ${greenwaste.join(" | ")}`)
+})
+
+test("T3 — the computed greenwaste figure is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    const model = currentDraftPreviewModel("One-off tidy. Weed the beds. Half a trailer load of greenwaste.", t1TidyQuote())
+    assert.ok(greenWasteLine(model).some((item) => /79\.5\b/.test(item)), greenWasteLine(model).join(" | "))
   }
 })
 

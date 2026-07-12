@@ -48,6 +48,8 @@ export type TidyPricingFacts = {
   greenwasteBags: number | null
   /** Greenwaste trailer fraction/count — "½ trailer load". Foundation for T3. */
   greenwasteTrailers: number | null
+  /** How many distinct greenwaste bag/trailer quantities were stated. >1 → ambiguous, don't rule-price. */
+  greenwasteQuantityMentions: number
   /** Odd/ambiguous greenwaste unit to flag rather than price — e.g. "1.5 days". Foundation for T3. */
   greenwasteOddUnit: string | null
   /** Named consumables/extras mentioned — e.g. extra-strength weedkiller. Foundation for T4. */
@@ -109,6 +111,13 @@ export function extractTidyPricingFacts(transcript: string | null | undefined): 
   } else {
     greenwasteTrailers = firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s+trailer`, "i"))
   }
+  // Count distinct greenwaste quantities. More than one ("two trailer loads … three quarters of a
+  // trailer") is ambiguous for the single-quantity rule, so it stays a qty display rather than being
+  // part-priced.
+  const trailerMentions = (text.match(new RegExp(`\\b(?:${NUM}|half|quarter|three\\s+quarters)\\s+(?:of\\s+)?(?:a\\s+)?trailer`, "gi")) ?? []).length
+  const bagMentions = (text.match(new RegExp(`\\b(${NUM})\\s+bags?\\b`, "gi")) ?? []).length
+  const greenwasteQuantityMentions = trailerMentions + bagMentions
+
   // Greenwaste stated in a time unit is ambiguous ("1.5 days of green waste") — capture to flag.
   const oddUnit = text.match(/\b(\d+(?:\.\d+)?\s*days?)\s+of\s+green\s?waste|green\s?waste[^.]*?\b(\d+(?:\.\d+)?\s*days?)\b/i)
   const greenwasteOddUnit = oddUnit ? (oddUnit[1] ?? oddUnit[2] ?? "").replace(/\s+/g, " ").trim() || null : null
@@ -127,6 +136,7 @@ export function extractTidyPricingFacts(transcript: string | null | undefined): 
     spokenGreenwasteTotal,
     greenwasteBags,
     greenwasteTrailers,
+    greenwasteQuantityMentions,
     greenwasteOddUnit,
     extras,
   }
