@@ -2,54 +2,88 @@
 
 Re-orientation for a fresh session. Branch: `wip/export-mapping-refactor-from-cursor`
 (pushed to origin, **do not merge to main**). North star: **`docs/PRODUCTION_DIRECTION.md`**.
-Grading answer keys: **`docs/reference_quotes/ANSWER_KEYS.md`** (real sent quotes as PDFs alongside).
+Answer keys: **`docs/reference_quotes/ANSWER_KEYS.md`** (real sent quotes as PDFs alongside).
 
 ---
 
-## 1. ONE-OFF TIDY — DONE, send-ready
+## 1. DONE & send-ready — GARDENING auto-quoter
 
-The tidy customer quote is a priced invoice in Joe's QU-0572 format, deterministic run-to-run,
-and its Xero export total matches the draft. Built across T1–T7 + a phrasing pass:
+Two trades are finished, reliable, and leave-as-is:
 
-- **T1** — deterministic tidy pricing-facts parsed from the RAW transcript (`lib/export/tidy-pricing-facts.ts`), so figures don't flicker with AI narration.
-- **T2** — labour day-rate rule: full day = 7.5h, rate PER PERSON; spoken labour total wins (`dayRateLabourPrice` in `lib/export/labour-line-builder.ts`).
-- **T3** — greenwaste rule: $26.50/bag, 6 bags = 1 trailer; spoken $ wins; odd units ("1.5 days") flagged not guessed; only a single unambiguous quantity is priced (`lib/export/waste-line-builder.ts`). (This was B2.)
-- **T4** — priced extras from an extensible list `TIDY_EXTRAS_PRICE_LIST` (`lib/export/tidy-extras.ts`); spoken $ wins; unmatched extras flagged "price to confirm". For now: weedkiller extra-strength = $6.
-- **T5** — GST-INCLUSIVE totals: TOTAL = sum of line $; GST line = SUM of each line's $×3/23 (per-line rounding — matches Xero and the keys; total×3/23 is wrong, gives David $62.58 not $62.57). 2-decimal currency. `computeTidyTotals` unit-tested against the keys.
-- **T6** — Xero garden-tidy renderer exports an extras line so **Xero total == draft total** (Xavier $1,336 = $1,336). Parity test in place.
-- **T7** — one merged **"Labour – main scope"** line (scope prose + $, or rate-stripped crew when unpriced); no standalone Scope-of-Work section; Xero labour description repointed via shared `isLabourFinalLine`.
-- **Phrasing pass** — 18-phrasing scorecard = 18/18; fixed "N hours total, M people" (don't ×people again), "half a day" (0.5 not 1), and "$80/hr" abbreviation.
+- **One-off tidy (T1–T7).** Deterministic pricing-facts parsed from the raw transcript;
+  labour day-rate rule (full day = 7.5h, rate per person); greenwaste rule ($26.50/bag,
+  6 bags = 1 trailer); priced extras; **GST-inclusive** per-line totals; merged
+  "Labour – main scope" line; Xero extras-line parity. Graded on Xavier (QU-0572) and
+  Dave (QU-0570).
+- **Ongoing maintenance (M-series, incl. the fixed scope template + price line).**
+  Per-visit price anchor (spoken total wins → else computed hours × rate); greenwaste
+  fold-vs-itemise (own line + range note, or "included" per Brett); priced extras
+  (sprays / tool servicing / petrol); GST-inclusive TOTAL; Xero parity. Graded on
+  Nadia (QU-0521) and Brett (QU-0569), plus real dictations — **Finn passed** ($400/visit
+  shows on the customer copy).
 
-**Produces** (live Xavier): `Labour – main scope [scope…] $1,200.00 · Green Waste $130.00 ·
-Extras weedkiller $6.00 (+organic flagged) · Includes GST (15%) $174.26 · Total (NZD) $1,336.00`.
+Shared guarantees across both: **deterministic** (same transcript → same figures,
+run-to-run), **spoken overrides win**, **GST-inclusive totals**, **no internal/team-note
+leaks** to the customer copy, **Xero total == customer-draft total**.
 
-Assembler: `lib/customer-quote-assembly/garden-tidy.ts`. Tests: `lib/garden-tidy-mvp-acceptance.test.ts` (78).
-All suites green + `npm run build` clean; no live OpenAI in tests. Note: Joe's *sent* figures differ
-from transcript figures where he manually adjusted — grade on what was SPOKEN + the rules, not the sent totals.
-
----
-
-## 2. NEXT SESSION — MAINTENANCE (agreed plan)
-
-Make ongoing maintenance send-ready the same way, **reusing the tidy engine**. Grade against
-**Nadia QU-0521** (6-weekly) and **Brett QU-0569** (2-monthly + lawns).
-
-- **Per-visit price = hours × rate**, reusing the tidy labour engine (`dayRateLabourPrice` / the facts layer). Spoken per-visit total wins if given.
-- **Greenwaste = a separate priced line BY DEFAULT** (like Nadia's $26.50 + range note), using the tidy greenwaste rule — **but suppressible**: when Joe says greenwaste is **"included" / "standard … included"** (Brett), fold it into the service, no separate line.
-- **Frequency shown** on the customer quote (cadence is captured today but not surfaced — this is the core B4 gap).
-- **Extras priced-or-flagged** (sprays/extras, tool servicing, petrol) via the same extras mechanism / price list.
-- **GST-inclusive total + Xero parity**, same per-line GST as tidy.
-- Keep B3 intact: team/site notes (dog, gates, steep driveway) stay OUT of the customer quote, retained internally.
-
-Maintenance assembler: `lib/customer-quote-assembly/maintenance.ts`. `lib/export/garden-tidy-export-lines.ts`
-is the tidy Xero renderer to mirror.
+Committed + pushed this session: maintenance **M1–M5** (`4b89420` … `8965828`).
+Key files — assemblers: `lib/customer-quote-assembly/{garden-tidy,maintenance}.ts`;
+pricing facts/resolvers: `lib/export/{tidy-pricing-facts,maintenance-pricing-facts,
+maintenance-visit-price,maintenance-greenwaste,maintenance-extras}.ts`;
+Xero renderers: `lib/export/xero/{garden-tidy,maintenance}-renderer.ts`.
 
 ---
 
-## 3. Paused / Queued
+## 2. NEXT — Landscaping Quote Builder
 
-- **PAUSED — paver / mixed-trade (AI-0c, AI-1):** per PRODUCTION_DIRECTION, do NOT untangle mixed jobs; split at the door. Do not start under the bread-and-butter phase.
-- **QUEUED — B4:** the maintenance thinness fix above (per-visit price, greenwaste line, frequency shown, priced extras). This IS the next session's work.
-- Also queued: a first-class **Team-instructions output** to receive the B3 access/hazard notes (currently they live in the internal view only).
+New **"build it fast, my judgement stays in"** mode. **Read `docs/LANDSCAPING_BUILDER_SPEC.md` first.**
 
-Full batch history + statuses: `docs/QUOTE_ENGINE_BATCH_PLAN.md`.
+**Two modes, one app:**
+- **Gardening** — the existing auto-quoter above. Untouched.
+- **Landscaping** — new builder: **talk → split into confirmable chunks → suggest
+  lines + prices from my uploaded lists → I approve/edit → clean quote.** The app never
+  auto-finalises; it removes the friction, not the judgement. Split mixed work *visibly*
+  (the paver lesson done right); suggest-and-flag prices, never silently invent.
+
+**Reuse the existing pieces BUT harden them — they are on the OLD un-hardened planting path:**
+- Importer `lib/plant-library-import.ts`, JMS/supplier importer `components/jms-item-library.tsx`
+  (+ `SOURCE_PROFILES`, "Supplier Price List Import" mode), supplier normaliser
+  `lib/import/normalise-rows.ts` (already strips section headings + working columns).
+- Planting calculator `lib/calculators/planting/index.ts` (deterministic count/spacing, flags
+  missing spacing/price) and plant matcher `lib/plants` (`matchPlantRowsFromLibrary`).
+- Gaps to close (verified): **no P-series hardening**; planting customer path does **not**
+  use the tidy/maintenance no-leak guard (`internal-scope-signals`), and Optional-Works greps
+  the raw transcript unfiltered (leak vector); **no material speech→list-row matcher**
+  (`material-price-association.ts` only matches a price spoken *near* the item, not a list row);
+  **no cost×markup→sell computation**; a plant with an odd name can be silently dropped.
+
+**Import mapping is required — my real lists DON'T match the schema:**
+- **Botanic (plants):** `Product Label | Price | Availability` — no spacing column, pot size
+  embedded in the name ("Ficus tuffi 14L"); `Price`→sell_price ✓, `Availability`→stock_status ✓,
+  but `Product Label`→plant_name needs an alias. Spacing always **suggested**, never looked up.
+- **Bunnings (materials):** `Material | Price`, grouped under headings — headings already handled
+  by the normaliser; `Material`→item_name needs an alias; belongs in the material/supplier path.
+- **Auckland Landscape Supplies (bulk):** `Material | Their price | Mark up | Quantity | Total` —
+  Qty/Total stripped as working columns; `Their price`→cost_price and `Mark up`→markup_percent
+  need aliases; **and there is no cost×markup→sell math yet** (the real blocker).
+
+**L-series (agreed) — start at L1:**
+- **L1** — mode switch + landscaping shell (empty builder, one manual chunk).
+- **L2** — the chunker: talk → split into confirmable sections (biggest new piece; AI-backed).
+- **L3** — wire price-list matching into lines (list price / suggest+flag). Needs the missing
+  material list-row matcher + the import-mapping aliases + cost×markup→sell (an L0 prerequisite
+  if kept separate).
+- **L4** — spacing/counts: reuse the calculator, add "suggest spacing → I approve."
+- **L5** — assemble to internal/team/customer + GST + Xero parity (reuse gardening). Note the
+  **team-instructions output is still not built** — L5 inherits that gap.
+
+Each step narrow, separately committable, graded on a real dictated landscaping job
+(weed mat + bark + planting + edging along a driveway), on "correct, editable, nothing hidden."
+
+---
+
+## 3. PAUSED / pointers
+
+- **PAUSED — paver / mixed-trade batches (AI-0c, AI-1).** Do not restart under this work.
+- North star: `docs/PRODUCTION_DIRECTION.md`. Answer keys: `docs/reference_quotes/ANSWER_KEYS.md`.
+- Full batch history: `docs/QUOTE_ENGINE_BATCH_PLAN.md`.
