@@ -12,3 +12,6 @@ node_modules
 /blob-report/
 /playwright/.cache/
 repomix-output.xml
+
+# Local supplier price-list CSVs for import spot-checks (not committed)
+import-samples/

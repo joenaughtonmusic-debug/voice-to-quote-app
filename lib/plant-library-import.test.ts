@@ -46,9 +46,11 @@ test("does not parse markup percentages as prices", () => {
   assert.equal(parsePlantPrice("35%"), null)
 })
 
-test("warns when cost price exists without sell price", () => {
+test("notes that sell is computed from cost via the markup rule when no sell column exists", () => {
   const warnings = plantPriceMappingWarnings(detectPlantMapping(["SKU", "Plant Name", "Nursery Price"]))
 
-  assert.equal(warnings.some((warning) => warning.includes("No sell price column detected")), true)
-  assert.equal(warnings.some((warning) => warning.includes("will not be used as sell price")), true)
+  // Behaviour change (L0b): cost is now USED — sell is computed from it via the
+  // default markup rule, editable per line — rather than dropped.
+  assert.equal(warnings.some((warning) => warning.includes("computed from cost")), true)
+  assert.equal(warnings.some((warning) => warning.includes("markup rule")), true)
 })
