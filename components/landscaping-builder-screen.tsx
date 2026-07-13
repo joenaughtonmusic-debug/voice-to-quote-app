@@ -1,28 +1,37 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Trash2, GripVertical, Hammer, Scissors, ListPlus, Check } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Plus, Trash2, GripVertical, Hammer, Scissors, ListPlus, Check, AlertTriangle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/use-auth"
+import { supabase } from "@/lib/supabase"
 import {
   chunkLandscapingTranscript,
   WORK_TYPE_OPTIONS,
   type ChunkConfidence,
   type WorkType,
 } from "@/lib/landscaping/chunker"
+import { matchLineToPriceList, type PriceListRow, type PriceSource } from "@/lib/landscaping/list-matcher"
 
 // ---------------------------------------------------------------------------
-// Landscaping Quote Builder — L1 shell + L2 chunker.
+// Landscaping Quote Builder — L1 shell + L2 chunker + L3 price matching.
 //
-// Talk/paste one recording -> the chunker splits it into distinct, confirmable
-// work-area sections (weed mat / bark / planting / edging ...) that stay
-// EDITABLE and must be APPROVED. Different work types are never merged for you.
-// Later: L3 price matching, L4 spacing/counts, L5 assemble + Xero parity.
+// Talk/paste -> split into confirmable work-area sections -> for each line,
+// match against the user's imported price lists (Botanic / Bunnings / Landscape
+// Supplies). Use the list price where it matches; suggest + flag "confirm" where
+// it doesn't; never silently invent a price. Everything stays editable.
 // Gardening auto-quoter is untouched.
 // ---------------------------------------------------------------------------
 
 type BuilderLine = {
   id: string
   description: string
+  price: number | null
+  price_source: PriceSource | null
+  matched_name: string | null
+  needs_confirm: boolean
+  note: string | null
+  confirmed: boolean
 }
 
 type BuilderChunk = {
@@ -41,6 +50,10 @@ function nextId(prefix: string) {
   return `${prefix}-${idCounter}`
 }
 
+function makeLine(): BuilderLine {
+  return { id: nextId("line"), description: "", price: null, price_source: null, matched_name: null, needs_confirm: false, note: null, confirmed: false }
+}
+
 function makeManualChunk(title: string): BuilderChunk {
   return { id: nextId("chunk"), title, work_type: "other", source_text: "", confidence: "low", approved: false, lines: [] }
 }
@@ -51,10 +64,49 @@ const CONFIDENCE_STYLES: Record<ChunkConfidence, string> = {
   low: "bg-muted text-muted-foreground",
 }
 
+function formatNZD(value: number) {
+  return new Intl.NumberFormat("en-NZ", { style: "currency", currency: "NZD" }).format(value)
+}
+
+// Map an imported knowledge_items row into a matcher candidate.
+function toPriceRow(item: Record<string, any>): PriceListRow {
+  const raw = (item.raw_import ?? {}) as Record<string, any>
+  return {
+    id: String(item.id),
+    name: String(item.item_name ?? raw.plant_name ?? "").trim(),
+    aliases: Array.isArray(item.aliases) ? item.aliases.map(String) : [],
+    unit: item.unit ?? null,
+    sell_price: typeof item.sell_price === "number" ? item.sell_price : null,
+    cost_price: typeof item.cost_price === "number" ? item.cost_price : null,
+    source: item.source_category ?? item.source_system ?? null,
+    stock_status: raw.stock_status ?? null,
+  }
+}
+
 export function LandscapingBuilderScreen() {
+  const { user } = useAuth()
   const [transcript, setTranscript] = useState("")
-  // Start with one manual chunk, per the L1 shell.
   const [chunks, setChunks] = useState<BuilderChunk[]>([makeManualChunk("Area 1")])
+  const [priceRows, setPriceRows] = useState<PriceListRow[]>([])
+  const [listsLoaded, setListsLoaded] = useState(false)
+
+  // Load the user's imported price-list rows (plants + materials) once.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    ;(async () => {
+      const { data } = await supabase
+        .from("knowledge_items")
+        .select("id, item_name, aliases, unit, sell_price, cost_price, source_category, source_system, raw_import")
+        .eq("user_id", user.id)
+      if (cancelled) return
+      setPriceRows((data ?? []).map(toPriceRow).filter((row) => row.name))
+      setListsLoaded(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   const hasWork = chunks.some((chunk) => chunk.approved || chunk.lines.length > 0 || chunk.source_text.trim())
 
@@ -62,7 +114,6 @@ export function LandscapingBuilderScreen() {
     const text = transcript.trim()
     if (!text) return
     if (hasWork && !window.confirm("Replace the current sections with a fresh split of the text above?")) return
-
     const detected = chunkLandscapingTranscript(text)
     setChunks(
       detected.map((chunk) => ({
@@ -89,45 +140,73 @@ export function LandscapingBuilderScreen() {
     setChunks((prev) => prev.filter((chunk) => chunk.id !== chunkId))
   }
 
+  function mutateLines(chunkId: string, fn: (lines: BuilderLine[]) => BuilderLine[]) {
+    setChunks((prev) => prev.map((chunk) => (chunk.id === chunkId ? { ...chunk, lines: fn(chunk.lines) } : chunk)))
+  }
+
   function addLine(chunkId: string) {
-    setChunks((prev) =>
-      prev.map((chunk) =>
-        chunk.id === chunkId ? { ...chunk, lines: [...chunk.lines, { id: nextId("line"), description: "" }] } : chunk,
+    mutateLines(chunkId, (lines) => [...lines, makeLine()])
+  }
+
+  // Re-match against the price lists as the description changes — unless the user
+  // has already confirmed/edited the price for this line (then leave it alone).
+  function editLineDescription(chunkId: string, lineId: string, description: string) {
+    mutateLines(chunkId, (lines) =>
+      lines.map((line) => {
+        if (line.id !== lineId) return line
+        if (line.confirmed) return { ...line, description }
+        const match = matchLineToPriceList(description, priceRows)
+        return {
+          ...line,
+          description,
+          price: match.price,
+          price_source: description.trim() ? match.price_source : null,
+          matched_name: match.row?.name ?? null,
+          needs_confirm: description.trim() ? match.needs_confirm : false,
+          note: description.trim() ? match.note ?? null : null,
+        }
+      }),
+    )
+  }
+
+  function editLinePrice(chunkId: string, lineId: string, value: string) {
+    const parsed = value.trim() === "" ? null : Number(value.replace(/[^0-9.]/g, ""))
+    mutateLines(chunkId, (lines) =>
+      lines.map((line) =>
+        line.id === lineId
+          ? { ...line, price: parsed != null && Number.isFinite(parsed) ? parsed : null, confirmed: true, needs_confirm: false }
+          : line,
       ),
     )
   }
 
-  function editLine(chunkId: string, lineId: string, description: string) {
-    setChunks((prev) =>
-      prev.map((chunk) =>
-        chunk.id === chunkId
-          ? { ...chunk, lines: chunk.lines.map((line) => (line.id === lineId ? { ...line, description } : line)) }
-          : chunk,
-      ),
+  function confirmLine(chunkId: string, lineId: string) {
+    mutateLines(chunkId, (lines) =>
+      lines.map((line) => (line.id === lineId ? { ...line, confirmed: true, needs_confirm: false } : line)),
     )
   }
 
   function removeLine(chunkId: string, lineId: string) {
-    setChunks((prev) =>
-      prev.map((chunk) =>
-        chunk.id === chunkId ? { ...chunk, lines: chunk.lines.filter((line) => line.id !== lineId) } : chunk,
-      ),
-    )
+    mutateLines(chunkId, (lines) => lines.filter((line) => line.id !== lineId))
   }
 
   const approvedCount = chunks.filter((chunk) => chunk.approved).length
+  const needsConfirmCount = chunks.reduce(
+    (total, chunk) => total + chunk.lines.filter((line) => line.needs_confirm && !line.confirmed).length,
+    0,
+  )
 
   return (
     <div className="flex min-h-full flex-col px-5 pt-6">
-      {/* Intro + talk/paste to split */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-primary">
           <Hammer className="h-5 w-5" />
         </span>
         <h1 className="mt-4 text-xl font-semibold tracking-tight text-foreground">Landscaping builder</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Paste or dictate the whole job. It splits into work-area sections you review and approve — weed mat, bark,
-          planting, edging, and so on. Different work is never merged for you.
+          Paste or dictate the whole job. It splits into work-area sections you review and approve. Add lines and it
+          matches your imported price lists — using the list price where it can, flagging what it can&apos;t. Nothing is
+          invented.
         </p>
 
         <textarea
@@ -149,18 +228,31 @@ export function LandscapingBuilderScreen() {
           <Scissors className="h-4 w-4" />
           Split into chunks
         </button>
+
+        <p className="mt-3 text-xs text-muted-foreground">
+          {listsLoaded
+            ? priceRows.length > 0
+              ? `Matching against ${priceRows.length} imported price-list items.`
+              : "No price lists imported yet — lines will import unpriced and flagged. Import in Knowledge base."
+            : "Loading your price lists…"}
+        </p>
       </div>
 
-      {/* Review banner */}
       <div className="mt-5 flex items-center justify-between px-1">
         <p className="text-sm font-medium text-foreground">
           {chunks.length} section{chunks.length === 1 ? "" : "s"}
           <span className="text-muted-foreground"> · {approvedCount} approved</span>
         </p>
-        <p className="text-xs text-muted-foreground">Review &amp; approve — nothing is merged for you</p>
+        {needsConfirmCount > 0 ? (
+          <p className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-500">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {needsConfirmCount} price{needsConfirmCount === 1 ? "" : "s"} to confirm
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">Review &amp; approve — nothing is merged for you</p>
+        )}
       </div>
 
-      {/* Chunks */}
       <div className="mt-3 space-y-4">
         {chunks.map((chunk) => (
           <ChunkCard
@@ -170,7 +262,9 @@ export function LandscapingBuilderScreen() {
             onChange={(patch) => updateChunk(chunk.id, patch)}
             onDelete={() => removeChunk(chunk.id)}
             onAddLine={() => addLine(chunk.id)}
-            onEditLine={(lineId, description) => editLine(chunk.id, lineId, description)}
+            onEditLineDescription={(lineId, description) => editLineDescription(chunk.id, lineId, description)}
+            onEditLinePrice={(lineId, value) => editLinePrice(chunk.id, lineId, value)}
+            onConfirmLine={(lineId) => confirmLine(chunk.id, lineId)}
             onRemoveLine={(lineId) => removeLine(chunk.id, lineId)}
           />
         ))}
@@ -186,8 +280,7 @@ export function LandscapingBuilderScreen() {
       </button>
 
       <p className="mb-6 mt-2 px-1 text-xs leading-relaxed text-muted-foreground">
-        Price matching from your uploaded lists and suggested spacing/counts arrive in the next steps. For now every line
-        is a manual note you control.
+        Suggested spacing/counts and the final internal/team/customer + GST + Xero output arrive in the next steps.
       </p>
     </div>
   )
@@ -199,7 +292,9 @@ function ChunkCard({
   onChange,
   onDelete,
   onAddLine,
-  onEditLine,
+  onEditLineDescription,
+  onEditLinePrice,
+  onConfirmLine,
   onRemoveLine,
 }: {
   chunk: BuilderChunk
@@ -207,16 +302,13 @@ function ChunkCard({
   onChange: (patch: Partial<BuilderChunk>) => void
   onDelete: () => void
   onAddLine: () => void
-  onEditLine: (lineId: string, description: string) => void
+  onEditLineDescription: (lineId: string, description: string) => void
+  onEditLinePrice: (lineId: string, value: string) => void
+  onConfirmLine: (lineId: string) => void
   onRemoveLine: (lineId: string) => void
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-2xl border bg-card p-4 shadow-sm",
-        chunk.approved ? "border-primary/50" : "border-border",
-      )}
-    >
+    <div className={cn("rounded-2xl border bg-card p-4 shadow-sm", chunk.approved ? "border-primary/50" : "border-border")}>
       <div className="flex items-center gap-2">
         <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <input
@@ -244,7 +336,6 @@ function ChunkCard({
         </button>
       </div>
 
-      {/* Work type + approve */}
       <div className="mt-3 flex items-center gap-2">
         <select
           value={chunk.work_type}
@@ -270,7 +361,6 @@ function ChunkCard({
         </button>
       </div>
 
-      {/* What you said (editable, so the user can trim the split) */}
       {(chunk.source_text || chunk.confidence !== "low") && (
         <textarea
           value={chunk.source_text}
@@ -282,24 +372,16 @@ function ChunkCard({
       )}
 
       {chunk.lines.length > 0 && (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-3 space-y-3">
           {chunk.lines.map((line) => (
-            <li key={line.id} className="flex items-center gap-2">
-              <input
-                value={line.description}
-                onChange={(event) => onEditLine(line.id, event.target.value)}
-                placeholder="Describe a line (e.g. weed mat along driveway)"
-                className="min-w-0 flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
-              />
-              <button
-                type="button"
-                onClick={() => onRemoveLine(line.id)}
-                title="Remove line"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </li>
+            <LineRow
+              key={line.id}
+              line={line}
+              onEditDescription={(description) => onEditLineDescription(line.id, description)}
+              onEditPrice={(value) => onEditLinePrice(line.id, value)}
+              onConfirm={() => onConfirmLine(line.id)}
+              onRemove={() => onRemoveLine(line.id)}
+            />
           ))}
         </ul>
       )}
@@ -313,5 +395,81 @@ function ChunkCard({
         Add line
       </button>
     </div>
+  )
+}
+
+const SOURCE_BADGE: Record<PriceSource, { label: string; className: string }> = {
+  list: { label: "list price", className: "bg-accent text-primary" },
+  suggested: { label: "suggested", className: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400" },
+  unpriced: { label: "no match", className: "bg-muted text-muted-foreground" },
+}
+
+function LineRow({
+  line,
+  onEditDescription,
+  onEditPrice,
+  onConfirm,
+  onRemove,
+}: {
+  line: BuilderLine
+  onEditDescription: (description: string) => void
+  onEditPrice: (value: string) => void
+  onConfirm: () => void
+  onRemove: () => void
+}) {
+  const showFlag = line.needs_confirm && !line.confirmed
+  const badge = line.price_source ? SOURCE_BADGE[line.price_source] : null
+
+  return (
+    <li className="rounded-xl border border-border bg-background p-2.5">
+      <div className="flex items-center gap-2">
+        <input
+          value={line.description}
+          onChange={(event) => onEditDescription(event.target.value)}
+          placeholder="Describe a line (e.g. bark mulch, Ficus tuffi)"
+          className="min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+        />
+        <div className="flex items-center rounded-lg border border-border bg-card px-2">
+          <span className="text-sm text-muted-foreground">$</span>
+          <input
+            value={line.price ?? ""}
+            onChange={(event) => onEditPrice(event.target.value)}
+            inputMode="decimal"
+            placeholder="—"
+            className="w-16 bg-transparent py-1 text-right text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          title="Remove line"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-destructive"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {(badge || line.note || showFlag) && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 px-1">
+          {badge && (
+            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", badge.className)}>{badge.label}</span>
+          )}
+          {line.confirmed && (
+            <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-primary">confirmed</span>
+          )}
+          {line.note && <span className="text-[11px] text-muted-foreground">{line.note}</span>}
+          {showFlag && (
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="ml-auto flex items-center gap-1 rounded-full border border-amber-300 px-2 py-0.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950"
+            >
+              <Check className="h-3 w-3" />
+              Confirm
+            </button>
+          )}
+        </div>
+      )}
+    </li>
   )
 }
