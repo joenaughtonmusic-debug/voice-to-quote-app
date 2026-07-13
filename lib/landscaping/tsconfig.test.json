@@ -8,5 +8,5 @@
     "types": ["node"],
     "noEmit": false
   },
-  "include": ["./chunker.ts", "./chunker.test.ts", "./list-matcher.ts", "./list-matcher.test.ts"]
+  "include": ["./chunker.ts", "./chunker.test.ts", "./list-matcher.ts", "./list-matcher.test.ts", "./planting-spacing.ts", "./planting-spacing.test.ts"]
 }

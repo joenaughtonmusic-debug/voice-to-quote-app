@@ -12,6 +12,7 @@ import {
   type WorkType,
 } from "@/lib/landscaping/chunker"
 import { matchLineToPriceList, type PriceListRow, type PriceSource } from "@/lib/landscaping/list-matcher"
+import { resolvePlantingLineFromText, type CountSource } from "@/lib/landscaping/planting-spacing"
 
 // ---------------------------------------------------------------------------
 // Landscaping Quote Builder — L1 shell + L2 chunker + L3 price matching.
@@ -32,6 +33,15 @@ type BuilderLine = {
   needs_confirm: boolean
   note: string | null
   confirmed: boolean
+  // Planting spacing/count (only shown for planting chunks).
+  spacing_mm: number | null
+  spacing_rule: string | null
+  spacing_applied: boolean
+  spacing_overridden: boolean
+  count: number | null
+  count_source: CountSource | null
+  count_formula: string | null
+  count_overridden: boolean
 }
 
 type BuilderChunk = {
@@ -51,21 +61,56 @@ function nextId(prefix: string) {
 }
 
 function makeLine(): BuilderLine {
-  return { id: nextId("line"), description: "", price: null, price_source: null, matched_name: null, needs_confirm: false, note: null, confirmed: false }
+  return {
+    id: nextId("line"),
+    description: "",
+    price: null,
+    price_source: null,
+    matched_name: null,
+    needs_confirm: false,
+    note: null,
+    confirmed: false,
+    spacing_mm: null,
+    spacing_rule: null,
+    spacing_applied: false,
+    spacing_overridden: false,
+    count: null,
+    count_source: null,
+    count_formula: null,
+    count_overridden: false,
+  }
 }
 
 function makeManualChunk(title: string): BuilderChunk {
   return { id: nextId("chunk"), title, work_type: "other", source_text: "", confidence: "low", approved: false, lines: [] }
 }
 
+// Recompute spacing + count for a planting line from its text + any user overrides.
+function withPlanting(line: BuilderLine): BuilderLine {
+  const res = resolvePlantingLineFromText(line.description, {
+    spacing_mm_override: line.spacing_overridden ? line.spacing_mm : null,
+    count_override: line.count_overridden ? line.count : null,
+  })
+  return {
+    ...line,
+    spacing_mm: res.spacing_mm,
+    spacing_rule: res.spacing_rule,
+    spacing_applied: res.spacing_applied,
+    count: res.count,
+    count_source: res.count_source,
+    count_formula: res.count_formula,
+  }
+}
+
+// Clear planting fields when a chunk is not planting.
+function clearPlanting(line: BuilderLine): BuilderLine {
+  return { ...line, spacing_mm: null, spacing_rule: null, spacing_applied: false, count: null, count_source: null, count_formula: null }
+}
+
 const CONFIDENCE_STYLES: Record<ChunkConfidence, string> = {
   high: "bg-accent text-primary",
   medium: "bg-muted text-foreground",
   low: "bg-muted text-muted-foreground",
-}
-
-function formatNZD(value: number) {
-  return new Intl.NumberFormat("en-NZ", { style: "currency", currency: "NZD" }).format(value)
 }
 
 // Map an imported knowledge_items row into a matcher candidate.
@@ -133,7 +178,17 @@ export function LandscapingBuilderScreen() {
   }
 
   function updateChunk(chunkId: string, patch: Partial<BuilderChunk>) {
-    setChunks((prev) => prev.map((chunk) => (chunk.id === chunkId ? { ...chunk, ...patch } : chunk)))
+    setChunks((prev) =>
+      prev.map((chunk) => {
+        if (chunk.id !== chunkId) return chunk
+        const next = { ...chunk, ...patch }
+        // Switching a chunk's work type refreshes its planting fields.
+        if (patch.work_type && patch.work_type !== chunk.work_type) {
+          next.lines = chunk.lines.map((line) => (patch.work_type === "planting" ? withPlanting(line) : clearPlanting(line)))
+        }
+        return next
+      }),
+    )
   }
 
   function removeChunk(chunkId: string) {
@@ -149,22 +204,59 @@ export function LandscapingBuilderScreen() {
   }
 
   // Re-match against the price lists as the description changes — unless the user
-  // has already confirmed/edited the price for this line (then leave it alone).
+  // has already confirmed/edited the price for this line. For planting chunks,
+  // also refresh the spacing + count.
   function editLineDescription(chunkId: string, lineId: string, description: string) {
+    setChunks((prev) =>
+      prev.map((chunk) => {
+        if (chunk.id !== chunkId) return chunk
+        const isPlanting = chunk.work_type === "planting"
+        return {
+          ...chunk,
+          lines: chunk.lines.map((line) => {
+            if (line.id !== lineId) return line
+            let next: BuilderLine = line.confirmed
+              ? { ...line, description }
+              : {
+                  ...line,
+                  description,
+                  ...(() => {
+                    const match = matchLineToPriceList(description, priceRows)
+                    return {
+                      price: match.price,
+                      price_source: description.trim() ? match.price_source : null,
+                      matched_name: match.row?.name ?? null,
+                      needs_confirm: description.trim() ? match.needs_confirm : false,
+                      note: description.trim() ? match.note ?? null : null,
+                    }
+                  })(),
+                }
+            if (isPlanting) next = withPlanting(next)
+            return next
+          }),
+        }
+      }),
+    )
+  }
+
+  function editLineSpacingCm(chunkId: string, lineId: string, value: string) {
+    const cm = value.trim() === "" ? null : Number(value.replace(/[^0-9.]/g, ""))
     mutateLines(chunkId, (lines) =>
       lines.map((line) => {
         if (line.id !== lineId) return line
-        if (line.confirmed) return { ...line, description }
-        const match = matchLineToPriceList(description, priceRows)
-        return {
-          ...line,
-          description,
-          price: match.price,
-          price_source: description.trim() ? match.price_source : null,
-          matched_name: match.row?.name ?? null,
-          needs_confirm: description.trim() ? match.needs_confirm : false,
-          note: description.trim() ? match.note ?? null : null,
-        }
+        const overridden = cm != null && Number.isFinite(cm) && cm > 0
+        return withPlanting({ ...line, spacing_mm: overridden ? Math.round((cm as number) * 10) : line.spacing_mm, spacing_overridden: overridden })
+      }),
+    )
+  }
+
+  function editLineCount(chunkId: string, lineId: string, value: string) {
+    const parsed = value.trim() === "" ? null : Math.round(Number(value.replace(/[^0-9.]/g, "")))
+    mutateLines(chunkId, (lines) =>
+      lines.map((line) => {
+        if (line.id !== lineId) return line
+        const overridden = parsed != null && Number.isFinite(parsed) && parsed > 0
+        return withPlanting({ ...line, count: overridden ? (parsed as number) : line.count, count_overridden: overridden })
       }),
     )
   }
@@ -264,6 +356,8 @@ export function LandscapingBuilderScreen() {
             onAddLine={() => addLine(chunk.id)}
             onEditLineDescription={(lineId, description) => editLineDescription(chunk.id, lineId, description)}
             onEditLinePrice={(lineId, value) => editLinePrice(chunk.id, lineId, value)}
+            onEditLineSpacing={(lineId, value) => editLineSpacingCm(chunk.id, lineId, value)}
+            onEditLineCount={(lineId, value) => editLineCount(chunk.id, lineId, value)}
             onConfirmLine={(lineId) => confirmLine(chunk.id, lineId)}
             onRemoveLine={(lineId) => removeLine(chunk.id, lineId)}
           />
@@ -294,6 +388,8 @@ function ChunkCard({
   onAddLine,
   onEditLineDescription,
   onEditLinePrice,
+  onEditLineSpacing,
+  onEditLineCount,
   onConfirmLine,
   onRemoveLine,
 }: {
@@ -304,9 +400,12 @@ function ChunkCard({
   onAddLine: () => void
   onEditLineDescription: (lineId: string, description: string) => void
   onEditLinePrice: (lineId: string, value: string) => void
+  onEditLineSpacing: (lineId: string, value: string) => void
+  onEditLineCount: (lineId: string, value: string) => void
   onConfirmLine: (lineId: string) => void
   onRemoveLine: (lineId: string) => void
 }) {
+  const isPlanting = chunk.work_type === "planting"
   return (
     <div className={cn("rounded-2xl border bg-card p-4 shadow-sm", chunk.approved ? "border-primary/50" : "border-border")}>
       <div className="flex items-center gap-2">
@@ -377,8 +476,11 @@ function ChunkCard({
             <LineRow
               key={line.id}
               line={line}
+              isPlanting={isPlanting}
               onEditDescription={(description) => onEditLineDescription(line.id, description)}
               onEditPrice={(value) => onEditLinePrice(line.id, value)}
+              onEditSpacing={(value) => onEditLineSpacing(line.id, value)}
+              onEditCount={(value) => onEditLineCount(line.id, value)}
               onConfirm={() => onConfirmLine(line.id)}
               onRemove={() => onRemoveLine(line.id)}
             />
@@ -406,19 +508,26 @@ const SOURCE_BADGE: Record<PriceSource, { label: string; className: string }> = 
 
 function LineRow({
   line,
+  isPlanting,
   onEditDescription,
   onEditPrice,
+  onEditSpacing,
+  onEditCount,
   onConfirm,
   onRemove,
 }: {
   line: BuilderLine
+  isPlanting: boolean
   onEditDescription: (description: string) => void
   onEditPrice: (value: string) => void
+  onEditSpacing: (value: string) => void
+  onEditCount: (value: string) => void
   onConfirm: () => void
   onRemove: () => void
 }) {
   const showFlag = line.needs_confirm && !line.confirmed
   const badge = line.price_source ? SOURCE_BADGE[line.price_source] : null
+  const spacingCm = line.spacing_mm != null ? Math.round(line.spacing_mm / 10) : null
 
   return (
     <li className="rounded-xl border border-border bg-background p-2.5">
@@ -448,6 +557,39 @@ function LineRow({
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {isPlanting && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
+          <label className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground">
+            <span className="text-muted-foreground">Spacing</span>
+            <input
+              value={spacingCm ?? ""}
+              onChange={(event) => onEditSpacing(event.target.value)}
+              inputMode="decimal"
+              placeholder="50"
+              className="w-10 bg-transparent text-right outline-none"
+            />
+            <span className="text-muted-foreground">cm</span>
+          </label>
+          <label className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 text-xs text-foreground">
+            <span className="text-muted-foreground">Count</span>
+            <input
+              value={line.count ?? ""}
+              onChange={(event) => onEditCount(event.target.value)}
+              inputMode="numeric"
+              placeholder="—"
+              className="w-12 bg-transparent text-right outline-none"
+            />
+          </label>
+          {line.spacing_rule && <span className="text-[11px] text-muted-foreground">{line.spacing_rule}</span>}
+          {line.count_formula && line.spacing_applied && (
+            <span className="text-[11px] text-muted-foreground">{line.count_formula}</span>
+          )}
+          {!line.spacing_applied && line.count_source && line.count_source !== "missing" && (
+            <span className="text-[11px] text-muted-foreground">count set manually — spacing not applied</span>
+          )}
+        </div>
+      )}
 
       {(badge || line.note || showFlag) && (
         <div className="mt-1.5 flex flex-wrap items-center gap-2 px-1">
