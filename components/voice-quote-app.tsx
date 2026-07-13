@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react"
 import { BottomNav, type Tab } from "@/components/bottom-nav"
 import { RecordScreen } from "@/components/record-screen"
+import { LandscapingBuilderScreen } from "@/components/landscaping-builder-screen"
+import { Leaf, Hammer } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { DraftsScreen } from "@/components/drafts-screen"
 import { KnowledgeBaseScreen } from "@/components/knowledge-base-screen"
 import { SettingsScreen } from "@/components/settings-screen"
@@ -23,8 +26,14 @@ import type { PricingFact } from "@/lib/core/pricing-extraction"
 import type { QuoteTemplateLibraryItem, QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
 import type { TemplateSelectionSource } from "@/lib/template-selection"
 
+type QuoteMode = "gardening" | "landscaping"
+const QUOTE_MODE_STORAGE_KEY = "ttq.quoteMode"
+
 export function VoiceQuoteApp() {
   const [tab, setTab] = useState<Tab>("record")
+  // Gardening = the finished auto-quoter (untouched). Landscaping = the new
+  // you-in-the-loop builder. Default to gardening; remember the last choice.
+  const [quoteMode, setQuoteMode] = useState<QuoteMode>("gardening")
   const [reviewOpen, setReviewOpen] = useState(false)
   const [draftOpen, setDraftOpen] = useState(false)
   const [draftsRefreshKey, setDraftsRefreshKey] = useState(0)
@@ -52,6 +61,17 @@ export function VoiceQuoteApp() {
     setReviewOpen(false)
     setDraftOpen(false)
   }, [signedIn])
+
+  // Restore the last-used mode on mount (client only, avoids hydration mismatch).
+  useEffect(() => {
+    const saved = window.localStorage.getItem(QUOTE_MODE_STORAGE_KEY)
+    if (saved === "gardening" || saved === "landscaping") setQuoteMode(saved)
+  }, [])
+
+  function handleModeChange(nextMode: QuoteMode) {
+    setQuoteMode(nextMode)
+    window.localStorage.setItem(QUOTE_MODE_STORAGE_KEY, nextMode)
+  }
 
   function handleDraftSaved(savedDraftId?: string | null) {
     setDraftsRefreshKey((key) => key + 1)
@@ -173,11 +193,18 @@ export function VoiceQuoteApp() {
       <main className="mx-auto min-h-screen max-w-md pb-24">
         {tab === "record" && (
           signedIn ? (
-            <RecordScreen
-              key={recordResetKey}
-              initialPastedNotes={fixtureTranscriptForPaste}
-              onProcess={handleQuoteProcessed}
-            />
+            <>
+              <QuoteModeSwitch mode={quoteMode} onChange={handleModeChange} />
+              {quoteMode === "gardening" ? (
+                <RecordScreen
+                  key={recordResetKey}
+                  initialPastedNotes={fixtureTranscriptForPaste}
+                  onProcess={handleQuoteProcessed}
+                />
+              ) : (
+                <LandscapingBuilderScreen />
+              )}
+            </>
           ) : (
             <SignInRequired onSignIn={signInWithGoogle} />
           )
@@ -247,6 +274,49 @@ export function VoiceQuoteApp() {
           pricingFacts={draftPricingFacts}
         />
       )}
+    </div>
+  )
+}
+
+function QuoteModeSwitch({ mode, onChange }: { mode: QuoteMode; onChange: (mode: QuoteMode) => void }) {
+  const options: { value: QuoteMode; label: string; icon: typeof Leaf }[] = [
+    { value: "gardening", label: "Gardening", icon: Leaf },
+    { value: "landscaping", label: "Landscaping", icon: Hammer },
+  ]
+  return (
+    <div className="px-5 pt-6">
+      <div
+        role="tablist"
+        aria-label="Quote mode"
+        className="grid grid-cols-2 gap-1 rounded-2xl border border-border bg-muted/50 p-1"
+      >
+        {options.map(({ value, label, icon: Icon }) => {
+          const active = mode === value
+          return (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onChange(value)}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+                active
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-2 px-1 text-xs text-muted-foreground">
+        {mode === "gardening"
+          ? "Auto-quoter: record or paste, and it drafts the quote."
+          : "Builder: you split the job and approve every line. Nothing auto-finalises."}
+      </p>
     </div>
   )
 }
