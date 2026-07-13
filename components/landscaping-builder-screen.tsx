@@ -1,20 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2, GripVertical, Hammer, Mic, ListPlus } from "lucide-react"
+import { Plus, Trash2, GripVertical, Hammer, Scissors, ListPlus, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+  chunkLandscapingTranscript,
+  WORK_TYPE_OPTIONS,
+  type ChunkConfidence,
+  type WorkType,
+} from "@/lib/landscaping/chunker"
 
 // ---------------------------------------------------------------------------
-// Landscaping Quote Builder — L1 shell.
+// Landscaping Quote Builder — L1 shell + L2 chunker.
 //
-// The "build it fast, my judgement stays in" mode. This is the empty builder:
-// a single manual chunk you can rename, with editable lines you add by hand.
-// It deliberately does NOT auto-quote. Later steps wire in:
-//   L2 — talk -> split into confirmable chunks
-//   L3 — suggest lines + prices from uploaded lists (list price / suggest+flag)
-//   L4 — spacing/counts (suggest -> approve)
-//   L5 — assemble to internal/team/customer + GST + Xero parity
-// Nothing here touches the gardening auto-quoter.
+// Talk/paste one recording -> the chunker splits it into distinct, confirmable
+// work-area sections (weed mat / bark / planting / edging ...) that stay
+// EDITABLE and must be APPROVED. Different work types are never merged for you.
+// Later: L3 price matching, L4 spacing/counts, L5 assemble + Xero parity.
+// Gardening auto-quoter is untouched.
 // ---------------------------------------------------------------------------
 
 type BuilderLine = {
@@ -25,6 +28,10 @@ type BuilderLine = {
 type BuilderChunk = {
   id: string
   title: string
+  work_type: WorkType
+  source_text: string
+  confidence: ChunkConfidence
+  approved: boolean
   lines: BuilderLine[]
 }
 
@@ -34,24 +41,52 @@ function nextId(prefix: string) {
   return `${prefix}-${idCounter}`
 }
 
-function makeEmptyChunk(title: string): BuilderChunk {
-  return { id: nextId("chunk"), title, lines: [] }
+function makeManualChunk(title: string): BuilderChunk {
+  return { id: nextId("chunk"), title, work_type: "other", source_text: "", confidence: "low", approved: false, lines: [] }
+}
+
+const CONFIDENCE_STYLES: Record<ChunkConfidence, string> = {
+  high: "bg-accent text-primary",
+  medium: "bg-muted text-foreground",
+  low: "bg-muted text-muted-foreground",
 }
 
 export function LandscapingBuilderScreen() {
-  // Start with one manual chunk, per the L1 spec.
-  const [chunks, setChunks] = useState<BuilderChunk[]>([makeEmptyChunk("Area 1")])
+  const [transcript, setTranscript] = useState("")
+  // Start with one manual chunk, per the L1 shell.
+  const [chunks, setChunks] = useState<BuilderChunk[]>([makeManualChunk("Area 1")])
+
+  const hasWork = chunks.some((chunk) => chunk.approved || chunk.lines.length > 0 || chunk.source_text.trim())
+
+  function splitFromTranscript() {
+    const text = transcript.trim()
+    if (!text) return
+    if (hasWork && !window.confirm("Replace the current sections with a fresh split of the text above?")) return
+
+    const detected = chunkLandscapingTranscript(text)
+    setChunks(
+      detected.map((chunk) => ({
+        id: chunk.id,
+        title: chunk.label,
+        work_type: chunk.work_type,
+        source_text: chunk.source_text,
+        confidence: chunk.confidence,
+        approved: false,
+        lines: [],
+      })),
+    )
+  }
 
   function addChunk() {
-    setChunks((prev) => [...prev, makeEmptyChunk(`Area ${prev.length + 1}`)])
+    setChunks((prev) => [...prev, makeManualChunk(`Area ${prev.length + 1}`)])
+  }
+
+  function updateChunk(chunkId: string, patch: Partial<BuilderChunk>) {
+    setChunks((prev) => prev.map((chunk) => (chunk.id === chunkId ? { ...chunk, ...patch } : chunk)))
   }
 
   function removeChunk(chunkId: string) {
     setChunks((prev) => prev.filter((chunk) => chunk.id !== chunkId))
-  }
-
-  function renameChunk(chunkId: string, title: string) {
-    setChunks((prev) => prev.map((chunk) => (chunk.id === chunkId ? { ...chunk, title } : chunk)))
   }
 
   function addLine(chunkId: string) {
@@ -80,40 +115,59 @@ export function LandscapingBuilderScreen() {
     )
   }
 
+  const approvedCount = chunks.filter((chunk) => chunk.approved).length
+
   return (
     <div className="flex min-h-full flex-col px-5 pt-6">
-      {/* Intro / what this mode is */}
+      {/* Intro + talk/paste to split */}
       <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-primary">
           <Hammer className="h-5 w-5" />
         </span>
         <h1 className="mt-4 text-xl font-semibold tracking-tight text-foreground">Landscaping builder</h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          Build the quote fast — your judgement stays in. Split the job into chunks, add lines, and approve every price.
-          Nothing is auto-finalised.
+          Paste or dictate the whole job. It splits into work-area sections you review and approve — weed mat, bark,
+          planting, edging, and so on. Different work is never merged for you.
         </p>
 
-        {/* Talk-to-split lands in L2; shown disabled so the frame is visible. */}
+        <textarea
+          value={transcript}
+          onChange={(event) => setTranscript(event.target.value)}
+          rows={4}
+          placeholder="e.g. Along the driveway we'll lay weed mat then bark mulch, then timber edging down both sides. Plant 18m of carex along the driveway edge."
+          className="mt-4 w-full resize-y rounded-2xl border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary"
+        />
         <button
           type="button"
-          disabled
-          title="Coming next: talk → split into chunks"
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/40 py-3 text-sm font-medium text-muted-foreground"
+          onClick={splitFromTranscript}
+          disabled={!transcript.trim()}
+          className={cn(
+            "mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-sm font-semibold active:scale-[0.99]",
+            transcript.trim() ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+          )}
         >
-          <Mic className="h-4 w-4" />
-          Talk to split into chunks
-          <span className="ml-1 rounded-full bg-accent px-2 py-0.5 text-[11px] font-semibold text-primary">Next</span>
+          <Scissors className="h-4 w-4" />
+          Split into chunks
         </button>
       </div>
 
+      {/* Review banner */}
+      <div className="mt-5 flex items-center justify-between px-1">
+        <p className="text-sm font-medium text-foreground">
+          {chunks.length} section{chunks.length === 1 ? "" : "s"}
+          <span className="text-muted-foreground"> · {approvedCount} approved</span>
+        </p>
+        <p className="text-xs text-muted-foreground">Review &amp; approve — nothing is merged for you</p>
+      </div>
+
       {/* Chunks */}
-      <div className="mt-5 space-y-4">
+      <div className="mt-3 space-y-4">
         {chunks.map((chunk) => (
           <ChunkCard
             key={chunk.id}
             chunk={chunk}
             canDelete={chunks.length > 1}
-            onRename={(title) => renameChunk(chunk.id, title)}
+            onChange={(patch) => updateChunk(chunk.id, patch)}
             onDelete={() => removeChunk(chunk.id)}
             onAddLine={() => addLine(chunk.id)}
             onEditLine={(lineId, description) => editLine(chunk.id, lineId, description)}
@@ -122,7 +176,6 @@ export function LandscapingBuilderScreen() {
         ))}
       </div>
 
-      {/* Add chunk */}
       <button
         type="button"
         onClick={addChunk}
@@ -132,7 +185,6 @@ export function LandscapingBuilderScreen() {
         Add chunk
       </button>
 
-      {/* Honest note about what is not wired yet */}
       <p className="mb-6 mt-2 px-1 text-xs leading-relaxed text-muted-foreground">
         Price matching from your uploaded lists and suggested spacing/counts arrive in the next steps. For now every line
         is a manual note you control.
@@ -144,7 +196,7 @@ export function LandscapingBuilderScreen() {
 function ChunkCard({
   chunk,
   canDelete,
-  onRename,
+  onChange,
   onDelete,
   onAddLine,
   onEditLine,
@@ -152,27 +204,37 @@ function ChunkCard({
 }: {
   chunk: BuilderChunk
   canDelete: boolean
-  onRename: (title: string) => void
+  onChange: (patch: Partial<BuilderChunk>) => void
   onDelete: () => void
   onAddLine: () => void
   onEditLine: (lineId: string, description: string) => void
   onRemoveLine: (lineId: string) => void
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+    <div
+      className={cn(
+        "rounded-2xl border bg-card p-4 shadow-sm",
+        chunk.approved ? "border-primary/50" : "border-border",
+      )}
+    >
       <div className="flex items-center gap-2">
         <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         <input
           value={chunk.title}
-          onChange={(event) => onRename(event.target.value)}
+          onChange={(event) => onChange({ title: event.target.value })}
           placeholder="Name this area / job type"
           className="min-w-0 flex-1 bg-transparent text-base font-semibold text-foreground outline-none placeholder:text-muted-foreground"
         />
+        {chunk.confidence !== "low" && (
+          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", CONFIDENCE_STYLES[chunk.confidence])}>
+            {chunk.confidence}
+          </span>
+        )}
         <button
           type="button"
           onClick={onDelete}
           disabled={!canDelete}
-          title={canDelete ? "Delete chunk" : "Keep at least one chunk"}
+          title={canDelete ? "Delete section" : "Keep at least one section"}
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground",
             canDelete ? "hover:bg-muted hover:text-destructive" : "opacity-40",
@@ -181,6 +243,43 @@ function ChunkCard({
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Work type + approve */}
+      <div className="mt-3 flex items-center gap-2">
+        <select
+          value={chunk.work_type}
+          onChange={(event) => onChange({ work_type: event.target.value as WorkType })}
+          className="rounded-xl border border-border bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+        >
+          {WORK_TYPE_OPTIONS.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => onChange({ approved: !chunk.approved })}
+          className={cn(
+            "ml-auto flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold active:scale-[0.99]",
+            chunk.approved ? "bg-primary text-primary-foreground" : "border border-border text-foreground",
+          )}
+        >
+          <Check className="h-4 w-4" />
+          {chunk.approved ? "Approved" : "Approve"}
+        </button>
+      </div>
+
+      {/* What you said (editable, so the user can trim the split) */}
+      {(chunk.source_text || chunk.confidence !== "low") && (
+        <textarea
+          value={chunk.source_text}
+          onChange={(event) => onChange({ source_text: event.target.value })}
+          rows={2}
+          placeholder="What you said for this section"
+          className="mt-3 w-full resize-y rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm italic text-muted-foreground outline-none focus:border-primary focus:not-italic focus:text-foreground"
+        />
+      )}
 
       {chunk.lines.length > 0 && (
         <ul className="mt-3 space-y-2">
