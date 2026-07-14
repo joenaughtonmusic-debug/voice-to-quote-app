@@ -26,6 +26,18 @@ Convert a spoken or pasted site-visit description into: structured job facts, me
 
 **Never silently substitute a dubious price.** Spoken pricing overrides imported/default pricing.
 
+## Two modes
+
+A mode switch at quote start (`components/voice-quote-app.tsx`):
+
+- **Gardening** — the finished, rule-based auto-quoter (tidy + maintenance). Leave as-is.
+- **Landscaping** — the "build it fast, my judgement stays in" builder (L0–L5 done):
+  talk → split into confirmable work-area chunks → match lines to imported price lists
+  (list price / suggest+flag, never invent) → deterministic spacing/count → assemble to
+  customer/team/internal with GST-inclusive total and Xero parity. All under
+  `lib/landscaping/` + `components/landscaping-builder-screen.tsx`. See
+  `docs/LANDSCAPING_BUILDER_SPEC.md`.
+
 ## Trade modules
 
 Done or started: planting, decking, retaining, paving, fencing, garden maintenance, one-off garden tidy-ups.
