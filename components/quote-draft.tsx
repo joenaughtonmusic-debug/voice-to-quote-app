@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { ArrowLeft, Check, Send, Save, Loader2 } from "lucide-react"
+import { ArrowLeft, Check, Send, Save, Loader2, AlertTriangle } from "lucide-react"
+import { assessBuildConfidence, jobTypeRecognised } from "@/lib/quote-build-confidence"
 import { cn } from "@/lib/utils"
 import { quoteDraft } from "@/lib/quote-data"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
@@ -98,6 +99,25 @@ export function QuoteDraft({
   const maintenanceDraft = isMaintenanceDraft(processedQuote, rawTranscript)
   const assemblyFailedForMaintenance = maintenanceDraft && !useAssemblyPreview
 
+  // Build-confidence gate: never silently show a clean-looking quote with no
+  // confident route or no price. hasPrice is true when a dollar amount surfaces
+  // anywhere the customer would see it (assembly totals, or a pricing surface).
+  const hasRoute = useAssemblyPreview || usePlantingPresentationCustomerView
+  const assemblyShowsPrice = (previewModel.assembly?.sections ?? []).some((section) =>
+    section.items.some((item) => /\$\s?\d/.test(item)),
+  )
+  const hasPrice =
+    assemblyShowsPrice ||
+    customerPreview.pricingFacts.length > 0 ||
+    Boolean(customerPreview.labourLine) ||
+    customerPreview.plantOptions.length > 0 ||
+    customerPreview.materialLines.length > 0
+  const buildConfidence = assessBuildConfidence({
+    hasRoute,
+    hasPrice,
+    jobTypeRecognised: jobTypeRecognised(processedQuote.job_type),
+  })
+
   async function handleSaveDraft() {
     setSaveState("saving")
     setSaveMessage("")
@@ -167,18 +187,40 @@ export function QuoteDraft({
             )}
           </div>
 
-          <StandardCustomerPreview
-            scopeItems={previewModel.scopeItems}
-            exclusions={previewModel.exclusions}
-            customerPreview={customerPreview}
-            assemblySections={usePlantingPresentationCustomerView ? [] : previewModel.assembly?.sections ?? []}
-            plantingCustomerQuote={previewModel.plantingCustomerQuote}
-            assemblyFailedForMaintenance={assemblyFailedForMaintenance}
-            hideLegacyLabourPricing={maintenanceDraft}
-            tradeOptions={previewModel.plantingCustomerTradeOptions}
-          />
+          {!buildConfidence.canBuild && (
+            <div className="mt-5 rounded-2xl border-2 border-destructive bg-destructive/10 p-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
+                <p className="text-base font-bold text-destructive">{buildConfidence.headline}</p>
+              </div>
+              <ul className="mt-2 list-disc space-y-1 pl-6">
+                {buildConfidence.reasons.map((reason) => (
+                  <li key={reason} className="text-sm font-medium text-destructive">
+                    {reason}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-sm leading-relaxed text-foreground">
+                This job wasn&apos;t built into a reliable quote — nothing is shown to the customer. Review the
+                transcript and job type, or add a price, then rebuild. (No partial quote is rendered on purpose.)
+              </p>
+            </div>
+          )}
 
-          {previewModel.customerOptionalWorks.length > 0 && (
+          {buildConfidence.canBuild && (
+            <StandardCustomerPreview
+              scopeItems={previewModel.scopeItems}
+              exclusions={previewModel.exclusions}
+              customerPreview={customerPreview}
+              assemblySections={usePlantingPresentationCustomerView ? [] : previewModel.assembly?.sections ?? []}
+              plantingCustomerQuote={previewModel.plantingCustomerQuote}
+              assemblyFailedForMaintenance={assemblyFailedForMaintenance}
+              hideLegacyLabourPricing={maintenanceDraft}
+              tradeOptions={previewModel.plantingCustomerTradeOptions}
+            />
+          )}
+
+          {buildConfidence.canBuild && previewModel.customerOptionalWorks.length > 0 && (
             <div className="mt-5 rounded-xl border border-border bg-card p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {previewModel.customerOptionalWorks[0]}

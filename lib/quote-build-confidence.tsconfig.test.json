@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "module": "commonjs", "moduleResolution": "node", "outDir": "../.tmp/build-confidence-tests", "rootDir": "..", "types": ["node"], "noEmit": false },
+  "include": ["./quote-build-confidence.ts", "./quote-build-confidence.test.ts"]
+}
