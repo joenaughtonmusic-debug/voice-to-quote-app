@@ -87,7 +87,12 @@ export function extractTidyPricingFacts(transcript: string | null | undefined): 
 
   // ── Labour basis (foundation, T2) ────────────────────────────────────────
   const labourRate = firstMatchNumber(text, /\$\s?([\d,]+(?:\.\d+)?)\s*(?:an|per|\/)\s*(?:hour|hr)s?\b/i)
-  const labourHours = firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s*(?:hours?|hrs?)\\b`, "i"))
+  // A stated TOTAL ("total of 3.5 hours") is the labour hours, even when per-task
+  // hours ("1.5 hours") appear earlier — prefer the total over the first match.
+  const totalHours =
+    firstMatchNumber(text, new RegExp(`\\btotal\\s+of\\s+(${NUM})\\s*(?:hours?|hrs?)\\b`, "i")) ??
+    firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s*(?:hours?|hrs?)\\s+(?:total|in\\s+total|altogether)\\b`, "i"))
+  const labourHours = totalHours ?? firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s*(?:hours?|hrs?)\\b`, "i"))
   const labourPeople = firstMatchNumber(text, new RegExp(`\\b(${NUM})\\s+(?:people|persons?|men|man|staff)\\b`, "i"))
   // "12 hours total / in total / altogether / between them" — the hours are the whole-crew total,
   // so they must NOT be multiplied by the crew size again.

@@ -112,6 +112,17 @@ function isInternalReminderLine(value: string) {
  */
 export function isTeamSiteNote(value: string) {
   const cleaned = cleanLine(value).toLowerCase()
+  // A line that leads with a work verb is a customer SCOPE task, not an internal
+  // site note — even if it mentions a neighbour / level / side (e.g. "Trim hedge
+  // to neighbour's level"). Site notes are advisory (pets, parking, access), not
+  // tasks. This stops real work being filtered out of the customer scope.
+  if (
+    /^\W*(?:trim|prune|cut|shape|reduce|lower|top|hedge|weed|spray|mulch|plant|clear|tidy|edge|mow|blow|dig|lay|spread|rake|chop|hard\s+trim|cut\s+back)\b/i.test(
+      cleaned,
+    )
+  ) {
+    return false
+  }
   if (/\b(?:dogs?|cats?|pets?)\b/i.test(cleaned)) return true
   if (/\bsteep\s+(?:driveway|drive|section|bank|slope)\b/i.test(cleaned)) return true
   if (/\bpark\s+(?:on|in|down|up|along)\b/i.test(cleaned)) return true

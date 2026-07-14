@@ -983,3 +983,37 @@ test("hedge_trimming + selected_template_name only (no template object) still ac
     "Bare labour note placeholder must not appear in Scope of Work",
   )
 })
+
+// Regression: the real "Dan" job (hedge_trimming -> tidy). Reproduces the three
+// live customer-render bugs found by running the actual pipeline:
+//  1. a task worded "... to neighbour's level" was dropped by isTeamSiteNote,
+//  2. labour hours parsed as the first "1.5 hours" not "Total of 3.5 hours",
+//  3. hours with no spoken rate went unpriced (now default $80/hr -> $280).
+test("Dan job (tidy): keeps the neighbour-level task and prices 3.5h at the default rate", () => {
+  const danTranscript =
+    "Dan 54 Marua Road, Ellerslie. Trim Tecoma hedge tops to neighbour's level and hard on side 1.5 hours. " +
+    "Trim Michelia 1 hour. Weed spray rock wall 0.5. Total of 3.5 hours."
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Dan",
+    site_address: "54 Marua Road, Ellerslie",
+    quote_title: "One-Off Garden Tidy",
+    job_type: "hedge_trimming",
+    labour_allowance: "3.5 hours",
+    primary_quote: {
+      quote_title: "One-Off Garden Tidy",
+      job_type: "hedge_trimming",
+      cadence: "",
+      scope: ["Trim Tecoma hedge tops to neighbour's level", "Trim Michelia", "Weed spray rock wall"],
+      notes: [],
+    },
+  }
+  const assembly = assembleCustomerQuote({ quote, rawTranscript: danTranscript, pricingFacts: [] })
+  assert.ok(assembly)
+  const scope = sectionItems("Labour - main scope", assembly)
+  assert.ok(scope.some((i) => /neighbour's level/i.test(i)), "neighbour-level task must be retained in customer scope")
+  assert.ok(scope.some((i) => /Trim Michelia/i.test(i)), "Michelia task retained")
+  assert.ok(scope.some((i) => /Weed spray/i.test(i)), "weed spray task retained")
+  assert.ok(scope.some((i) => /\$280\b/.test(i)), "3.5h priced at default $80/hr = $280")
+  assert.ok(!scope.some((i) => i.trim() === "" || i === "[]"), "no empty scope bullet")
+})

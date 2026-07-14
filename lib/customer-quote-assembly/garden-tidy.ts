@@ -305,7 +305,8 @@ function labourFinalLine(input: CustomerQuoteAssemblyInput): string[] {
   if (
     (resolved.pricingSource === "spoken_fixed" ||
       resolved.pricingSource === "inline_hours_rate" ||
-      resolved.pricingSource === "computed_day_rate") &&
+      resolved.pricingSource === "computed_day_rate" ||
+      resolved.pricingSource === "computed_default_rate") &&
     resolved.amount > 0
   ) {
     return [money(resolved.amount)]

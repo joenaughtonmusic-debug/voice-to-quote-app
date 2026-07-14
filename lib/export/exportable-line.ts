@@ -17,6 +17,7 @@ export type ExportPricingSource =
   | "structured_allowance"
   | "inline_hours_rate"
   | "computed_day_rate"
+  | "computed_default_rate"
   | "spoken_greenwaste"
   | "computed_greenwaste"
   | "resolver"

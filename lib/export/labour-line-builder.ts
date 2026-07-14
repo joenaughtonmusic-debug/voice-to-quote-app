@@ -37,9 +37,16 @@ export type LabourAllowanceWorkings = {
   sourceText: string
 }
 
+/**
+ * Pristine's standard labour rate (per person, per hour), applied when hours are
+ * stated but no rate/total is spoken. Flagged as defaulted so it is surfaced for
+ * confirmation, never a silent guess.
+ */
+export const DEFAULT_LABOUR_RATE = 80
+
 export type ResolvedLabourPrice = {
   amount: number
-  pricingSource: "spoken_fixed" | "structured_allowance" | "inline_hours_rate" | "computed_day_rate" | "unpriced"
+  pricingSource: "spoken_fixed" | "structured_allowance" | "inline_hours_rate" | "computed_day_rate" | "computed_default_rate" | "unpriced"
   quantity: number
   unitAmount: number
   unitAmountWasDefaulted: boolean
@@ -341,6 +348,21 @@ export function resolveLabourExportPrice(
 
   const inline = inlineHoursRateLabourPrice(quote)
   if (inline) return inline
+
+  // Hours are stated but no rate/total was spoken: price at the standard rate,
+  // flagged as defaulted (unitAmountWasDefaulted) so the UI surfaces it for
+  // confirmation rather than leaving the quote unpriced. e.g. 3.5h -> 3.5 × $80 = $280.
+  if (typeof tidyFacts.labourHours === "number" && tidyFacts.labourHours > 0) {
+    const people = tidyFacts.labourHoursAreTotal ? 1 : tidyFacts.labourPeople ?? 1
+    const amount = Math.round(tidyFacts.labourHours * people * DEFAULT_LABOUR_RATE * 100) / 100
+    return {
+      amount,
+      pricingSource: "computed_default_rate",
+      quantity: 1,
+      unitAmount: amount,
+      unitAmountWasDefaulted: true,
+    }
+  }
 
   return {
     amount: 0,
