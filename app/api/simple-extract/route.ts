@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server"
 import { authenticateRequest } from "@/lib/api-auth"
 import {
+  PROJECT_EXTRACTION_SCHEMA,
   SIMPLE_EXTRACTION_SCHEMA,
+  buildProjectExtractionPrompt,
   buildSimpleExtractionPrompt,
+  normalizeProjectExtraction,
   normalizeSimpleExtraction,
 } from "@/lib/simple/extraction"
 import { extractClientNameFromTranscript } from "@/lib/client-name-extraction"
@@ -35,10 +38,17 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     const transcript = typeof body?.transcript === "string" ? body.transcript.trim() : ""
-    const jobType = body?.job_type === "maintenance" || body?.job_type === "tidy" ? body.job_type : null
+    const jobType =
+      body?.job_type === "maintenance" || body?.job_type === "tidy" || body?.job_type === "project"
+        ? body.job_type
+        : null
 
     if (!transcript) return NextResponse.json({ error: "A transcript is required." }, { status: 400 })
-    if (!jobType) return NextResponse.json({ error: "job_type must be 'maintenance' or 'tidy'." }, { status: 400 })
+    if (!jobType) {
+      return NextResponse.json({ error: "job_type must be 'maintenance', 'tidy' or 'project'." }, { status: 400 })
+    }
+
+    const isProject = jobType === "project"
 
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS)
@@ -54,14 +64,17 @@ export async function POST(request: Request) {
         body: JSON.stringify({
           model: SIMPLE_MODEL,
           input: [
-            { role: "system", content: buildSimpleExtractionPrompt(jobType) },
+            {
+              role: "system",
+              content: isProject ? buildProjectExtractionPrompt() : buildSimpleExtractionPrompt(jobType),
+            },
             { role: "user", content: transcript },
           ],
           text: {
             format: {
               type: "json_schema",
-              name: "simple_extraction",
-              schema: SIMPLE_EXTRACTION_SCHEMA,
+              name: isProject ? "project_extraction" : "simple_extraction",
+              schema: isProject ? PROJECT_EXTRACTION_SCHEMA : SIMPLE_EXTRACTION_SCHEMA,
               strict: true,
             },
           },
@@ -93,7 +106,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The model returned invalid JSON." }, { status: 502 })
     }
 
-    const extraction = normalizeSimpleExtraction(parsed)
+    const extraction = isProject ? normalizeProjectExtraction(parsed) : normalizeSimpleExtraction(parsed)
 
     // Deterministic fallback: never lose a name/address the regex extractors can see.
     if (!extraction.client_name) {

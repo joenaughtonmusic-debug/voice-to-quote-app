@@ -171,6 +171,8 @@ export function pricingSourceLabel(pricing: Pick<SimplePricing, "pricingSource" 
       return `${pricing.hoursUsed}h × $${pricing.rateUsed}/hr (spoken rate)`
     case "hours_x_default_rate":
       return `${pricing.hoursUsed}h × $${pricing.rateUsed}/hr — DEFAULT RATE, check before sending`
+    case "computed_rules":
+      return `Computed: ${pricing.hoursUsed}h (incl. contingency) × $${pricing.rateUsed}/hr + list-priced materials`
     case "unpriced":
       return "Unpriced — add a price or hours before exporting"
   }

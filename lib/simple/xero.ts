@@ -1,5 +1,6 @@
 import { renderCustomerBody } from "./templates"
-import { frequencyLabel, resolveSimplePricing } from "./pricing"
+import { frequencyLabel } from "./pricing"
+import { resolveQuotePricing } from "./project"
 import type { SimpleQuote } from "./types"
 
 /**
@@ -69,7 +70,7 @@ export function buildSimpleXeroPayload(
   quote: SimpleQuote,
   options: { draftId?: string | null; now?: Date } = {},
 ): SimpleXeroPayload {
-  const pricing = resolveSimplePricing(quote)
+  const pricing = resolveQuotePricing(quote)
   if (pricing.total == null) {
     throw new Error("Quote is unpriced — add a price or hours before exporting to Xero.")
   }
@@ -88,20 +89,22 @@ export function buildSimpleXeroPayload(
     exportWarnings.push(`Unpriced line not exported: ${pending.description}`)
   }
 
-  // The labour line's Description carries the full customer body (same as the legacy
-  // renderers) — that is how the sent quotes show the scope text inside Xero.
+  // The FIRST labour line's Description carries the full customer body (same as the
+  // legacy renderers) — that is how the sent quotes show the scope text inside Xero.
+  // Projects have one labour line per area; only the first carries the body.
   const customerBody = renderCustomerBody(quote)
-  const lineDescription = (line: (typeof pricing.lines)[number]) =>
-    line.kind === "labour" ? customerBody : line.description
+  const firstLabourIndex = pricing.lines.findIndex((line) => line.kind === "labour")
+  const lineDescription = (line: (typeof pricing.lines)[number], index: number) =>
+    index === firstLabourIndex ? customerBody : line.description
 
-  const lineItems: SimpleXeroLineItem[] = pricing.lines.map((line) => ({
-    description: lineDescription(line),
+  const lineItems: SimpleXeroLineItem[] = pricing.lines.map((line, index) => ({
+    description: lineDescription(line, index),
     quantity: 1,
     unitAmount: line.amount,
     accountCode: ACCOUNT_CODES[line.kind],
   }))
-  const xeroLineItemsArray: SimpleMakeXeroLineItem[] = pricing.lines.map((line) => ({
-    Description: lineDescription(line),
+  const xeroLineItemsArray: SimpleMakeXeroLineItem[] = pricing.lines.map((line, index) => ({
+    Description: lineDescription(line, index),
     Quantity: 1,
     UnitAmount: line.amount,
     AccountCode: ACCOUNT_CODES[line.kind],
@@ -109,9 +112,11 @@ export function buildSimpleXeroPayload(
   }))
 
   const title =
-    quote.jobType === "maintenance"
-      ? `${frequencyLabel(quote)} Garden Maintenance`
-      : "One-Off Garden Tidy"
+    quote.jobType === "project"
+      ? "Garden Improvement Works"
+      : quote.jobType === "maintenance"
+        ? `${frequencyLabel(quote)} Garden Maintenance`
+        : "One-Off Garden Tidy"
 
   return {
     provider: "xero",

@@ -5,7 +5,9 @@
     "moduleResolution": "node",
     "outDir": "../../.tmp/simple-tests",
     "rootDir": "../..",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "noEmit": false
   },
   "include": [
@@ -15,6 +17,9 @@
     "./pricing.ts",
     "./templates.ts",
     "./extraction.ts",
-    "./xero.ts"
+    "./xero.ts",
+    "./project.test.ts",
+    "./project.ts",
+    "./materials-prices.ts"
   ]
 }

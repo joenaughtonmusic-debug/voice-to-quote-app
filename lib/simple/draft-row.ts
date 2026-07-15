@@ -1,4 +1,4 @@
-import { resolveSimplePricing } from "./pricing"
+import { resolveQuotePricing } from "./project"
 import { renderCustomerBody, simpleQuoteTitle } from "./templates"
 import type { SimpleQuote } from "./types"
 
@@ -11,14 +11,20 @@ import type { SimpleQuote } from "./types"
  */
 export const SIMPLE_DRAFT_MARKER = "simple_quote_v1"
 
+const JOB_TYPE_LABELS = {
+  maintenance: "Maintenance (Simple)",
+  tidy: "One-off tidy (Simple)",
+  project: "Project (Simple)",
+} as const
+
 export function toSimpleDraftFields(quote: SimpleQuote, userId: string) {
-  const pricing = resolveSimplePricing(quote)
+  const pricing = resolveQuotePricing(quote)
   return {
     user_id: userId,
     client_name: quote.clientName.trim() || null,
     site_address: quote.siteAddress.trim() || null,
     quote_title: simpleQuoteTitle(quote),
-    job_type: quote.jobType === "maintenance" ? "Maintenance (Simple)" : "One-off tidy (Simple)",
+    job_type: JOB_TYPE_LABELS[quote.jobType],
     raw_transcript: quote.rawTranscript,
     quote_sections: [{ title: "Customer quote", items: renderCustomerBody(quote).split("\n\n") }],
     line_items: pricing.lines.map((line) => ({
@@ -39,7 +45,7 @@ export function simpleQuoteFromDraft(row: { quote_options?: unknown } | null | u
   const candidate = (options as Record<string, unknown>)[SIMPLE_DRAFT_MARKER]
   if (!candidate || typeof candidate !== "object") return null
   const quote = candidate as SimpleQuote
-  if (quote.jobType !== "maintenance" && quote.jobType !== "tidy") return null
+  if (quote.jobType !== "maintenance" && quote.jobType !== "tidy" && quote.jobType !== "project") return null
   if (!Array.isArray(quote.tasks) || !Array.isArray(quote.extras) || !Array.isArray(quote.internalNotes)) return null
   if (!quote.greenwaste || typeof quote.greenwaste !== "object") return null
   return quote

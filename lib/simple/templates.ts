@@ -1,4 +1,5 @@
 import { formatNzd, formatNzd2, frequencyLabel, pricingSourceLabel } from "./pricing"
+import { projectTitle, renderProjectBody, renderProjectInternal, renderProjectTeam } from "./project"
 import type { SimplePricing, SimpleQuote } from "./types"
 
 /**
@@ -29,6 +30,7 @@ function customerTasks(quote: SimpleQuote) {
 
 export function simpleQuoteTitle(quote: SimpleQuote) {
   const address = quote.siteAddress.trim()
+  if (quote.jobType === "project") return projectTitle(quote)
   if (quote.jobType === "maintenance") {
     const base = `Ongoing ${frequencyLabel(quote)} Garden Maintenance`
     return address ? `${base} – ${address}` : base
@@ -84,6 +86,7 @@ export function renderTidyBody(quote: SimpleQuote): string {
 }
 
 export function renderCustomerBody(quote: SimpleQuote): string {
+  if (quote.jobType === "project") return renderProjectBody(quote)
   return quote.jobType === "maintenance" ? renderMaintenanceBody(quote) : renderTidyBody(quote)
 }
 
@@ -112,6 +115,11 @@ export function renderPriceLines(quote: SimpleQuote, pricing: SimplePricing): st
 
 /** Internal-only section — hours, rate, pricing source, site/internal notes. Never exported. */
 export function renderInternalNotes(quote: SimpleQuote, pricing: SimplePricing): string {
+  if (quote.jobType === "project") {
+    return [renderProjectInternal(quote), "TEAM ALLOWANCES (base hours)", renderProjectTeam(quote)]
+      .filter(Boolean)
+      .join("\n\n")
+  }
   const lines: string[] = [`Pricing: ${pricingSourceLabel(pricing)}`]
   if (pricing.hoursUsed != null) lines.push(`Hours: ${pricing.hoursUsed}`)
   for (const task of quote.tasks) {

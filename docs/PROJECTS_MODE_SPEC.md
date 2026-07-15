@@ -1,9 +1,11 @@
 # Projects Mode — Multi-Area One-Off Jobs (Spec)
 
-> Status: DRAFT PLAN — not yet approved for build. Banked from the real
-> "weedmat + pebbles" job (15 Jul 2026). Joe's confirmed rules: labour **$80/hr
-> incl. GST**, **15% contingency** by default on project labour (customer price
-> = hours × 1.15 × rate; team view keeps base hours).
+> Status: BUILT (15 Jul 2026) — third job type in Simple Mode (`lib/simple/project.ts`
+> + `materials-prices.ts`; price table transcribed from Joe's MASTER Material_Pricing
+> PDFs). Joe's confirmed rules: labour **$80/hr incl. GST**, **15% contingency** by
+> default on project labour (customer price = hours × 1.15 × rate; team view keeps
+> base hours). Live-verified end-to-end on the weedmat job: $4,495.50 incl. GST
+> $586.38 — matches the golden targets below.
 
 ## The job shape this serves
 

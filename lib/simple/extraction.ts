@@ -1,4 +1,5 @@
-import type { GreenwasteTreatment, SimpleExtraction, SimpleFrequency, SimpleJobType } from "./types"
+import type { GreenwasteTreatment, ProjectArea, SimpleExtraction, SimpleFrequency, SimpleJobType } from "./types"
+import { DEFAULT_DEPTH_MM } from "./project"
 
 /**
  * The single Simple Mode extraction call: transcript in, SimpleExtraction out.
@@ -71,6 +72,82 @@ export const SIMPLE_EXTRACTION_SCHEMA = {
   ],
 } as const
 
+/** Project extraction: the transcript is split into work areas, each with dimensions, tasks and materials. */
+export const PROJECT_EXTRACTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    client_name: { type: ["string", "null"] },
+    site_address: { type: ["string", "null"] },
+    spoken_rate: { type: ["number", "null"] },
+    spoken_total: { type: ["number", "null"] },
+    areas: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          length_m: { type: ["number", "null"] },
+          width_m: { type: ["number", "null"] },
+          extra_m2: { type: ["number", "null"] },
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                description: { type: "string" },
+                hours: { type: ["number", "null"] },
+              },
+              required: ["description", "hours"],
+            },
+          },
+          block_hours: { type: ["number", "null"] },
+          surface_material: { type: ["string", "null"] },
+          needs_weedmat: { type: "boolean" },
+          plants_count: { type: ["number", "null"] },
+        },
+        required: [
+          "name",
+          "length_m",
+          "width_m",
+          "extra_m2",
+          "tasks",
+          "block_hours",
+          "surface_material",
+          "needs_weedmat",
+          "plants_count",
+        ],
+      },
+    },
+    internal_notes: { type: "array", items: { type: "string" } },
+  },
+  required: ["client_name", "site_address", "spoken_rate", "spoken_total", "areas", "internal_notes"],
+} as const
+
+export function buildProjectExtractionPrompt() {
+  return `You extract facts from a NZ gardener's spoken or pasted site-visit notes for a ONE-OFF GARDEN PROJECT quoted area by area. Extract ONLY — never calculate, never invent.
+
+The notes are usually organised under area headings (e.g. "Driveway part", "Area 2 next to house", "Under hedge area"). Each heading starts a new area. Do not merge, split, or drop areas.
+
+Per area:
+- name: the area heading, cleaned (e.g. "Driveway", "Beside house", "Under hedge").
+- length_m / width_m: dimensions in METRES, only when explicitly spoken ("19m x .3m" → 19 and 0.3). Multiple lengths in one area ("5m then 10m") sum to one length. Null when not spoken — never assume a width.
+- extra_m2: separately spoken square metreage ("then 1m2 past AC unit") → 1. Null otherwise.
+- tasks: each distinct piece of work with its spoken hours ("Remove 6 hours" → description "Remove scoring and old weedmat", hours 6). Keep wording close to what was said.
+- block_hours: a single block allowance for the whole area ("Maybe 8 hours") — null when hours are per task.
+- surface_material: the surface product mentioned (e.g. "pebbles", "river pebbles", "black mulch", "scoria", "gap 40"). Null when none mentioned.
+- needs_weedmat: true when weedmat is laid in this area.
+- plants_count: number of plants to plant in this area ("Plant 9 x plants" → 9). Null when none.
+
+Globals:
+- client_name / site_address when present. spoken_rate / spoken_total only when EXPLICITLY spoken — never invent.
+- internal_notes: scheduling reminders, access, hazards, anything the customer must not see. Note "scoring" likely means "scoria" — keep the spoken word in the task but add an internal note when you correct trade terms.
+
+Return only the JSON schema.`
+}
+
 export function buildSimpleExtractionPrompt(jobType: SimpleJobType) {
   const jobContext =
     jobType === "maintenance"
@@ -108,6 +185,62 @@ function asStringOrNull(value: unknown): string | null {
 
 function asPositiveOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null
+}
+
+/** Coerces the model's project-area JSON into well-typed ProjectAreas; malformed input becomes null/empty, never a guess. */
+export function normalizeProjectAreas(raw: unknown): ProjectArea[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((entry) => {
+      const value = (entry ?? {}) as Record<string, unknown>
+      const name = asStringOrNull(value.name)
+      if (!name) return null
+      const tasks = Array.isArray(value.tasks)
+        ? value.tasks
+            .map((task) => {
+              const item = (task ?? {}) as Record<string, unknown>
+              const description = asStringOrNull(item.description)
+              return description ? { description, hours: asPositiveOrNull(item.hours) } : null
+            })
+            .filter((task): task is { description: string; hours: number | null } => task !== null)
+        : []
+      const widthM = asPositiveOrNull(value.width_m)
+      return {
+        name,
+        lengthM: asPositiveOrNull(value.length_m),
+        widthM,
+        widthAssumed: widthM == null,
+        extraM2: asPositiveOrNull(value.extra_m2),
+        tasks,
+        blockHours: asPositiveOrNull(value.block_hours),
+        surfaceMaterial: asStringOrNull(value.surface_material) ?? "",
+        depthMm: DEFAULT_DEPTH_MM,
+        needsWeedmat: value.needs_weedmat === true,
+        plantsCount: asPositiveOrNull(value.plants_count),
+      } satisfies ProjectArea
+    })
+    .filter((area): area is ProjectArea => area !== null)
+}
+
+/** Project extraction → SimpleExtraction shape (with areas), so the screen has one contract. */
+export function normalizeProjectExtraction(raw: unknown): SimpleExtraction {
+  const value = (raw ?? {}) as Record<string, unknown>
+  return {
+    client_name: asStringOrNull(value.client_name),
+    site_address: asStringOrNull(value.site_address),
+    frequency: null,
+    frequency_note: null,
+    tasks: [],
+    stated_total_hours: null,
+    spoken_rate: asPositiveOrNull(value.spoken_rate),
+    spoken_total: asPositiveOrNull(value.spoken_total),
+    greenwaste: { treatment: "not_mentioned", amount: null, note: null },
+    extras: [],
+    internal_notes: Array.isArray(value.internal_notes)
+      ? value.internal_notes.map(asStringOrNull).filter((note): note is string => note !== null)
+      : [],
+    areas: normalizeProjectAreas(value.areas),
+  }
 }
 
 /** Coerces the model's JSON into a well-typed SimpleExtraction; anything malformed becomes null/empty, never a guess. */
