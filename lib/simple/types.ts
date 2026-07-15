@@ -7,7 +7,7 @@
  * Nothing here imports the multi-trade pipeline.
  */
 
-export type SimpleJobType = "maintenance" | "tidy"
+export type SimpleJobType = "maintenance" | "tidy" | "project"
 
 export type SimpleFrequency = "monthly" | "6-weekly" | "2-monthly" | "3-monthly" | "4-monthly" | "other"
 
@@ -42,6 +42,37 @@ export type SimpleExtraction = {
   greenwaste: SimpleGreenwaste
   extras: SimpleExtra[]
   internal_notes: string[]
+  /** Present only for project extractions. */
+  areas?: ProjectArea[]
+}
+
+/** One dictated work area of a project (e.g. "Driveway", "Beside house"). */
+export type ProjectArea = {
+  name: string
+  lengthM: number | null
+  widthM: number | null
+  /** True when the width was not spoken and a default was assumed — flagged loudly. */
+  widthAssumed: boolean
+  /** Additional spoken m² beyond L×W (e.g. "plus 1 m² past the AC unit"). */
+  extraM2: number | null
+  tasks: SimpleTask[]
+  /** A spoken block allowance ("maybe 8 hours") that replaces the per-task sum. */
+  blockHours: number | null
+  /** Spoken surface material text (e.g. "river pebbles") — matched to the price table, never guessed. */
+  surfaceMaterial: string
+  /** Depth of the surface material in mm (default 50). */
+  depthMm: number
+  needsWeedmat: boolean
+  plantsCount: number | null
+}
+
+/** Project-only settings, present when jobType === "project". */
+export type SimpleProjectDetails = {
+  areas: ProjectArea[]
+  /** Customer labour = hours × (1 + contingencyPct/100) × rate; team keeps base hours. */
+  contingencyPct: number
+  /** Delivery allowance — editable, flagged as an allowance (not a list price). */
+  deliveryAmount: number | null
 }
 
 /** The confirmed quote — extraction after Joe has seen and edited every field. */
@@ -63,6 +94,8 @@ export type SimpleQuote = {
   extras: SimpleExtra[]
   internalNotes: string[]
   rawTranscript: string
+  /** Present only for jobType "project". */
+  project?: SimpleProjectDetails
 }
 
 export type PricingSource =
@@ -70,6 +103,8 @@ export type PricingSource =
   | "spoken"
   | "hours_x_spoken_rate"
   | "hours_x_default_rate"
+  /** Project pricing: hours × rate (+contingency) + list-priced materials — the business rule, not a fallback. */
+  | "computed_rules"
   | "unpriced"
 
 export type SimplePricedLine = {

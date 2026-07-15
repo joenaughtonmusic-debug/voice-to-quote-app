@@ -5,17 +5,19 @@ import { AlertTriangle, Check, Copy, Loader2, Mic, Pause, Play, Plus, Save, Send
 import { cn } from "@/lib/utils"
 import { bearerAuthHeader } from "@/lib/auth-headers"
 import { saveSimpleQuoteDraft } from "@/lib/save-simple-draft"
+import { DEFAULT_LABOUR_RATE, formatNzd, formatNzd2, pricingSourceLabel } from "@/lib/simple/pricing"
 import {
-  DEFAULT_LABOUR_RATE,
-  formatNzd,
-  formatNzd2,
-  pricingSourceLabel,
-  resolveSimplePricing,
-} from "@/lib/simple/pricing"
+  DEFAULT_CONTINGENCY_PCT,
+  DEFAULT_DELIVERY_ALLOWANCE,
+  projectAreasWithDefaults,
+  resolveQuotePricing,
+} from "@/lib/simple/project"
+import { BULK_MATERIALS, matchBulkMaterial } from "@/lib/simple/materials-prices"
 import { renderCustomerBody, renderInternalNotes, renderPriceLines, simpleQuoteTitle } from "@/lib/simple/templates"
 import { buildSimpleXeroPayload } from "@/lib/simple/xero"
 import type {
   GreenwasteTreatment,
+  ProjectArea,
   SimpleExtraction,
   SimpleFrequency,
   SimpleJobType,
@@ -66,6 +68,15 @@ function extractionToQuote(
     extras: extraction.extras,
     internalNotes: extraction.internal_notes,
     rawTranscript,
+    ...(jobType === "project"
+      ? {
+          project: {
+            areas: projectAreasWithDefaults(extraction.areas ?? []),
+            contingencyPct: DEFAULT_CONTINGENCY_PCT,
+            deliveryAmount: DEFAULT_DELIVERY_ALLOWANCE,
+          },
+        }
+      : {}),
   }
 }
 
@@ -242,7 +253,7 @@ export function SimpleQuoteScreen({
 
   async function copyQuoteText() {
     if (!quote) return
-    const pricing = resolveSimplePricing(quote)
+    const pricing = resolveQuotePricing(quote)
     const text = [renderCustomerBody(quote), renderPriceLines(quote, pricing)].filter(Boolean).join("\n\n")
     await navigator.clipboard.writeText(text)
     setCopied(true)
@@ -277,7 +288,7 @@ export function SimpleQuoteScreen({
     setQuote((current) => (current ? { ...current, ...update } : current))
   }
 
-  const pricing = quote ? resolveSimplePricing(quote) : null
+  const pricing = quote ? resolveQuotePricing(quote) : null
 
   return (
     <div className="px-5 pb-8 pt-4">
@@ -286,12 +297,13 @@ export function SimpleQuoteScreen({
           <div
             role="tablist"
             aria-label="Job type"
-            className="grid grid-cols-2 gap-1 rounded-2xl border border-border bg-muted/50 p-1"
+            className="grid grid-cols-3 gap-1 rounded-2xl border border-border bg-muted/50 p-1"
           >
             {(
               [
                 { value: "maintenance", label: "Maintenance" },
-                { value: "tidy", label: "One-off tidy" },
+                { value: "tidy", label: "Tidy" },
+                { value: "project", label: "Project" },
               ] as { value: SimpleJobType; label: string }[]
             ).map(({ value, label }) => (
               <button
@@ -382,13 +394,23 @@ export function SimpleQuoteScreen({
 
       {step === "confirm" && quote && pricing && (
         <div className="space-y-3">
-          <ConfirmForm
-            quote={quote}
-            pricing={pricing}
-            onChange={updateQuote}
-            onBack={() => setStep("input")}
-            onNext={() => setStep("preview")}
-          />
+          {quote.jobType === "project" ? (
+            <ProjectConfirmForm
+              quote={quote}
+              pricing={pricing}
+              onChange={updateQuote}
+              onBack={() => setStep("input")}
+              onNext={() => setStep("preview")}
+            />
+          ) : (
+            <ConfirmForm
+              quote={quote}
+              pricing={pricing}
+              onChange={updateQuote}
+              onBack={() => setStep("input")}
+              onNext={() => setStep("preview")}
+            />
+          )}
           <button
             type="button"
             disabled={saving}
@@ -514,7 +536,7 @@ function ConfirmForm({
   onNext,
 }: {
   quote: SimpleQuote
-  pricing: ReturnType<typeof resolveSimplePricing>
+  pricing: ReturnType<typeof resolveQuotePricing>
   onChange: (update: Partial<SimpleQuote>) => void
   onBack: () => void
   onNext: () => void
@@ -781,6 +803,310 @@ function ConfirmForm({
           </div>
         </div>
       )}
+
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-2xl border border-border bg-card py-3 text-sm font-semibold"
+        >
+          ← Back
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          className="rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground active:scale-[0.99]"
+        >
+          Preview quote
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ProjectConfirmForm({
+  quote,
+  pricing,
+  onChange,
+  onBack,
+  onNext,
+}: {
+  quote: SimpleQuote
+  pricing: ReturnType<typeof resolveQuotePricing>
+  onChange: (update: Partial<SimpleQuote>) => void
+  onBack: () => void
+  onNext: () => void
+}) {
+  const details = quote.project ?? { areas: [], contingencyPct: DEFAULT_CONTINGENCY_PCT, deliveryAmount: null }
+
+  function updateDetails(update: Partial<NonNullable<SimpleQuote["project"]>>) {
+    onChange({ project: { ...details, ...update } })
+  }
+
+  function updateArea(index: number, update: Partial<ProjectArea>) {
+    const areas = details.areas.slice()
+    areas[index] = { ...areas[index], ...update }
+    updateDetails({ areas })
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Check every field — dimensions drive the material quantities, so measure anything flagged.
+      </p>
+
+      <div className="grid grid-cols-1 gap-3">
+        <Field label="Client name">
+          <input
+            value={quote.clientName}
+            onChange={(event) => onChange({ clientName: event.target.value })}
+            placeholder="Client name"
+            className={cn(inputClass, !quote.clientName.trim() && "border-destructive/60")}
+          />
+        </Field>
+        <Field label="Site address">
+          <input
+            value={quote.siteAddress}
+            onChange={(event) => onChange({ siteAddress: event.target.value })}
+            placeholder="Site address"
+            className={cn(inputClass, !quote.siteAddress.trim() && "border-destructive/60")}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="Rate $/hr">
+          <input
+            value={quote.spokenRate ?? ""}
+            onChange={(event) => onChange({ spokenRate: parseNumberInput(event.target.value) })}
+            placeholder={String(DEFAULT_LABOUR_RATE)}
+            inputMode="decimal"
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Contingency %">
+          <input
+            value={details.contingencyPct}
+            onChange={(event) =>
+              updateDetails({ contingencyPct: parseNumberInput(event.target.value) ?? 0 })
+            }
+            inputMode="decimal"
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Delivery $ (allowance)">
+          <input
+            value={details.deliveryAmount ?? ""}
+            onChange={(event) => updateDetails({ deliveryAmount: parseNumberInput(event.target.value) })}
+            placeholder="e.g. 219"
+            inputMode="decimal"
+            className={inputClass}
+          />
+        </Field>
+      </div>
+
+      {details.areas.map((area, index) => {
+        const matched = matchBulkMaterial(area.surfaceMaterial)
+        return (
+          <div key={index} className="space-y-3 rounded-2xl border border-border bg-card p-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={area.name}
+                onChange={(event) => updateArea(index, { name: event.target.value })}
+                placeholder="Area name"
+                className={cn(inputClass, "flex-1 font-semibold")}
+              />
+              <button
+                type="button"
+                aria-label="Remove area"
+                onClick={() => updateDetails({ areas: details.areas.filter((_, i) => i !== index) })}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <Field label="Length m">
+                <input
+                  value={area.lengthM ?? ""}
+                  onChange={(event) => updateArea(index, { lengthM: parseNumberInput(event.target.value) })}
+                  inputMode="decimal"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label={area.widthAssumed ? "Width m (ASSUMED)" : "Width m"}>
+                <input
+                  value={area.widthM ?? ""}
+                  onChange={(event) =>
+                    updateArea(index, { widthM: parseNumberInput(event.target.value), widthAssumed: false })
+                  }
+                  inputMode="decimal"
+                  className={cn(inputClass, area.widthAssumed && "border-destructive/60")}
+                />
+              </Field>
+              <Field label="Extra m²">
+                <input
+                  value={area.extraM2 ?? ""}
+                  onChange={(event) => updateArea(index, { extraM2: parseNumberInput(event.target.value) })}
+                  inputMode="decimal"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+
+            <div className="space-y-2">
+              {area.tasks.map((task, taskIndex) => (
+                <div key={taskIndex} className="flex items-center gap-2">
+                  <input
+                    value={task.description}
+                    onChange={(event) => {
+                      const tasks = area.tasks.slice()
+                      tasks[taskIndex] = { ...tasks[taskIndex], description: event.target.value }
+                      updateArea(index, { tasks })
+                    }}
+                    className={cn(inputClass, "flex-1")}
+                  />
+                  <input
+                    value={task.hours ?? ""}
+                    onChange={(event) => {
+                      const tasks = area.tasks.slice()
+                      tasks[taskIndex] = { ...tasks[taskIndex], hours: parseNumberInput(event.target.value) }
+                      updateArea(index, { tasks })
+                    }}
+                    placeholder="hrs"
+                    inputMode="decimal"
+                    className={cn(inputClass, "w-16 text-center")}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Remove task"
+                    onClick={() => updateArea(index, { tasks: area.tasks.filter((_, i) => i !== taskIndex) })}
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => updateArea(index, { tasks: [...area.tasks, { description: "", hours: null }] })}
+                className="flex items-center gap-1 text-sm font-semibold text-primary"
+              >
+                <Plus className="h-4 w-4" /> Add task
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <Field label="Block hours">
+                <input
+                  value={area.blockHours ?? ""}
+                  onChange={(event) => updateArea(index, { blockHours: parseNumberInput(event.target.value) })}
+                  placeholder="e.g. 8"
+                  inputMode="decimal"
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="Surface material">
+                <input
+                  value={area.surfaceMaterial}
+                  onChange={(event) => updateArea(index, { surfaceMaterial: event.target.value })}
+                  placeholder="e.g. river pebbles"
+                  className={cn(inputClass, area.surfaceMaterial.trim() && !matched && "border-destructive/60")}
+                />
+              </Field>
+              <Field label="Depth mm">
+                <input
+                  value={area.depthMm}
+                  onChange={(event) => updateArea(index, { depthMm: parseNumberInput(event.target.value) ?? 50 })}
+                  inputMode="decimal"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            {area.surfaceMaterial.trim() && (
+              <p className={cn("text-xs", matched ? "text-muted-foreground" : "text-destructive")}>
+                {matched
+                  ? `Priced as: ${BULK_MATERIALS[matched].label} — $${BULK_MATERIALS[matched].sellPerM3}/m³`
+                  : "Not on the price list — will be flagged, not priced."}
+              </p>
+            )}
+
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={area.needsWeedmat}
+                  onChange={(event) => updateArea(index, { needsWeedmat: event.target.checked })}
+                />
+                Weedmat
+              </label>
+              <Field label="Plants #">
+                <input
+                  value={area.plantsCount ?? ""}
+                  onChange={(event) => updateArea(index, { plantsCount: parseNumberInput(event.target.value) })}
+                  inputMode="numeric"
+                  className={cn(inputClass, "w-20")}
+                />
+              </Field>
+            </div>
+          </div>
+        )
+      })}
+
+      <button
+        type="button"
+        onClick={() =>
+          updateDetails({
+            areas: [
+              ...details.areas,
+              {
+                name: "",
+                lengthM: null,
+                widthM: null,
+                widthAssumed: false,
+                extraM2: null,
+                tasks: [],
+                blockHours: null,
+                surfaceMaterial: "",
+                depthMm: 50,
+                needsWeedmat: false,
+                plantsCount: null,
+              },
+            ],
+          })
+        }
+        className="flex items-center gap-1 text-sm font-semibold text-primary"
+      >
+        <Plus className="h-4 w-4" /> Add area
+      </button>
+
+      <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        {pricingSourceLabel(pricing)}
+        {pricing.lines.map((line, index) => (
+          <div key={index} className="flex justify-between">
+            <span>{line.description}</span>
+            <span className="font-medium text-foreground">{formatNzd(line.amount)}</span>
+          </div>
+        ))}
+        {pricing.pendingLines.map((line, index) => (
+          <div key={`pending-${index}`} className="text-destructive">
+            {line.description}
+          </div>
+        ))}
+        {pricing.total != null && pricing.gst != null && (
+          <>
+            <div className="mt-1 flex justify-between border-t border-border pt-1">
+              <span>Includes GST (15%)</span>
+              <span>{formatNzd2(pricing.gst)}</span>
+            </div>
+            <div className="flex justify-between font-semibold text-foreground">
+              <span>Total (NZD)</span>
+              <span>{formatNzd2(pricing.total)}</span>
+            </div>
+          </>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button
