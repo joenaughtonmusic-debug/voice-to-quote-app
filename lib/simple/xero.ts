@@ -11,12 +11,14 @@ export type SimpleXeroLineItem = {
   description: string
   quantity: number
   unitAmount: number
+  accountCode: string
 }
 
 export type SimpleMakeXeroLineItem = {
   Description: string
   Quantity: number
   UnitAmount: number
+  AccountCode: string
   TaxType: string
 }
 
@@ -41,6 +43,11 @@ export type SimpleXeroPayload = {
 }
 
 const NZ_GST_TAX_TYPE = "OUTPUT2"
+
+// Same sales-account fallbacks the legacy export uses (lib/export/xero/helpers.ts):
+// labour → 10010, materials/waste → 10011. The Make scenario maps AccountCode into
+// Xero, so every line must carry one.
+const ACCOUNT_CODES = { labour: "10010", greenwaste: "10011", extra: "10011" } as const
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -85,11 +92,13 @@ export function buildSimpleXeroPayload(
     description: line.description,
     quantity: 1,
     unitAmount: line.amount,
+    accountCode: ACCOUNT_CODES[line.kind],
   }))
   const xeroLineItemsArray: SimpleMakeXeroLineItem[] = pricing.lines.map((line) => ({
     Description: line.description,
     Quantity: 1,
     UnitAmount: line.amount,
+    AccountCode: ACCOUNT_CODES[line.kind],
     TaxType: NZ_GST_TAX_TYPE,
   }))
 

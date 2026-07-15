@@ -23,6 +23,8 @@ import {
   type ProcessedQuote,
 } from "@/lib/processed-quote"
 import { supabase } from "@/lib/supabase"
+import { simpleQuoteFromDraft } from "@/lib/simple/draft-row"
+import type { SimpleQuote } from "@/lib/simple/types"
 import type { PricingFact } from "@/lib/core/pricing-extraction"
 import type { QuoteTemplateLibraryItem, QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
 import type { TemplateSelectionSource } from "@/lib/template-selection"
@@ -54,6 +56,7 @@ export function VoiceQuoteApp() {
   const [currentQuoteSaved, setCurrentQuoteSaved] = useState(false)
   const [openDraftLoading, setOpenDraftLoading] = useState(false)
   const [openDraftError, setOpenDraftError] = useState("")
+  const [simpleDraft, setSimpleDraft] = useState<{ quote: SimpleQuote; draftId: string } | null>(null)
   const { user, loading, displayName, signInWithGoogle, signOut } = useAuth()
   const signedIn = Boolean(user)
 
@@ -171,6 +174,16 @@ export function VoiceQuoteApp() {
       return
     }
 
+    // Simple Mode drafts carry their full state in quote_options — route them back
+    // into the Simple screen instead of the legacy review flow.
+    const simpleQuote = simpleQuoteFromDraft(data)
+    if (simpleQuote) {
+      handleModeChange("simple")
+      setSimpleDraft({ quote: simpleQuote, draftId: data.id })
+      setTab("record")
+      return
+    }
+
     const editableState = savedDraftToEditableState(data)
     setRawTranscript(editableState.rawTranscript)
     setCorrectedTranscript(editableState.rawTranscript)
@@ -197,7 +210,11 @@ export function VoiceQuoteApp() {
             <>
               <QuoteModeSwitch mode={quoteMode} onChange={handleModeChange} />
               {quoteMode === "simple" ? (
-                <SimpleQuoteScreen />
+                <SimpleQuoteScreen
+                  key={simpleDraft?.draftId ?? "new"}
+                  initialDraft={simpleDraft}
+                  onDraftSaved={() => setDraftsRefreshKey((key) => key + 1)}
+                />
               ) : quoteMode === "gardening" ? (
                 <RecordScreen
                   key={recordResetKey}

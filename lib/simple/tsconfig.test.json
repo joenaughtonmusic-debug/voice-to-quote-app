@@ -11,6 +11,7 @@
   "include": [
     "./simple.test.ts",
     "./types.ts",
+    "./draft-row.ts",
     "./pricing.ts",
     "./templates.ts",
     "./extraction.ts",

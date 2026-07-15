@@ -1,9 +1,10 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { AlertTriangle, Check, Copy, Loader2, Mic, Pause, Play, Plus, Send, Square, Trash2 } from "lucide-react"
+import { AlertTriangle, Check, Copy, Loader2, Mic, Pause, Play, Plus, Save, Send, Square, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { bearerAuthHeader } from "@/lib/auth-headers"
+import { saveSimpleQuoteDraft } from "@/lib/save-simple-draft"
 import {
   DEFAULT_LABOUR_RATE,
   formatNzd,
@@ -73,15 +74,24 @@ function parseNumberInput(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-export function SimpleQuoteScreen() {
-  const [step, setStep] = useState<Step>("input")
-  const [jobType, setJobType] = useState<SimpleJobType>("maintenance")
-  const [notes, setNotes] = useState("")
+export function SimpleQuoteScreen({
+  initialDraft,
+  onDraftSaved,
+}: {
+  initialDraft?: { quote: SimpleQuote; draftId: string } | null
+  onDraftSaved?: (draftId: string | null) => void
+} = {}) {
+  const [step, setStep] = useState<Step>(initialDraft ? "confirm" : "input")
+  const [jobType, setJobType] = useState<SimpleJobType>(initialDraft?.quote.jobType ?? "maintenance")
+  const [notes, setNotes] = useState(initialDraft?.quote.rawTranscript ?? "")
   const [recordingState, setRecordingState] = useState<RecordingState>("idle")
   const [seconds, setSeconds] = useState(0)
   const [extracting, setExtracting] = useState(false)
   const [error, setError] = useState("")
-  const [quote, setQuote] = useState<SimpleQuote | null>(null)
+  const [quote, setQuote] = useState<SimpleQuote | null>(initialDraft?.quote ?? null)
+  const [draftId, setDraftId] = useState<string | null>(initialDraft?.draftId ?? null)
+  const [saving, setSaving] = useState(false)
+  const [saveMessage, setSaveMessage] = useState("")
   const [exporting, setExporting] = useState(false)
   const [exportResult, setExportResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -211,11 +221,11 @@ export function SimpleQuoteScreen() {
     setExporting(true)
     setExportResult(null)
     try {
-      const payload = buildSimpleXeroPayload(quote)
+      const payload = buildSimpleXeroPayload(quote, { draftId })
       const response = await fetch("/api/export-xero-quote", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await bearerAuthHeader()) },
-        body: JSON.stringify({ payload }),
+        body: JSON.stringify({ payload, draft_id: draftId }),
       })
       const result = await response.json().catch(() => null)
       if (result?.ok) {
@@ -239,10 +249,26 @@ export function SimpleQuoteScreen() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  async function saveDraft() {
+    if (!quote) return
+    setSaving(true)
+    setSaveMessage("")
+    const result = await saveSimpleQuoteDraft(quote, draftId)
+    setSaving(false)
+    setSaveMessage(result.message)
+    if (result.ok) {
+      if (result.draftId) setDraftId(result.draftId)
+      onDraftSaved?.(result.draftId ?? draftId)
+    }
+    setTimeout(() => setSaveMessage(""), 3000)
+  }
+
   function startOver() {
     setStep("input")
     setNotes("")
     setQuote(null)
+    setDraftId(null)
+    setSaveMessage("")
     setError("")
     setExportResult(null)
   }
@@ -355,13 +381,25 @@ export function SimpleQuoteScreen() {
       )}
 
       {step === "confirm" && quote && pricing && (
-        <ConfirmForm
-          quote={quote}
-          pricing={pricing}
-          onChange={updateQuote}
-          onBack={() => setStep("input")}
-          onNext={() => setStep("preview")}
-        />
+        <div className="space-y-3">
+          <ConfirmForm
+            quote={quote}
+            pricing={pricing}
+            onChange={updateQuote}
+            onBack={() => setStep("input")}
+            onNext={() => setStep("preview")}
+          />
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void saveDraft()}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3 text-sm font-semibold disabled:opacity-40"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {draftId ? "Update draft" : "Save draft"}
+          </button>
+          {saveMessage && <p className="text-center text-sm text-muted-foreground">{saveMessage}</p>}
+        </div>
       )}
 
       {step === "preview" && quote && pricing && (
@@ -409,14 +447,23 @@ export function SimpleQuoteScreen() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void saveDraft()}
+              className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3 text-sm font-semibold disabled:opacity-40"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {draftId ? "Update" : "Save"}
+            </button>
             <button
               type="button"
               onClick={() => void copyQuoteText()}
               className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card py-3 text-sm font-semibold"
             >
               {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}
-              {copied ? "Copied" : "Copy text"}
+              {copied ? "Copied" : "Copy"}
             </button>
             <button
               type="button"
@@ -425,9 +472,10 @@ export function SimpleQuoteScreen() {
               className="flex items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40"
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              Export to Xero
+              Xero
             </button>
           </div>
+          {saveMessage && <p className="text-center text-sm text-muted-foreground">{saveMessage}</p>}
           {pricing.total == null && (
             <p className="text-center text-sm text-destructive">Unpriced — go back and add a price or hours before exporting.</p>
           )}

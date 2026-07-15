@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
+import { simpleQuoteFromDraft, toSimpleDraftFields } from "./draft-row"
 import { normalizeSimpleExtraction } from "./extraction"
 import { DEFAULT_LABOUR_RATE, resolveSimplePricing } from "./pricing"
 import { renderCustomerBody, renderInternalNotes, renderPriceLines, simpleQuoteTitle } from "./templates"
@@ -284,6 +285,34 @@ test("6-monthly cadence via 'other' frequency carries through title and body", (
   })
   assert.equal(simpleQuoteTitle(quote), "Ongoing 6-monthly Garden Maintenance – 1 Example Street")
   assert.ok(renderCustomerBody(quote).includes("Pricing is based on 6-monthly service frequency."))
+})
+
+test("every Xero line carries the legacy account codes (labour 10010, waste/extras 10011)", () => {
+  const payload = buildSimpleXeroPayload(xavierQuote())
+  const byDescription = Object.fromEntries(payload.quote.xeroLineItemsArray.map((line) => [line.Description, line.AccountCode]))
+  assert.equal(byDescription["Labour — main scope"], "10010")
+  assert.equal(byDescription["Removal of greenwaste"], "10011")
+  assert.equal(byDescription["Weedkiller — extra strength"], "10011")
+  assert.ok(payload.quote.xeroLineItemsArray.every((line) => line.AccountCode && line.TaxType === "OUTPUT2"))
+})
+
+test("draft round-trip: a saved Simple draft restores the exact quote state", () => {
+  const quote = nadiaQuote()
+  const fields = toSimpleDraftFields(quote, "user-123")
+  assert.equal(fields.client_name, "Nadia")
+  assert.equal(fields.job_type, "Maintenance (Simple)")
+  assert.equal(fields.quote_title, "Ongoing 6-Weekly Garden Maintenance – 1a Meyrick Place, Meadowbank")
+  assert.equal(fields.line_items.length, 4)
+
+  const restored = simpleQuoteFromDraft({ quote_options: fields.quote_options })
+  assert.deepEqual(restored, quote)
+})
+
+test("legacy draft rows are not mistaken for Simple drafts", () => {
+  assert.equal(simpleQuoteFromDraft({ quote_options: [{ title: "Option A" }] }), null)
+  assert.equal(simpleQuoteFromDraft({ quote_options: null }), null)
+  assert.equal(simpleQuoteFromDraft({ quote_options: { simple_quote_v1: { jobType: "decking" } } }), null)
+  assert.equal(simpleQuoteFromDraft(undefined), null)
 })
 
 test("normalizeSimpleExtraction: junk becomes nulls and empties, never guesses", () => {
