@@ -88,14 +88,20 @@ export function buildSimpleXeroPayload(
     exportWarnings.push(`Unpriced line not exported: ${pending.description}`)
   }
 
+  // The labour line's Description carries the full customer body (same as the legacy
+  // renderers) — that is how the sent quotes show the scope text inside Xero.
+  const customerBody = renderCustomerBody(quote)
+  const lineDescription = (line: (typeof pricing.lines)[number]) =>
+    line.kind === "labour" ? customerBody : line.description
+
   const lineItems: SimpleXeroLineItem[] = pricing.lines.map((line) => ({
-    description: line.description,
+    description: lineDescription(line),
     quantity: 1,
     unitAmount: line.amount,
     accountCode: ACCOUNT_CODES[line.kind],
   }))
   const xeroLineItemsArray: SimpleMakeXeroLineItem[] = pricing.lines.map((line) => ({
-    Description: line.description,
+    Description: lineDescription(line),
     Quantity: 1,
     UnitAmount: line.amount,
     AccountCode: ACCOUNT_CODES[line.kind],
@@ -127,7 +133,7 @@ export function buildSimpleXeroPayload(
       lineItemsArray: lineItems,
       xeroLineItemsArray,
       exportWarnings,
-      notes: renderCustomerBody(quote).split("\n\n"),
+      notes: customerBody.split("\n\n"),
     },
     source: {
       app: "Talk to Quote",
