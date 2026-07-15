@@ -23,12 +23,14 @@ export function getSharedUniversalExtractionInstructions() {
 export function getLandscapingExtractorInstructions() {
   return `Landscaping specialist extractor:
 - Key fields to extract: site area, measurements/dimensions, levels/falls, access, excavation depth, stages, construction sequence, labour/crew durations, materials, disposal, machinery/equipment, drainage, finish level, and optional extras.
-- Common line item types: labour stages, excavation/site preparation, aggregate/basecourse, soil/mulch, timber/edging/retaining materials, concrete, pavers/stone, drainage products, membranes/geotextile, machine/equipment hire, delivery, greenwaste/general waste, and reinstatement/cleanup.
-- Important technical terms: retaining, H4/H5 timber, posts, rails, sleepers, concrete grade/type, drainage coil, scoria, GAP/basecourse, geotextile, compacting, excavation, set-out, falls, haunching, backfill, topsoil, mulch, edging, paving, and reinstatement.
+- Common line item types: labour stages, excavation/site preparation, aggregate/basecourse, soil/mulch, timber/edging/border materials, concrete, pavers/stone, drainage products, membranes/geotextile, machine/equipment hire, delivery, greenwaste/general waste, and reinstatement/cleanup.
+- Important technical terms: retaining (only when explicitly a retaining wall), H4/H5 timber posts, rails, sleepers, concrete grade/type, drainage coil, scoria, GAP/basecourse, geotextile, compacting, excavation, set-out, falls, haunching, backfill, topsoil, mulch, edging, paving, and reinstatement.
+- CRITICAL: Do NOT classify timber garden bed borders, garden bed edging, timber edging, keystone edging, or garden border installations as retaining walls. A "200x50 timber garden bed border" is a garden bed renovation — set job_type to "garden_bed_renovation". Only use job_type "retaining" when the transcript explicitly describes retaining a slope, embankment, or grade change using posts, rails, and a structural wall.
 - Customer-facing scope priorities: describe the finished outcome, major stages, included preparation/installation/cleanup, visible materials, and any options or assumptions in plain NZ trade wording.
 - Internal calculation priorities: preserve every measurement and dimension exactly as spoken, including units; preserve labour stages, stage durations, material lists, construction sequence, timber sizes, concrete types, fasteners, aggregates, membranes, drainage products, and product names exactly as spoken.
 - Do not summarise labour-heavy or material-heavy work. Create separate detailed scope entries and line_items for distinct stages/material groups.
 - Preserve each distinct material as its own line item, even when no price is found. Do not collapse materials into one generic "Materials" line.
+- Put all optional works items in the optional_quotes array as a single QuoteIntent entry (optional_quotes[0].scope = ["Remove weed species from the garden bed", "Remove apple tree stump", ...]). Do NOT add optional works to customer_scope, primary_quote.scope, or primary_quote.notes. Do NOT add materials that appear only in optional works scope to the root materials array or line_items.
 - Confidence warning triggers: missing measurements, unclear material quantities, unclear disposal, unclear access/machine needs, unclear drainage/falls, uncertain structural details, consent/engineering uncertainty, unknown finish specification, or rate/quantity gaps.
 - Put missing quantities, dimensions, specifications, and pricing into missing_information rather than inventing them.`
 }
@@ -45,7 +47,8 @@ export function getPlantingExtractorInstructions() {
   return `Planting specialist extractor:
 - Preserve plant names, cultivars, quantities, pot sizes, grades, spacing, locations, soil preparation, compost, fertiliser, mulch, staking, irrigation, and aftercare exactly as spoken.
 - Separate plants, soil products, amendments, mulch, labour, delivery, and greenwaste into useful materials/line items.
-- Preserve planting sequence and site-specific plant cautions. Do not invent quantities, spacing, or plant substitutions.`
+- Preserve planting sequence and site-specific plant cautions. Do not invent quantities, spacing, or plant substitutions.
+- Put all optional works items in the optional_quotes array as a single QuoteIntent entry (optional_quotes[0].scope = ["Install a 150x50 timber board border around the planting area", ...]). Do NOT add optional works to primary_quote.scope or primary_quote.notes. Optional works must not appear as "(optional)" suffixed items in the primary quote scope.`
 }
 
 export function getHedgeTrimmingExtractorInstructions() {

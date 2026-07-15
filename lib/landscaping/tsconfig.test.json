@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/landscaping-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["./chunker.ts", "./chunker.test.ts", "./list-matcher.ts", "./list-matcher.test.ts", "./planting-spacing.ts", "./planting-spacing.test.ts", "./assemble-quote.ts", "./assemble-quote.test.ts"]
+}

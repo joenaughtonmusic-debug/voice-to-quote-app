@@ -1,5 +1,11 @@
 import type { PricingFact } from "../core/pricing-extraction"
+import { itemisedMaintenanceExtraTriggers, resolveMaintenanceExtras } from "../export/maintenance-extras"
+import { resolveMaintenanceGreenwaste } from "../export/maintenance-greenwaste"
+import { extractMaintenancePricingFacts } from "../export/maintenance-pricing-facts"
+import { resolveMaintenanceVisitPrice } from "../export/maintenance-visit-price"
+import { computeTidyTotals } from "./garden-tidy"
 import type { SelectedQuoteTemplate } from "../template-renderer"
+import { isTeamSiteNote } from "./internal-scope-signals"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
 
 function cleanLine(value: string) {
@@ -120,10 +126,19 @@ function serviceIncludes(input: CustomerQuoteAssemblyInput, mainFocus: string[])
     return items
   })
 
+  // Greenwaste is a service inclusion unless it is charged as its own priced Green Waste line (M3),
+  // in which case it must not also appear here — that would double it up. It stays an inclusion when
+  // folded into the visit price (Brett/Stella "included", or James with no separate greenwaste price).
+  const greenwasteIsSeparateLine = separateGreenwasteAmount(input) != null
+  // An extra shown as its own priced line (M4) must not also appear as a service inclusion.
+  const itemisedExtraTriggers = itemisedMaintenanceExtraTriggers(input.rawTranscript ?? null)
+
   const focusKeys = new Set(mainFocus.map((item) => item.toLowerCase()))
   return unique([...pricingIncludes, ...transcriptIncludes])
     .map(normalizeServiceItem)
     .filter((item) => !focusKeys.has(item.toLowerCase()))
+    .filter((item) => !(greenwasteIsSeparateLine && /\bgreen\s*waste|greenwaste\b/i.test(item)))
+    .filter((item) => !itemisedExtraTriggers.some((trigger) => trigger.test(item)))
 }
 
 function ongoingMaintenanceItems(input: CustomerQuoteAssemblyInput, mainFocus: string[]) {
@@ -207,11 +222,121 @@ function priceItems(pricingFacts: PricingFact[] | undefined) {
   )
 }
 
+/**
+ * Per-visit price line (M2 — the maintenance anchor). Resolved deterministically from the raw
+ * transcript: a spoken per-visit total wins, else the tidy labour engine computes hours × people ×
+ * rate. Falls back to the AI-narrated pricing facts only when the transcript yields no per-visit
+ * price, so no existing quote regresses. The per-visit total is the anchor — no downstream total is
+ * shown (M6) until this is priced.
+ */
+function perVisitPriceItems(input: CustomerQuoteAssemblyInput): string[] {
+  const transcript = input.rawTranscript ?? null
+  const resolved = resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+  if (resolved.pricingSource !== "unpriced" && resolved.amount > 0) {
+    return [`${moneyVisit(resolved.amount)} per visit`]
+  }
+  return priceItems(input.pricingFacts)
+}
+
+/**
+ * The greenwaste charge shown as its OWN line, or null when greenwaste folds into the visit price.
+ * Greenwaste is a separate line only when it has its own price signal — a spoken greenwaste total
+ * (Nadia $26.50) or a bag/trailer quantity to price by the tidy rule. When it is spoken as included
+ * (Brett/Stella) OR merely mentioned as part of the service with no price of its own (James: "all
+ * greenwaste removed", one visit price), it is covered by the visit price — no separate line, and it
+ * stays a service inclusion instead.
+ */
+function separateGreenwasteAmount(input: CustomerQuoteAssemblyInput): number | null {
+  return resolveMaintenanceGreenwaste(input.rawTranscript ?? null).amount
+}
+
+/** Green Waste line (M3): the separate priced line (with Nadia's range note), or nothing when folded. */
+function greenwasteSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+  const { amount, range } = resolveMaintenanceGreenwaste(input.rawTranscript ?? null)
+  if (amount == null) return []
+
+  const rangeNote = range ? ` (range ${moneyVisit(range.low)}–${moneyVisit(range.high)})` : ""
+  return [`Removal of greenwaste — ${moneyVisit(amount)}${rangeNote}`]
+}
+
+/**
+ * Extras line(s) (M4). A separately priced extra (Nadia sprays $10 / tool servicing $12, Brett
+ * petrol $7) shows as its own line; a bare mention with no price is flagged "price to confirm".
+ * Extras folded into the visit price ("included") are omitted here — they stay service inclusions.
+ */
+function extrasSectionItems(input: CustomerQuoteAssemblyInput): string[] {
+  return resolveMaintenanceExtras(input.rawTranscript ?? null)
+    .filter((extra) => !extra.included)
+    .map((extra) =>
+      extra.amount != null && extra.amount > 0
+        ? `${extra.name} — ${moneyVisit(extra.amount)}`
+        : `${extra.name} — price to confirm`,
+    )
+}
+
+/**
+ * Totals block (M5). Sums the priced per-visit lines (visit price + separate greenwaste + itemised
+ * extras — all GST-INCLUSIVE) into the per-visit TOTAL, with the GST line the SUM of each line's
+ * GST portion (amount × 3/23 rounded, per line) — the same rule as tidy (T5), matching Xero and the
+ * answer keys. The visit price is the anchor: no total until it is priced. Any line still to be
+ * confirmed (a flagged extra) is noted and excluded, never silently rolled in.
+ */
+function maintenanceTotalsItems(input: CustomerQuoteAssemblyInput): string[] {
+  const transcript = input.rawTranscript ?? null
+  const visit = resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+  if (visit.pricingSource === "unpriced" || visit.amount <= 0) return []
+
+  const priced: number[] = [visit.amount]
+  let pending = false
+
+  const greenwaste = resolveMaintenanceGreenwaste(transcript).amount
+  if (greenwaste != null) priced.push(greenwaste)
+
+  for (const extra of resolveMaintenanceExtras(transcript)) {
+    if (extra.included) continue
+    if (extra.amount != null && extra.amount > 0) priced.push(extra.amount)
+    else pending = true
+  }
+
+  const { total, gst } = computeTidyTotals(priced)
+
+  const items: string[] = []
+  if (pending) items.push("Total covers the priced lines above; any line still to be confirmed is excluded.")
+  items.push(`Includes GST (15%): ${money2(gst)}`)
+  items.push(`Total (NZD): ${money2(total)} per visit`)
+  return items
+}
+
 function money(value: number) {
   return new Intl.NumberFormat("en-NZ", {
     style: "currency",
     currency: "NZD",
     minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+/**
+ * Per-visit price format: whole dollars show no cents ("$405"), fractional amounts show two
+ * decimals ("$467.50") rather than one ("$467.5"). The full GST-inclusive 2dp invoice format
+ * across every line is the M6 pass; this keeps M2 consistent with the existing "$405 per visit".
+ */
+function moneyVisit(value: number) {
+  const hasCents = Math.round(value * 100) % 100 !== 0
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
+
+/** Always-2dp currency for the Totals block (M5), matching the tidy invoice format and the keys. */
+function money2(value: number) {
+  return new Intl.NumberFormat("en-NZ", {
+    style: "currency",
+    currency: "NZD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
 }
@@ -250,11 +375,13 @@ function siteNotes(input: CustomerQuoteAssemblyInput) {
   const notes = siteNoteSentences(input)
     .filter((sentence) => !/^[\s\-•]*(?:title|job\s*type|cadence|scope)\s*:/i.test(sentence))
     .map(stripInternalPrefix)
-    .filter((sentence) =>
-      /\b(greenwaste\s+bin|green\s*waste\s+bin|dog|gate|gates|access|parking|key|lock|alarm|neighbou?r|tenant)\b/i.test(
-        sentence,
-      ),
-    )
+    // B3: the customer Site Notes section keeps only customer-relevant operational info (e.g. a
+    // green waste bin available on site). Team / access / hazard / parking / pet advisories
+    // (dog, gates, steep driveway, park on street, keys, alarms) are NOT customer-facing — they
+    // stay in the internal notes for the crew. isTeamSiteNote is a belt-and-braces guard on top
+    // of the customer-info allowlist.
+    .filter((sentence) => /\b(greenwaste\s+bin|green\s*waste\s+bin)\b/i.test(sentence))
+    .filter((sentence) => !isTeamSiteNote(sentence))
     .filter((sentence) => !/\b(price|per\s+visit|\$\d|labou?r|hours?)\b/i.test(sentence))
     .map(formatSiteNote)
 
@@ -314,7 +441,10 @@ export function assembleMaintenanceCustomerQuote(input: CustomerQuoteAssemblyInp
     section("Main Focus", mainFocus),
     section("Service Includes", serviceIncludes(input, mainFocus)),
     section("Ongoing Maintenance", ongoingMaintenanceItems(input, mainFocus)),
-    section("Price", priceItems(input.pricingFacts)),
+    section("Price", perVisitPriceItems(input)),
+    section("Green Waste", greenwasteSectionItems(input)),
+    section("Extras", extrasSectionItems(input)),
+    section("Totals", maintenanceTotalsItems(input)),
     section("Site Notes", siteNotes(input)),
     section("Exclusions", input.quote.exclusions),
   ].filter((item): item is CustomerQuoteAssemblySection => item !== null)

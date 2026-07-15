@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/customer-renderer-intent-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./customer-renderer-intent.test.ts",
+    "./customer-renderer-intent.ts",
+    "./processed-quote.ts"
+  ]
+}

@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/utils"
 import { buildCustomerPreviewQuoteInput } from "@/lib/customer-preview-flow"
 import { buildCustomerQuotePreview } from "@/lib/customer-quote-preview"
+import { reviewQuote, type QuoteOverseerResult } from "@/lib/quote-overseer"
+import { buildOverseerInputFromReview } from "@/lib/quote-overseer/from-review"
 import {
   buildQuoteHandoffForDraftPreview,
   editableSectionsToProcessedQuote,
@@ -26,9 +28,11 @@ import {
 } from "@/lib/processed-quote"
 import { groupCustomerQuoteOptions } from "@/lib/customer-quote-options"
 import { CustomerQuoteOptionsCard } from "@/components/customer-quote-options-card"
+import { ShadowPlannerCard } from "@/components/shadow-planner-card"
 import { saveGeneratedQuoteDraft } from "@/lib/save-quote-draft"
 import { uploadDraftPhoto, loadDraftPhotos, deleteDraftPhoto, type DraftPhoto } from "@/lib/draft-photos"
 import { supabase } from "@/lib/supabase"
+import { bearerAuthHeader } from "@/lib/auth-headers"
 import { useAuth } from "@/hooks/use-auth"
 import type { ExportCategoryMapping } from "@/lib/export-mappings"
 import {
@@ -54,6 +58,7 @@ import {
 } from "@/lib/template-recommendation-loading"
 import { deckingReviewFromQuoteFacts, type DeckingReviewModel } from "@/lib/trades/decking/review"
 import { retainingReviewFromQuoteFacts, type RetainingReviewModel } from "@/lib/trades/retaining/review"
+import { resolveLabourExportPrice, type LabourAllowanceWorkings } from "@/lib/export/labour-line-builder"
 
 type View = "customer" | "internal"
 export type CustomerPreviewMode = "standard" | "template"
@@ -124,7 +129,6 @@ export function QuoteReview({
     ...(editedQuoteForReview.materials ?? []),
     editedQuoteForReview.greenwaste,
     ...(editedQuoteForReview.exclusions ?? []),
-    ...(editedQuoteForReview.internal_notes ?? []),
     ...(editedQuoteForReview.missing_information ?? []),
     ...(editedQuoteForReview.confidence_warnings ?? []),
   ]
@@ -137,9 +141,28 @@ export function QuoteReview({
     pricingFacts,
   })
   const customerPreview = buildCustomerQuotePreview(customerPreviewInput, { includeDeckingScope: true, includeRetainingScope: true })
+  // Deterministic Quote Overseer — reviews the rendered customer copy for
+  // cross-layer issues. Internal display only: it never mutates the quote and no
+  // Xero export lines are passed (O4 stays dormant here).
+  const overseerResult = reviewQuote(
+    buildOverseerInputFromReview({
+      processedQuote: editedQuoteForReview,
+      customerPreview,
+      rawTranscript,
+      originalTranscript,
+      selectedTemplate,
+      pricingFacts,
+    }),
+  )
   const quoteFacts = quoteFactsFromProcessedQuote(editedQuoteForReview)
   const deckingReview = deckingReviewFromQuoteFacts(quoteFacts)
   const retainingReview = retainingReviewFromQuoteFacts(quoteFacts)
+  const labourExportPrice = resolveLabourExportPrice({
+    pricing_facts: pricingFacts,
+    labour_allowance: editedQuoteForReview.labour_allowance,
+    primary_quote: editedQuoteForReview.primary_quote,
+    line_items: editedQuoteForReview.line_items,
+  })
   const reviewNotices = [
     ...buildQuoteReviewNotices({
     rawTranscript,
@@ -379,7 +402,7 @@ export function QuoteReview({
       const exportMappings = await loadExportMappingsForPayload()
       const response = await fetch("/api/export-xero-quote", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await bearerAuthHeader()) },
         body: JSON.stringify({
           processed_quote: buildCustomerPreviewQuoteInput({
             processedQuote: editedQuote,
@@ -479,6 +502,9 @@ export function QuoteReview({
             <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{rawTranscript}</p>
           </section>
 
+          {view === "internal" && processedQuote.shadow_report && (
+            <ShadowPlannerCard report={processedQuote.shadow_report} />
+          )}
           {view === "internal" && reviewNotices.length > 0 && <ReviewNoticesCard notices={reviewNotices} />}
           {view === "internal" && pricingFacts.length > 0 && <PricingFactsCard pricing={pricingFacts} />}
           {view === "internal" && (
@@ -491,6 +517,16 @@ export function QuoteReview({
           )}
           {view === "internal" && deckingReview && <DeckingReviewCard review={deckingReview} />}
           {view === "internal" && retainingReview && <RetainingReviewCard review={retainingReview} />}
+          {view === "internal" && labourExportPrice.pricingSource !== "unpriced" && (
+            <LabourPricingCard labourPrice={labourExportPrice} />
+          )}
+          {view === "internal" && processedQuote.audit_result && (
+            <QuoteAuditCard auditResult={processedQuote.audit_result} />
+          )}
+          {view === "internal" && <QuoteOverseerCard result={overseerResult} />}
+          {view === "internal" && (editedQuoteForReview.optional_priced_works?.length ?? 0) > 0 && (
+            <OptionalPricedWorksCard works={editedQuoteForReview.optional_priced_works!} />
+          )}
 
           {view === "customer" && (
             <TemplatePreviewControls
@@ -819,6 +855,257 @@ function RetainingReviewCard({ review }: { review: RetainingReviewModel }) {
           <p>Some retaining assumptions need review before sending.</p>
         </div>
       )}
+    </section>
+  )
+}
+
+function LabourPricingCard({ labourPrice }: { labourPrice: ReturnType<typeof resolveLabourExportPrice> }) {
+  const w = labourPrice.allowanceWorkings
+  const isStructured = labourPrice.pricingSource === "structured_allowance"
+  const isSpoken = labourPrice.pricingSource === "spoken_fixed"
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Labour Pricing</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            This is the labour price that will export to Xero.
+          </p>
+        </div>
+        <span className="rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-muted-foreground">Internal</span>
+      </div>
+
+      <div className="rounded-xl border border-border bg-background p-3">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
+            {isStructured ? "Structured allowance" : isSpoken ? "Spoken fixed price" : "Unpriced"}
+          </span>
+          <span className="text-sm font-semibold text-foreground">{money(labourPrice.unitAmount)}</span>
+        </div>
+
+        {isStructured && w && (
+          <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+            <p>
+              <span className="font-semibold text-foreground">{w.people}</span> people ×{" "}
+              <span className="font-semibold text-foreground">{w.days}</span> days ×{" "}
+              <span className="font-semibold text-foreground">{w.hoursPerPerson}</span> hrs/day ={" "}
+              <span className="font-semibold text-foreground">{w.totalHours} hrs</span> total
+            </p>
+            <p>
+              Labour rate:{" "}
+              <span className="font-semibold text-foreground">
+                ${w.rate} per labour hour
+              </span>
+            </p>
+            <p>
+              Total:{" "}
+              <span className="font-semibold text-foreground">{money(labourPrice.unitAmount)}</span>
+            </p>
+            <p className="mt-1 italic text-muted-foreground/80">Source: &ldquo;{w.sourceText}&rdquo;</p>
+          </div>
+        )}
+
+        {isSpoken && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Spoken customer price captured from transcript. Overrides allowance-based calculation.
+          </p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function QuoteAuditCard({ auditResult }: { auditResult: NonNullable<ProcessedQuote["audit_result"]> }) {
+  const hasErrors = auditResult.issues.some((i) => i.severity === "error")
+  const hasWarnings = auditResult.issues.some((i) => i.severity === "warning")
+
+  const statusColour = hasErrors
+    ? "bg-destructive/10 text-destructive border-destructive/30"
+    : hasWarnings
+      ? "bg-warning/10 text-warning-foreground border-warning/30"
+      : "bg-green-50 text-green-800 border-green-200"
+
+  const statusLabel =
+    auditResult.audit_status === "pass"
+      ? "Pass"
+      : auditResult.audit_status === "needs_review"
+        ? "Needs Review"
+        : auditResult.audit_status === "fail"
+          ? "Fail"
+          : "Corrected"
+
+  if (auditResult.audit_status === "pass" && auditResult.issues.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Quote Audit</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Deterministic post-processing checks. Internal only — does not affect customer preview.
+          </p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusColour}`}>
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="grid gap-2">
+        {auditResult.issues.map((issue) => {
+          const severityColour =
+            issue.severity === "error"
+              ? "border-destructive/40 bg-destructive/5"
+              : issue.severity === "warning"
+                ? "border-warning/40 bg-warning/5"
+                : "border-border bg-secondary/30"
+          return (
+            <div key={issue.id} className={`rounded-xl border p-3 ${severityColour}`}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono font-semibold text-muted-foreground">{issue.id}</span>
+                <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {issue.category.replace("_", " ")}
+                </span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  issue.severity === "error" ? "bg-destructive/20 text-destructive" : issue.severity === "warning" ? "bg-warning/20 text-warning-foreground" : "bg-secondary text-muted-foreground"
+                }`}>
+                  {issue.severity}
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm text-foreground">{issue.message}</p>
+              {issue.evidence && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="font-semibold">Evidence:</span> {issue.evidence}
+                </p>
+              )}
+              {issue.expected && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  <span className="font-semibold">Expected:</span> {issue.expected}
+                </p>
+              )}
+              {issue.actual && (
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  <span className="font-semibold">Actual:</span> {issue.actual}
+                </p>
+              )}
+              {issue.suggested_fix && (
+                <p className="mt-1 text-xs italic text-muted-foreground">{issue.suggested_fix}</p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function QuoteOverseerCard({ result }: { result: QuoteOverseerResult }) {
+  const statusColour =
+    result.status === "blocked"
+      ? "bg-destructive/10 text-destructive border-destructive/30"
+      : result.status === "review"
+        ? "bg-warning/10 text-warning-foreground border-warning/30"
+        : "bg-green-50 text-green-800 border-green-200"
+
+  const statusLabel = result.status === "blocked" ? "Blocked" : result.status === "review" ? "Review" : "OK"
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Quote Overseer</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Deterministic post-generation review of the rendered customer copy. Internal only — does not affect the quote.
+          </p>
+        </div>
+        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusColour}`}>{statusLabel}</span>
+      </div>
+
+      {result.findings.length === 0 ? (
+        <p className="text-sm text-green-800">✅ Quote Overseer: no customer-preview issues found.</p>
+      ) : (
+        <div className="grid gap-2">
+          {result.findings.map((finding, index) => {
+            const severityColour =
+              finding.severity === "error"
+                ? "border-destructive/40 bg-destructive/5"
+                : finding.severity === "warning"
+                  ? "border-warning/40 bg-warning/5"
+                  : "border-border bg-secondary/30"
+            return (
+              <div key={`${finding.id}-${index}`} className={`rounded-xl border p-3 ${severityColour}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-mono font-semibold text-muted-foreground">{finding.id}</span>
+                  <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {finding.layer.replace("_", " ")}
+                  </span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      finding.severity === "error"
+                        ? "bg-destructive/20 text-destructive"
+                        : finding.severity === "warning"
+                          ? "bg-warning/20 text-warning-foreground"
+                          : "bg-secondary text-muted-foreground"
+                    }`}
+                  >
+                    {finding.severity}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-sm text-foreground">{finding.message}</p>
+                {finding.evidence && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    <span className="font-semibold">Evidence:</span> {finding.evidence}
+                  </p>
+                )}
+                {finding.suggestion && <p className="mt-1 text-xs italic text-muted-foreground">{finding.suggestion}</p>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function OptionalPricedWorksCard({ works }: { works: NonNullable<ProcessedQuote["optional_priced_works"]> }) {
+  const money = (value: number) =>
+    Number.isFinite(value) ? `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-foreground">Optional Works (priceable)</h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Optional works with their own labour, derived from the quote plan. Internal only — not shown to the customer or exported yet; review and price before sending.
+        </p>
+      </div>
+
+      <div className="grid gap-2">
+        {works.map((work) => {
+          const needsRate = (work.warnings ?? []).some((w) => /rate missing/i.test(w))
+          return (
+            <div key={work.id} className={`rounded-xl border p-3 ${needsRate ? "border-warning/40 bg-warning/5" : "border-border bg-secondary/30"}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-foreground">{work.title}</span>
+                <span className="text-sm font-semibold text-foreground">{needsRate ? "Rate missing" : money(work.subtotal)}</span>
+              </div>
+              {work.lineItems.map((line, index) => (
+                <p key={`${work.id}-${index}`} className="mt-1 text-xs text-muted-foreground">
+                  {line.itemName}: {line.quantity} {line.unit}
+                  {needsRate ? "" : ` × ${money(line.unitPrice)} = ${money(line.total)}`}
+                </p>
+              ))}
+              {(work.warnings ?? []).map((warning, index) => (
+                <p key={`${work.id}-w-${index}`} className="mt-1 text-xs italic text-warning-foreground">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          )
+        })}
+      </div>
     </section>
   )
 }

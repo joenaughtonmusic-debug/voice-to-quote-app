@@ -2,7 +2,7 @@
 
 Last Updated: June 2026
 
-This document describes the current end-to-end Quotecord workflow and the current known limitations.
+This document describes the current end-to-end Talk to Quote workflow and the current known limitations.
 
 ---
 
@@ -416,7 +416,7 @@ Likely cause:
 Make.com Create Quote mapping
 ```
 
-rather than Quotecord export.
+rather than Talk to Quote export.
 
 ---
 

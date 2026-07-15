@@ -1,6 +1,6 @@
-# Quotecord Regression Suite
+# Talk to Quote Regression Suite
 
-This document is the master acceptance test suite for Quotecord. It is intended for future AI agents, developers, contractors, and contributors who need to verify that core behaviour still works after changes.
+This document is the master acceptance test suite for Talk to Quote. It is intended for future AI agents, developers, contractors, and contributors who need to verify that core behaviour still works after changes.
 
 Tests in this document are product-level expectations. Some are already represented in code tests, while others should be added to the Testing / Debug runner or future automated suites.
 

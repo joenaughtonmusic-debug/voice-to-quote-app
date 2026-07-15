@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../.tmp/botanic-import-tests",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["./plant-library-import.ts", "./pricing/cost-markup.ts", "./plant-library-import.botanic.test.ts", "./plant-library-import.test.ts"]
+}

@@ -1,7 +1,9 @@
+import { resolveSellFromCost, type SellPriceResolution } from "./pricing/cost-markup"
+
 export const plantFieldAliases = {
   item_code: ["sku", "item code", "code", "plant code"],
   supplier: ["supplier", "nursery", "vendor"],
-  plant_name: ["plant name", "name", "botanical name", "common name"],
+  plant_name: ["plant name", "name", "botanical name", "common name", "product label", "plant"],
   category: ["category", "group"],
   plant_type: ["plant type", "type"],
   default_spacing: ["default spacing", "spacing", "spacing mm", "plant spacing"],
@@ -64,12 +66,24 @@ function findHeader(headers: Array<{ header: string; normalized: string }>, alia
 
 export function detectPlantMapping(headers: string[]): PlantColumnMapping {
   const normalized = headers.map((header) => ({ header, normalized: normalizePlantImportHeader(header) }))
-  return Object.fromEntries(
+  const mapping = Object.fromEntries(
     Object.entries(plantFieldAliases).map(([field, aliases]) => {
       const match = findHeader(normalized, aliases as readonly string[])
       return [field, match?.header ?? ""]
     }),
   ) as PlantColumnMapping
+
+  // A lone generic "Price" column is ambiguous between cost and sell. When it is
+  // the ONLY price column (no dedicated cost column detected), treat it as COST
+  // so the markup rule computes sell — this matches cost-based supplier lists
+  // (Botanic, Bunnings, Landscape Supplies). When a separate cost column exists,
+  // "Price" remains the sell price (unchanged two-column behaviour).
+  if (mapping.sell_price && normalizePlantImportHeader(mapping.sell_price) === "price" && !mapping.cost_price) {
+    mapping.cost_price = mapping.sell_price
+    mapping.sell_price = ""
+  }
+
+  return mapping
 }
 
 export function parsePlantPrice(value: unknown) {
@@ -85,15 +99,32 @@ export function parsePlantPrice(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+/**
+ * Resolve a plant row's sell price from its mapped cost/sell columns.
+ * An explicit sell column wins; otherwise sell is computed from cost using the
+ * default markup rule (deterministic). Pure — testable without the React import UI.
+ */
+export function resolvePlantRowSellPrice(
+  row: Record<string, unknown>,
+  mapping: PlantColumnMapping,
+): SellPriceResolution {
+  return resolveSellFromCost({
+    cost_price: parsePlantPrice(row[mapping.cost_price]),
+    sell_price: parsePlantPrice(row[mapping.sell_price]),
+  })
+}
+
 export function plantPriceMappingWarnings(mapping: PlantColumnMapping) {
   const warnings: string[] = []
 
-  if (!mapping.sell_price) {
-    warnings.push("No sell price column detected. Plant options will import without sell prices unless a sell price column is mapped.")
-  }
-
   if (mapping.cost_price && !mapping.sell_price) {
-    warnings.push("Cost/nursery price was detected, but it will not be used as sell price.")
+    // Cost is present with no sell column (e.g. Botanic "Price" mapped to cost).
+    // Sell prices are computed from cost via the default markup rule, editable per line.
+    warnings.push(
+      "No sell price column — sell prices will be computed from cost using the default markup rule (cost under $90 ×1.25, $90 or over ×1.15). Every line stays editable.",
+    )
+  } else if (!mapping.sell_price && !mapping.cost_price) {
+    warnings.push("No sell price or cost column detected. Plant options will import unpriced and flagged for review until a price column is mapped.")
   }
 
   return warnings

@@ -1,6 +1,6 @@
 # Calculator Architecture
 
-This document defines the calculator philosophy for Quotecord.
+This document defines the calculator philosophy for Talk to Quote.
 
 ## Core Rule
 

@@ -126,6 +126,12 @@ function rangeForSentence(sentence: string): PricingDraft | null {
 function allowanceForSentence(sentence: string): PricingDraft | null {
   if (!/\bin\s+the\s+region\s+of\b|\ballow(?:ance)?\b/i.test(sentence)) return null
 
+  // "Allow N hours to <task>" is a labour quantity, not a price allowance.
+  if (/\ballow\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/i.test(sentence)) return null
+
+  // "Allow N bags/plants/units/etc of <material>" is a material quantity, not a price.
+  if (/\ballow\s+\d+(?:\.\d+)?\s*(?:bags?|plants?|units?|pallets?|rolls?|bundles?|sheets?|litres?|liters?|m3|cubic)\b/i.test(sentence)) return null
+
   const amount = amountFromText(sentence)
   if (amount === null) return null
 
@@ -150,7 +156,10 @@ function fixedPriceForSentence(sentence: string): PricingDraft | null {
   if (/\b(optional\s+extra|add[- ]?on|additional|between|to\s+\$?\s*\d|in\s+the\s+region\s+of|allow(?:ance)?)\b/i.test(sentence)) {
     return null
   }
-  if (!/\$\s*\d|\b(?:price|quoted\s+price|cost)\b/i.test(sentence)) {
+  if (/\b(?:unit\s+price|plant\s+library|selected\s+plant\s+option|sell\s+price|plants?\s+x\s+\$)\b/i.test(sentence)) {
+    return null
+  }
+  if (!/\b(?:price|quoted\s+price|cost)\b/i.test(sentence)) {
     return null
   }
 

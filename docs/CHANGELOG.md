@@ -1,9 +1,15 @@
-# Quotecord Changelog
+# Talk to Quote Changelog
 
 ## Unreleased
 
 ### Added
 
+- Landscaping Quote Builder (L0–L5): Gardening/Landscaping mode switch; transcript
+  chunker (split one recording into confirmable work-area sections, never silent-merge);
+  spoken-line → price-list row matcher (list price / suggest+flag, never invent);
+  deterministic planting spacing + count (50cm default, Buxus 30cm, hedge >1m 80cm);
+  quote assembly to customer/team/internal with GST-inclusive total and Xero parity.
+- Tiered cost→sell markup on plant import (cost <$90 ×1.25, ≥$90 ×1.15), editable.
 - Documentation structure.
 - Supabase authentication.
 - Google sign-in and sign-out.
@@ -31,6 +37,8 @@
 
 ### Fixed
 
+- Plant import no longer silently treats a lone "Price" column as an un-marked-up
+  sell price — it is mapped as cost so the markup rule computes sell.
 - Placeholder transcript replacement.
 - Draft saving/editing behaviour.
 - PDF extraction and uploaded quote analysis diagnostics.

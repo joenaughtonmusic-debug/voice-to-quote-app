@@ -1,7 +1,11 @@
-# Quotecord Roadmap
+# Talk to Quote Roadmap
 
 ## Near Term
 
+- Import the real material lists (Bunnings + Auckland Landscape Supplies) via the
+  material/JMS path, with cost×markup→sell and a real-data spot-check (Botanic ready)
+- Landscaping builder: richer team-instructions output; optional AI-assisted chunker
+  layer over the deterministic spine (L2b)
 - Improve quote extraction reliability across trades
 - Expand Testing / Debug saved test cases
 - Refine address validation architecture

@@ -1,0 +1,35 @@
+---
+description: Xero/JMS export must preserve all line data correctly
+globs: lib/export/**
+alwaysApply: false
+---
+
+# Xero / JMS Export Contract
+
+Every export line must preserve:
+
+| Field | Required |
+|---|---|
+| Line description | ✅ |
+| Quantity | ✅ |
+| Unit price / rate | ✅ |
+| Account code | ✅ |
+| Tax code | ✅ |
+| Item code / source mapping | ✅ |
+| `needs_review` / defaulted warning | ✅ |
+
+## Hours are quantities in export
+
+Labour lines export as **quantity = hours, rate = hourly rate**. Never convert an hour count into a dollar amount.
+
+```
+// ❌ BAD — 7 hours becomes $7 line price
+{ description: "Remove edging", quantity: 1, unitAmount: 7 }
+
+// ✅ GOOD — 7 hours × labour rate
+{ description: "Remove edging", quantity: 7, unitAmount: labourRate }
+```
+
+## Do not suppress warnings on export
+
+Lines with `needs_review: true` or missing account/tax codes must be exported with a warning flag, not silently defaulted or dropped.

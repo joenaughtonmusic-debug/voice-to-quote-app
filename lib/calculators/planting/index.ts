@@ -132,7 +132,17 @@ function normalizeRequestedSize(value: string) {
 function isLikelyPlantName(value: string) {
   const text = cleanPlantName(value).toLowerCase()
   if (text.length < 3) return false
+  // Single common adjectives/adverbs are never plant names — they appear in
+  // length sentences like "approximately 14.2 metres long" where lengthPattern
+  // captures the word after the unit as the plant name candidate.
+  if (/^(long|short|tall|small|large|wide|new|old|existing|right|left)$/.test(text)) return false
   if (/\b(?:street|st|road|rd|avenue|ave|terrace|terr|lane|ln|drive|dr|place|pl|crescent|cres|way|court|ct)\b/.test(text)) {
+    return false
+  }
+  // Metric measurement units are never part of a plant name. They appear in
+  // sentences like "14.2 metres long. The plant she wanted was Michelia gracipes."
+  // where bareQuantityPattern can capture "metres long. The" as a candidate.
+  if (/\b(metres?|meters?|centimetres?|centimeters?|millimetres?|millimeters?)\b/.test(text)) {
     return false
   }
   if (
@@ -142,7 +152,27 @@ function isLikelyPlantName(value: string) {
   ) {
     return false
   }
+  // Structural landscaping nouns are never plant names. They appear in length
+  // sentences like "16.8m for the retaining wall", where lengthPattern would
+  // otherwise capture "the retaining wall" as a plant-name candidate and fabricate
+  // a planting request/area from a retaining/fence measurement.
+  if (isStructuralNonPlantLabel(text)) {
+    return false
+  }
   return /[a-z]/i.test(text)
+}
+
+/**
+ * True when a candidate plant name is really a structural / non-plant landscaping
+ * item (retaining wall, fence, posts, topsoil, paving, decking …). Such labels must
+ * never become a plant name/length/count — this is what stops a retaining-wall or
+ * topsoil measurement being fabricated into a planting option like
+ * "the retaining wall 16.8M". Shared by the pipeline's transcript-blind extractors
+ * (extractPlantLengthRows / getPlantQuantityRequestsFromLineItems) as a defensive
+ * guard, in addition to QuotePlan scoping the calculator to planting-bucket text.
+ */
+export function isStructuralNonPlantLabel(value: string): boolean {
+  return /\b(retaining|wall|fence|posts?|polythene|topsoil|paving|paver|decking|deck)\b/i.test(value)
 }
 
 function normalisePlantNameKey(value: string | undefined) {
@@ -333,6 +363,8 @@ export function extractSpokenSpacingMmFromText(text: string): number | null {
   const patterns = [
     /\b(?:with|at|probably\s+with)\s+(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?|m|metres?|meters?)\s+spacing\b/i,
     /\b(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?)\s+spacing\b/i,
+    // "Plant spacing should be 50 centimetres" / "spacing of 50cm"
+    /\bspacing\s+(?:should\s+be|of|is)\s+(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?|m|metres?|meters?)\b/i,
     /\b(?:with|at)\s+(\d+(?:\.\d+)?)\s*(mm|cm|centimetres?|centimeters?|m|metres?|meters?)\b/i,
   ]
 
@@ -351,6 +383,9 @@ function extractPlantNameFromPlantingIntent(text: string) {
   const patterns = [
     /\bplant\s+(?:she\s+wanted\s+)?planting\s+was\s+([A-Za-z][A-Za-z\s.'-]{2,60}?)(?:[.,]|\s+I['']|\s+not\b|\s+maybe\b|\s+probably\b)/i,
     /\bplant(?:ing)?\s+(?:is|was)\s+([A-Za-z][A-Za-z\s.'-]{2,60}?)(?:[.,]|\s+at\b|\s+with\b|\s+not\b|\s+maybe\b)/i,
+    // "The plant she/he/they wanted was Michelia gracipes" — common spoken phrasing
+    // where the pronoun separates "plant" from "was", so the patterns above don't match.
+    /\bplant\s+(?:she|he|they)\s+wanted\s+was\s+([A-Za-z][A-Za-z\s.'-]{2,60}?)(?:[.,]|\s+at\b|\s+with\b|\s+not\b|\s+maybe\b|\s+she\b|\s+he\b|$)/i,
   ]
 
   for (const pattern of patterns) {
@@ -418,8 +453,20 @@ export function extractPlantCalculatorRequestsFromText(text: string): PlantCalcu
     if (!Number.isFinite(lengthM)) continue
     if (isAreaOrDimensionContext(text, match.index ?? 0, match[0])) continue
     if (isPlantSizeContext(text, match.index ?? 0, `${match[2]}m`)) continue
+    const capturedName = cleanPlantName(match[3])
+    // When a single-word adjective is captured (e.g. "long" from "14.2 metres long"),
+    // fall back to the plant name stated elsewhere in the transcript so we preserve the
+    // measured length. Multi-word area phrases (e.g. "lower planting area") are handled
+    // by inlineAreaLengthPattern / areaHedgeLengthPattern — leave them as-is so
+    // addRequest can reject them without creating duplicates.
+    const isSingleWordFallback = !capturedName.includes(" ") && !isLikelyPlantName(capturedName)
+    const plantName = isLikelyPlantName(capturedName)
+      ? capturedName
+      : (isSingleWordFallback
+          ? (plantingIntentPlantName || plantNameFromContext(text, match.index ?? 0, optionRequestPlantName))
+          : capturedName)
     addRequest({
-      plant_name: cleanPlantName(match[3]),
+      plant_name: plantName,
       length_m: lengthM,
       spoken_spacing_mm: spokenSpacingMm,
       area_label: requestAreaLabel(text, segments, match.index ?? 0, match[1]),

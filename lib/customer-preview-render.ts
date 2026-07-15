@@ -1,4 +1,6 @@
 import { assembleCustomerQuote, type CustomerQuoteAssembly } from "./customer-quote-assembly"
+import { buildCustomerOptionalWorksLines } from "./customer-optional-works"
+import { isPrimaryPlantingQuote, selectCustomerRendererPath } from "./customer-renderer-intent"
 import type { CustomerQuotePreview } from "./customer-quote-preview"
 import type { ProcessedQuote } from "./processed-quote"
 import {
@@ -46,6 +48,8 @@ export type CustomerDraftPreviewModel = {
   plantingInternalReviewNotes: string[]
   plantingCustomerTradeOptions: CustomerQuoteOptionGroup[]
   rendererPath: "planting-presentation" | "assembly" | "legacy"
+  /** Customer-safe priced optional works block (QuotePlan Slice 3b); [] when none. */
+  customerOptionalWorks: string[]
 }
 
 export type GardenTidyAssemblyInputDebug = {
@@ -113,7 +117,11 @@ export function buildCustomerDraftPreviewModel({
     })),
   })
 
+  // Milestone 2 — the planting presentation may only be used when the PRIMARY work is
+  // genuinely planting. A mixed landscaping job with an optional (calculated) hedge must
+  // NOT collapse into the planting presentation just because plant options exist.
   const presentationModel =
+    isPrimaryPlantingQuote(processedQuote) &&
     isPlantingWorkflow(processedQuote) &&
     buildQuotePresentationModel({
       quote: processedQuote,
@@ -121,7 +129,15 @@ export function buildCustomerDraftPreviewModel({
       customerPreview,
     })
   const plantingPreviewSections = presentationModel ? buildPresentationCustomerPreview(presentationModel) : []
-  const plantingCustomerQuote = isUsablePlantingCustomerQuote(plantingPreviewSections) ? plantingPreviewSections : null
+  const usablePlantingPreviewSections = isUsablePlantingCustomerQuote(plantingPreviewSections) ? plantingPreviewSections : null
+  const rendererPath = selectCustomerRendererPath({
+    quote: processedQuote,
+    hasUsablePlantingQuote: Boolean(usablePlantingPreviewSections),
+    hasAssembly: Boolean(assembly),
+  })
+  // Downstream consumers (renderer text, quote-draft UI, trade options) key off
+  // plantingCustomerQuote — keep it consistent with the chosen renderer path.
+  const plantingCustomerQuote = rendererPath === "planting-presentation" ? usablePlantingPreviewSections : null
   const plantingInternalReviewNotes =
     presentationModel && plantingCustomerQuote
       ? mergePlantingInternalReviewNotes(collectPresentationReviewNotes(presentationModel), processedQuote)
@@ -129,7 +145,6 @@ export function buildCustomerDraftPreviewModel({
   const plantingCustomerTradeOptions = plantingCustomerQuote
     ? filterPlantingCustomerTradeOptions(customerPreview.tradeOptions)
     : customerPreview.tradeOptions
-  const rendererPath = plantingCustomerQuote ? "planting-presentation" : assembly ? "assembly" : "legacy"
 
   return {
     mode,
@@ -162,6 +177,7 @@ export function buildCustomerDraftPreviewModel({
     plantingInternalReviewNotes,
     plantingCustomerTradeOptions,
     rendererPath,
+    customerOptionalWorks: buildCustomerOptionalWorksLines(processedQuote.optional_priced_works),
   }
 }
 
@@ -174,6 +190,7 @@ export function renderCustomerDraftPreviewText(model: CustomerDraftPreviewModel)
       "Quote",
       model.quoteTitle,
       ...renderPlantingCustomerQuoteText(model.plantingCustomerQuote).split("\n"),
+      ...model.customerOptionalWorks,
     ]
       .filter(Boolean)
       .join("\n")
@@ -207,6 +224,7 @@ export function renderCustomerDraftPreviewText(model: CustomerDraftPreviewModel)
     model.quoteTitle,
     model.assembly ? "" : model.jobType,
     ...body,
+    ...model.customerOptionalWorks,
   ]
     .filter(Boolean)
     .join("\n")

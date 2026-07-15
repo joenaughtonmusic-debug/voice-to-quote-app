@@ -57,6 +57,34 @@ export type ProcessedQuote = {
   line_items: QuoteLineItem[]
   plant_calculator_results?: PlantCalculatorResult[]
   quote_options?: QuoteOption[]
+  /**
+   * Priceable optional works derived from the QuotePlan's optional buckets
+   * (QuotePlan Slice 3a). Kept separate from quote_options so customer preview and
+   * Xero export do not pick it up yet — it is internal-only in this slice.
+   */
+  optional_priced_works?: QuoteOption[]
+  audit_result?: import("@/lib/quote-auditor/types").AuditResult
+  /**
+   * QuotePlan-derived customer-render intent (Milestone 2). Captured from the plan
+   * BEFORE the output normalisers mutate `job_type` (which can flip a mixed
+   * landscaping job to "Hedge Planting"/"retaining" once an optional planting item is
+   * calculated). This is the stable signal renderer/assembler selection uses to decide
+   * the customer presentation, so an optional/secondary planting or retaining component
+   * can never collapse a mixed landscaping quote into the wrong presentation.
+   */
+  render_intent?: {
+    /** The plan's quoteType (classification specialist), e.g. "landscaping" | "planting". */
+    primaryTrade: string
+    /** True only when the MAIN/primary work bucket is genuinely planting. */
+    mainIsPlanting: boolean
+  }
+  /**
+   * Internal-only telemetry from the shadow-mode AI QuotePlan planner (QuotePlan shadow
+   * telemetry). Present only when shadow mode ran. It NEVER influences pricing, rendering or
+   * export — `usedForOutput` is always false — and is not surfaced in customer output; the
+   * internal review view renders it via ShadowPlannerCard.
+   */
+  shadow_report?: import("@/lib/quote-plan/shadow").ShadowPlannerReport
 }
 
 export type EditableQuoteSection = {
@@ -166,7 +194,9 @@ function matchedLineItemLines(items: QuoteLineItem[]) {
   return items.map((item) =>
     [
       item.item_code ? `${item.item_code} · ${item.item_name}` : item.item_name || item.description || "Unmatched item",
-      item.quantity ? `Qty ${item.quantity}${item.unit ? ` ${item.unit}` : ""}` : "",
+      item.quantity
+        ? `Qty ${item.quantity}${item.unit && !item.quantity.toLowerCase().includes(item.unit.toLowerCase()) ? ` ${item.unit}` : ""}`
+        : "",
       item.knowledge_base_rate ? `KB rate ${item.knowledge_base_rate}` : "",
       item.override_rate ? `Override ${item.override_rate}` : "",
       item.final_rate_used ? `Final rate ${item.final_rate_used}` : item.rate ? `Rate ${item.rate}` : "",
@@ -181,6 +211,11 @@ function matchedLineItemLines(items: QuoteLineItem[]) {
       .filter(Boolean)
       .join(" | "),
   )
+}
+
+/** Formats line_items for the Internal View "Matched JMS Line Items" panel. */
+export function formatMatchedJmsLineItems(items: QuoteLineItem[]) {
+  return matchedLineItemLines(items)
 }
 
 function quoteOptionLines(options: QuoteOption[] | undefined) {

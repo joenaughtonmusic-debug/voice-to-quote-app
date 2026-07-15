@@ -1,0 +1,43 @@
+---
+description: Rules for specialist module activation and job-type classification
+globs: lib/trades/**
+alwaysApply: false
+---
+
+# Specialist Module Classification Rules
+
+## Specialist modules activate on strong specialist intent only
+
+A module should activate only when the transcript contains **explicit, unambiguous** specialist signals. Weak or incidental mentions must not trigger a specialist path.
+
+## Retaining
+
+Activate retaining only when the transcript describes **retaining a slope, embankment, or grade change** using structural elements (posts, rails, wall panels).
+
+```
+// ❌ BAD classifiers — must NOT trigger retaining
+"200x50 timber garden bed border"
+"keystone edging"
+"timber border"
+"garden bed renovation"
+
+// ✅ GOOD classifiers — DO trigger retaining
+"retaining wall"
+"H4 posts at 1m spacing"
+"replace the retaining along the back boundary"
+```
+
+**Timber alone must not classify a job as retaining.** Timber is also used for garden bed borders, decking, fencing, and edging. Score timber only when it co-occurs with retaining wall context (posts, height, structural wall, slope).
+
+## General landscaping
+
+Jobs with scope + labour + materials + optional works that do not match a specialist trade must be handled by the **general landscaping path** — not forced into retaining, decking, paving, planting, or fencing.
+
+Examples of general landscaping jobs:
+- Garden bed renovation / border installation
+- Garden bed edging replacement
+- Mixed small works without a single dominant trade
+
+## Decking
+
+Timber alone must not classify a job as decking. Decking requires explicit deck structure intent (deck boards, joists, frame, bearer).

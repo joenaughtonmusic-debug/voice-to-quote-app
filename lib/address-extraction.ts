@@ -113,7 +113,14 @@ const streetPattern = new RegExp(
   String.raw`\b(?<street_number>\d{1,5}[A-Za-z]?)\s+(?<street_name>(?:[A-Za-zāēīōūĀĒĪŌŪ'’-]+\s+){0,6}(?:${streetTypePattern}))\b`,
   "i",
 )
-const addressCandidatePattern = new RegExp(`${streetPattern.source}(?:\\s*,\\s*[^.\\n\\r]{0,90})?`, "i")
+// After the street name the candidate may continue with either a comma clause
+// ("... Street, Titirangi") or an "in <suburb>" clause ("... Street in Titirangi").
+// The "in" form is restricted to a recognised suburb so ordinary "in ..." prose
+// (e.g. "in the back garden") is not swept into the address.
+const addressCandidatePattern = new RegExp(
+  `${streetPattern.source}(?:\\s*,\\s*[^.\\n\\r]{0,90}|\\s+in\\s+(?:${suburbPattern}))?`,
+  "i",
+)
 const terminationPattern =
   /\s*,?\s*\b(labou?r|green\s*waste|greenwaste|one\s+or\s+two\s+bags?|bags?|average|usually|monthly|maintenance|tidy|garden\s+tidy|hedge|hedge\s+trimming|planting|landscaping|electrical|plumbing|fertili[sz]er|sprays?|note|internal\s+note|dog|access|wheelbarrow|materials?|power\s*points?|powerpoints?|downlights?)\b.*$/i
 
@@ -187,6 +194,10 @@ function recognisedSuburbIn(value: string) {
 
 function cleanCandidate(rawCandidate: string, warnings: string[]) {
   let candidate = rawCandidate.replace(/\s+/g, " ").trim()
+
+  // Normalise a spoken "in <suburb>" connector to the comma form so the cleaned
+  // address reads "20 Poplar Street, Titirangi" rather than "... Street in Titirangi".
+  candidate = candidate.replace(new RegExp(`\\s+in\\s+(${suburbPattern})\\b`, "i"), ", $1")
 
   for (const rule of correctionRules) {
     if (!rule.pattern.test(candidate)) {

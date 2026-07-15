@@ -5,6 +5,7 @@ import { extractAddressDetails } from "../address-extraction"
 import { extractClientNameFromTranscript } from "../client-name-extraction"
 import { extractPricing } from "../core/pricing-extraction"
 import { EMPTY_PROCESSED_QUOTE, type ProcessedQuote } from "../processed-quote"
+import { isLabourFinalLine } from "./garden-tidy"
 import { assembleCustomerQuote } from "./index"
 
 const transcript = `Monthly maintenance for Stella at 6 Tarawera Terrace, St Heliers.
@@ -35,6 +36,12 @@ function maintenanceQuote(): ProcessedQuote {
 
 function sectionItems(title: string, assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
   return assembly.sections.find((section) => section.title === title)?.items ?? []
+}
+
+// T7 — the tidy scope work items live on the merged "Labour - main scope" line, before the final
+// labour figure ($ amount or crew/duration allowance).
+function tidyScope(assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
+  return sectionItems("Labour - main scope", assembly).filter((item) => !isLabourFinalLine(item))
 }
 
 function renderedAssembly(assembly: NonNullable<ReturnType<typeof assembleCustomerQuote>>) {
@@ -125,12 +132,15 @@ Keep gates closed due to dog.`
 
   assert.ok(assembly)
   assert.equal(assembly.title, "Monthly Maintenance")
+  // B3: the only site note is a team/access advisory (dog/gates), so it drops out of the
+  // customer quote entirely — no Site Notes section here.
   assert.deepEqual(assembly.sections.map((section) => section.title), [
     "Main Focus",
     "Service Includes",
     "Ongoing Maintenance",
     "Price",
-    "Site Notes",
+    // M5: the GST-inclusive + TOTAL block (James's $495 shows its GST component).
+    "Totals",
   ])
   assert.deepEqual(sectionItems("Main Focus", assembly), ["Pruning", "Trimming"])
   assert.deepEqual(sectionItems("Service Includes", assembly), [
@@ -141,9 +151,11 @@ Keep gates closed due to dog.`
     "Each visit may include weeding, spraying, plant health checks, and general garden maintenance as required",
   ])
   assert.deepEqual(sectionItems("Price", assembly), ["$495 per visit"])
-  assert.deepEqual(sectionItems("Site Notes", assembly), ["Keep gates closed due to dog"])
+  // Team/access note (dog, gates) is NOT customer-facing.
+  assert.deepEqual(sectionItems("Site Notes", assembly), [])
 
   const rendered = renderedAssembly(assembly)
+  assert.equal(/dog|gates?\b/i.test(rendered), false, rendered)
   assert.equal(/4 hours|labou?r per visit/i.test(rendered), false)
   assert.equal(/Title:|Job type:|Cadence:|Scope:/i.test(rendered), false)
 })
@@ -206,12 +218,14 @@ Please keep the side gate shut as there is a dog on the property.`
     "Each visit may include hedge trimming, pruning, weeding, spraying, plant health checks, removal of greenwaste, and general garden maintenance as required",
   ])
   assert.deepEqual(sectionItems("Price", assembly), ["$365 per visit"])
+  // B3: the customer Site Notes keep genuinely customer-relevant info (green waste bin) but
+  // NOT the team/access advisory (dog/gate), which stays internal.
   assert.deepEqual(sectionItems("Site Notes", assembly), [
     "A green waste bin is available on site",
-    "Please keep the side gate shut as there is a dog on the property",
   ])
 
   const rendered = renderedAssembly(assembly)
+  assert.equal(/dog|side gate/i.test(rendered), false, rendered)
   assert.equal(/Title:|Job type:|Cadence:|Scope:|Note:/i.test(rendered), false)
   assert.equal(/Planting labour|legacy \$ labour total/i.test(rendered), false)
 })
@@ -262,12 +276,12 @@ Greenwaste to be removed from site.`
     assert.ok(assembly, `${jobType} should use garden tidy assembly`)
     assert.equal(assembly.title, "One-Off Garden Tidy")
     assert.deepEqual(assembly.sections.map((section) => section.title), [
-      "Scope of Work",
+      "Labour - main scope",
       "Service Includes",
       "Price",
       "Site Notes",
     ])
-    assert.deepEqual(sectionItems("Scope of Work", assembly), [
+    assert.deepEqual(tidyScope(assembly), [
       "Remove overgrowth around boundary",
       "Cut back shrubs",
       "Weed garden beds",
@@ -275,7 +289,7 @@ Greenwaste to be removed from site.`
     ])
     assert.equal(renderedAssembly(assembly).includes("Scope:"), false)
     assert.deepEqual(sectionItems("Service Includes", assembly), ["Greenwaste removal"])
-    assert.deepEqual(sectionItems("Price", assembly), ["$1,440"])
+    assert.deepEqual(sectionItems("Price", assembly), ["$1,440.00"])
     assert.deepEqual(sectionItems("Site Notes", assembly), ["Greenwaste removed from site"])
   }
 })
@@ -330,7 +344,7 @@ Greenwaste to be removed from site.`
 
   assert.ok(assembly)
   assert.equal(assembly.title, "One-Off Garden Tidy")
-  assert.deepEqual(sectionItems("Scope of Work", assembly), [
+  assert.deepEqual(tidyScope(assembly), [
     "Remove overgrowth around boundary",
     "Cut back shrubs",
     "Weed garden beds",
@@ -772,7 +786,7 @@ test("Shirley one-off tidy renders Scope of Work with all three work items", () 
   })
 
   assert.ok(assembly)
-  const scope = sectionItems("Scope of Work", assembly)
+  const scope = tidyScope(assembly)
   assert.ok(scope.length > 0, "Scope of Work section must exist")
   assert.ok(
     scope.some((item) => /mexican\s+elder/i.test(item)),
@@ -804,7 +818,7 @@ test("Shirley one-off tidy renders Labour Allowance section", () => {
   })
 
   assert.ok(assembly)
-  const labour = sectionItems("Labour Allowance", assembly)
+  const labour = sectionItems("Labour - main scope", assembly)
   assert.ok(labour.length > 0, "Labour Allowance section must exist")
   assert.ok(
     labour.some((item) => /two\s+people|2\s+people/i.test(item)),
@@ -863,11 +877,11 @@ test("Shirley one-off tidy is not limited to only Service Includes Greenwaste re
 
   assert.ok(
     assembly.sections.length >= 3,
-    `Quote must have at least 3 sections (Scope of Work, Labour Allowance, Service Includes). Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
+    `Quote must have at least 3 sections (Labour - main scope, Green Waste, Service Includes). Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
   )
   assert.ok(
-    assembly.sections.some((s) => s.title === "Scope of Work"),
-    "Scope of Work section must be present",
+    assembly.sections.some((s) => s.title === "Labour - main scope"),
+    "Labour - main scope section must be present",
   )
   assert.ok(
     /mexican\s+elder/i.test(rendered),
@@ -940,8 +954,8 @@ test("hedge_trimming + One-Off Garden Tidy selectedTemplate object activates gar
 
   assert.ok(assembly)
   assert.equal(assembly.title, "One-Off Garden Tidy")
-  assert.ok(sectionItems("Scope of Work", assembly).some((item) => /mexican\s+elder/i.test(item)))
-  assert.ok(sectionItems("Labour Allowance", assembly).some((item) => /two\s+people/i.test(item)))
+  assert.ok(tidyScope(assembly).some((item) => /mexican\s+elder/i.test(item)))
+  assert.ok(sectionItems("Labour - main scope", assembly).some((item) => /two\s+people/i.test(item)))
   assert.ok(sectionItems("Green Waste", assembly).some((item) => /trailer/i.test(item)))
   assert.ok(sectionItems("Service Includes", assembly).some((item) => /greenwaste\s+removal/i.test(item)))
 })
@@ -962,10 +976,44 @@ test("hedge_trimming + selected_template_name only (no template object) still ac
     assembly.sections.length > 1,
     `selected_template_name fallback must produce more than 1 section. Got: ${assembly.sections.map((s) => s.title).join(", ")}`,
   )
-  assert.ok(sectionItems("Scope of Work", assembly).some((item) => /blowdown/i.test(item)))
+  assert.ok(tidyScope(assembly).some((item) => /blowdown/i.test(item)))
   assert.equal(
-    sectionItems("Scope of Work", assembly).some((item) => /^labour note$/i.test(item)),
+    tidyScope(assembly).some((item) => /^labour note$/i.test(item)),
     false,
     "Bare labour note placeholder must not appear in Scope of Work",
   )
+})
+
+// Regression: the real "Dan" job (hedge_trimming -> tidy). Reproduces the three
+// live customer-render bugs found by running the actual pipeline:
+//  1. a task worded "... to neighbour's level" was dropped by isTeamSiteNote,
+//  2. labour hours parsed as the first "1.5 hours" not "Total of 3.5 hours",
+//  3. hours with no spoken rate went unpriced (now default $80/hr -> $280).
+test("Dan job (tidy): keeps the neighbour-level task and prices 3.5h at the default rate", () => {
+  const danTranscript =
+    "Dan 54 Marua Road, Ellerslie. Trim Tecoma hedge tops to neighbour's level and hard on side 1.5 hours. " +
+    "Trim Michelia 1 hour. Weed spray rock wall 0.5. Total of 3.5 hours."
+  const quote: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Dan",
+    site_address: "54 Marua Road, Ellerslie",
+    quote_title: "One-Off Garden Tidy",
+    job_type: "hedge_trimming",
+    labour_allowance: "3.5 hours",
+    primary_quote: {
+      quote_title: "One-Off Garden Tidy",
+      job_type: "hedge_trimming",
+      cadence: "",
+      scope: ["Trim Tecoma hedge tops to neighbour's level", "Trim Michelia", "Weed spray rock wall"],
+      notes: [],
+    },
+  }
+  const assembly = assembleCustomerQuote({ quote, rawTranscript: danTranscript, pricingFacts: [] })
+  assert.ok(assembly)
+  const scope = sectionItems("Labour - main scope", assembly)
+  assert.ok(scope.some((i) => /neighbour's level/i.test(i)), "neighbour-level task must be retained in customer scope")
+  assert.ok(scope.some((i) => /Trim Michelia/i.test(i)), "Michelia task retained")
+  assert.ok(scope.some((i) => /Weed spray/i.test(i)), "weed spray task retained")
+  assert.ok(scope.some((i) => /\$280\b/.test(i)), "3.5h priced at default $80/hr = $280")
+  assert.ok(!scope.some((i) => i.trim() === "" || i === "[]"), "no empty scope bullet")
 })

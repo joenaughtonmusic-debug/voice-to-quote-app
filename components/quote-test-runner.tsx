@@ -7,6 +7,7 @@ import type { ProcessedQuote } from "@/lib/processed-quote"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { isPrimaryTrade, type PrimaryTrade } from "@/lib/trade-profile"
+import { resolveLabourExportPrice } from "@/lib/export/labour-line-builder"
 
 type Industry =
   | "Gardening / Maintenance"
@@ -947,15 +948,40 @@ function ResultCard({
       {quote && (
         <div className="mt-2 rounded-lg border border-border bg-card p-2">
           <p className="mb-1 text-xs font-semibold text-foreground">Matched JMS Line Items</p>
-          {quote.line_items.length > 0 ? (
-            <div className="space-y-1">
-              {quote.line_items.map((item, index) => (
-                <p key={`${item.item_code}-${index}`} className="text-xs text-muted-foreground">
-                  {[item.item_code, item.item_name || item.description, item.quantity ? `qty ${item.quantity}` : "", item.final_rate_used ? `rate ${item.final_rate_used}` : "", item.total ? `total ${item.total}` : "", item.needs_review ? "review" : ""].filter(Boolean).join(" | ")}
-                </p>
-              ))}
-            </div>
-          ) : (
+          {quote.line_items.length > 0 ? (() => {
+            const labourExportPrice = resolveLabourExportPrice({
+              pricing_facts: undefined,
+              labour_allowance: quote.labour_allowance,
+              primary_quote: quote.primary_quote,
+              line_items: quote.line_items,
+            })
+            return (
+              <div className="space-y-1">
+                {quote.line_items.map((item, index) => {
+                  const isLabourItem = (item.item_type ?? "").toLowerCase() === "labour"
+                  const kbTotal = typeof item.total === "number" ? item.total : Number(item.total ?? NaN)
+                  const exportAmount = labourExportPrice.amount
+                  const showAnnotation =
+                    isLabourItem &&
+                    labourExportPrice.pricingSource !== "unpriced" &&
+                    Number.isFinite(kbTotal) &&
+                    Math.abs(kbTotal - exportAmount) > 0.01
+                  return (
+                    <div key={`${item.item_code}-${index}`}>
+                      <p className="text-xs text-muted-foreground">
+                        {[item.item_code, item.item_name || item.description, item.quantity ? `qty ${item.quantity}` : "", item.final_rate_used ? `rate ${item.final_rate_used}` : "", item.total ? `total ${item.total}` : "", item.needs_review ? "review" : ""].filter(Boolean).join(" | ")}
+                      </p>
+                      {showAnnotation && (
+                        <p className="text-xs font-medium text-amber-600">
+                          KB matched total: ${kbTotal.toFixed(2)} → export price: ${exportAmount.toFixed(2)} from {labourExportPrice.pricingSource === "structured_allowance" ? "structured allowance" : "spoken fixed price"}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })() : (
             <p className="text-xs text-muted-foreground">No line items.</p>
           )}
         </div>

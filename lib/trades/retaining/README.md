@@ -4,7 +4,7 @@ This module is an isolated foundation for retaining wall intelligence. It follow
 
 ## Boundary
 
-Universal Quotecord behaviour remains outside this module:
+Universal Talk to Quote behaviour remains outside this module:
 
 - transcript capture
 - transcription

@@ -4,9 +4,13 @@ import test from "node:test"
 
 import { extractAddressDetails } from "./address-extraction"
 import { extractClientNameFromTranscript } from "./client-name-extraction"
+import { assembleMaintenanceCustomerQuote } from "./customer-quote-assembly/maintenance"
+import { extractMaintenancePricingFacts } from "./export/maintenance-pricing-facts"
+import { resolveMaintenanceVisitPrice } from "./export/maintenance-visit-price"
 import { buildPricingReviewNotices, extractPricing } from "./core/pricing-extraction"
 import type { QuoteFact, QuoteFactCategory } from "./core/quote-facts"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
+import { isTeamSiteNote } from "./customer-quote-assembly/internal-scope-signals"
 import { buildCustomerPreviewQuoteInput } from "./customer-preview-flow"
 import { buildCustomerDraftPreviewModel, renderCustomerDraftPreviewText } from "./customer-preview-render"
 import { buildCustomerQuotePreview, type CustomerPreviewLineItem, type CustomerPreviewQuote } from "./customer-quote-preview"
@@ -374,7 +378,9 @@ test("maintenance MVP uses the real customer preview/template path", () => {
 
   for (const model of [standardPreviewModel, templatePreviewModel]) {
     const sectionTitles = model.assembly?.sections.map((section) => section.title) ?? []
-    assert.deepEqual(sectionTitles, ["Main Focus", "Service Includes", "Ongoing Maintenance", "Price", "Site Notes"])
+    // M5 adds the Totals block (GST-inclusive + TOTAL) — Stella's $405 shows its GST component even
+    // though greenwaste and extras are folded into the single visit price.
+    assert.deepEqual(sectionTitles, ["Main Focus", "Service Includes", "Ongoing Maintenance", "Price", "Totals", "Site Notes"])
     assert.deepEqual(model.assembly?.sections.find((section) => section.title === "Main Focus")?.items, [
       "Weeding",
       "Pruning",
@@ -490,13 +496,89 @@ Please keep the side gate shut as dog on the property.`
   assert.equal(includesText(renderedText, "Greenwaste removal"), true, renderedText)
   assert.equal(includesText(renderedText, "Standard maintenance materials"), true, renderedText)
   assert.equal(includesText(renderedText, "A green waste bin is available on site"), true, renderedText)
-  assert.equal(includesText(renderedText, "Please keep the side gate shut as dog on the property"), true, renderedText)
+  // B3: the team/access advisory (gate shut / dog) is NOT customer-facing — it stays internal.
+  assert.equal(includesText(renderedText, "Please keep the side gate shut as dog on the property"), false, renderedText)
+  assert.equal(/\bdog\b|side gate/i.test(renderedText), false, renderedText)
   assert.equal((renderedText.match(/^General garden maintenance(?: as required)?$/gim) ?? []).length, 0, renderedText)
   assert.equal((renderedText.match(/green waste bin available on site|green waste bin is available on site/gi) ?? []).length, 1, renderedText)
-  assert.equal((renderedText.match(/Please keep the side gate shut as dog on the property/gi) ?? []).length, 1, renderedText)
   assert.equal(/Title:|Job type:|Cadence:|Scope:|Note:/i.test(renderedText), false, renderedText)
   assert.equal(includesText(renderedText, "Planting labour"), false, renderedText)
   assert.equal(/\$320(?:\.00)?/.test(renderedText), false, renderedText)
+})
+
+// B3 — team/site notes (dog, gates, access, hazards, parking, steep driveway) must never
+// reach the customer quote; they stay in the internal notes. Deterministic fixtures.
+
+function b3MaintenanceModel(quote: ProcessedQuote) {
+  const previewInput = buildCustomerPreviewQuoteInput({ processedQuote: quote, rawTranscript: "" })
+  const preview = buildCustomerQuotePreview(previewInput)
+  return buildCustomerDraftPreviewModel({ processedQuote: quote, customerPreview: preview, rawTranscript: "" })
+}
+
+test("B3 Fiona maintenance — dog/gates team note stays out of the customer quote, retained internally", () => {
+  const fiona: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Fiona",
+    site_address: "4 Wiriki Road, Mount Eden",
+    quote_title: "maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "maintenance",
+      job_type: "maintenance",
+      cadence: "two-monthly",
+      scope: ["Garden maintenance", "Weeding", "Pruning"],
+      notes: ["Note: Need to ensure gates are closed when visiting due to a dog on the property"],
+    },
+  }
+
+  const model = b3MaintenanceModel(fiona)
+  const rendered = renderCustomerDraftPreviewText(model)
+
+  assert.equal(/\bdog\b|\bgates?\b/i.test(rendered), false, `Team note leaked to rendered quote: ${rendered}`)
+  assert.equal(model.scopeItems.some((i) => /dog|gate/i.test(i)), false, `Team note in customer scope field: ${model.scopeItems.join(" | ")}`)
+  const siteNotes = model.assembly?.sections.find((s) => s.title === "Site Notes")?.items ?? []
+  assert.equal(siteNotes.some((i) => /dog|gate/i.test(i)), false, `Team note in customer Site Notes: ${siteNotes.join(" | ")}`)
+  // Retained internally so the crew still gets it.
+  assert.ok(fiona.primary_quote.notes.some((n) => /dog|gate/i.test(n)), "team note must remain in internal notes")
+})
+
+test("B3 Rachel maintenance — steep driveway / park on street stays out of customer scope", () => {
+  const rachel: ProcessedQuote = {
+    ...EMPTY_PROCESSED_QUOTE,
+    client_name: "Rachel",
+    site_address: "18 Arnie Road, Remuera",
+    quote_title: "maintenance",
+    job_type: "maintenance",
+    primary_quote: {
+      ...EMPTY_PROCESSED_QUOTE.primary_quote,
+      quote_title: "maintenance",
+      job_type: "maintenance",
+      cadence: "monthly",
+      scope: ["Monthly maintenance", "Small sprays as needed"],
+      notes: ["Steep driveway", "Park on street"],
+    },
+  }
+
+  const model = b3MaintenanceModel(rachel)
+  const rendered = renderCustomerDraftPreviewText(model)
+
+  assert.equal(/steep driveway|park on street/i.test(rendered), false, `Team note leaked to rendered quote: ${rendered}`)
+  assert.equal(
+    model.scopeItems.some((i) => /steep driveway|park on street/i.test(i)),
+    false,
+    `Team note in customer scope field: ${model.scopeItems.join(" | ")}`,
+  )
+  assert.ok(rachel.primary_quote.notes.some((n) => /steep|park/i.test(n)), "team note must remain in internal notes")
+})
+
+test("B3 guard — a genuine work item with an access noun is NOT treated as a team note", () => {
+  // "install a gate" and "improve access path" are work items, not advisories — they must survive.
+  assert.equal(isTeamSiteNote("Install a new side gate"), false)
+  assert.equal(isTeamSiteNote("Improve the access path to the back garden"), false)
+  // Advisories are team notes.
+  assert.equal(isTeamSiteNote("Please keep the side gate shut as there is a dog"), true)
+  assert.equal(isTeamSiteNote("Steep driveway, park on street"), true)
 })
 
 test("maintenance draft preview handoff uses edited quote instead of stale parent quote", () => {
@@ -559,4 +641,228 @@ test("maintenance draft preview handoff uses edited quote instead of stale paren
   assert.equal(includesText(renderedText, "Service Includes"), true, renderedText)
   assert.equal(includesText(renderedText, "$405 per visit"), true, renderedText)
   assert.equal(includesText(renderedText, "Planting labour"), false, renderedText)
+})
+
+// ── M1 — deterministic maintenance pricing-facts layer ─────────────────────
+// Foundation for the maintenance send-ready series (M2 per-visit price, M3 greenwaste line,
+// M4 priced extras, M5 frequency). Parsed straight from the RAW transcript so figures are stable
+// run-to-run. Stella is the real MVP-acceptance transcript; Nadia (QU-0521) and Brett (QU-0569)
+// are representative transcripts built from the answer keys (no raw transcripts on file) — graded
+// on the SPOKEN facts + the rules, matching how the tidy series was graded.
+
+const M1_NADIA_TRANSCRIPT =
+  "Six-weekly garden maintenance for Nadia at 1a Meyrick Place, Meadowbank. $285 per visit. " +
+  "Removal of greenwaste is charged separately at $26.50 per visit, ranging from $26.50 up to $66.25. " +
+  "Sprays and extras roughly $10. Tool maintenance and servicing $12. " +
+  "Main focus will be hedge trimming, weeding beds, and removal of self-seeded plants."
+
+const M1_BRETT_TRANSCRIPT =
+  "Ongoing lawns and garden maintenance for Brett at 19a Blockhouse Bay Road, two-monthly. " +
+  "$467.50 per visit, with lawn mowing carried out between visits, increasing over summer. " +
+  "A standard amount of greenwaste removal is included within the service. " +
+  "Petrol for the mower is $7 per visit."
+
+test("M1 Stella — parses per-visit price, monthly cadence and greenwaste-included from the real transcript", () => {
+  const facts = extractMaintenancePricingFacts(acceptanceTranscript())
+  assert.equal(facts.spokenPerVisitPrice, 405, "'Price per visit $405'")
+  assert.equal(facts.cadence, "monthly")
+  assert.equal(facts.labourHours, 4.5, "'4.5 hours labour per visit'")
+  assert.equal(facts.greenwasteIncluded, true, "'$405 including greenwaste removal' folds greenwaste in")
+  assert.equal(facts.spokenGreenwasteTotal, null, "no separate greenwaste figure when it is included")
+})
+
+test("M1 Nadia — per-visit $285, six-weekly, greenwaste its own $26.50, sprays and tool servicing captured", () => {
+  const facts = extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT)
+  assert.equal(facts.spokenPerVisitPrice, 285)
+  assert.equal(facts.cadence, "six_weekly")
+  assert.equal(facts.greenwasteIncluded, false, "charged separately, not folded in")
+  assert.equal(facts.spokenGreenwasteTotal, 26.5, "trailing-$ greenwaste total is captured")
+  assert.deepEqual(
+    facts.extras.map((e) => e.name).sort(),
+    ["Sprays / extras", "Tool servicing"],
+    "sprays and tool servicing captured as extras (pricing/classification is M4)",
+  )
+})
+
+test("M1 Brett — per-visit $467.50, two-monthly, greenwaste included, petrol captured as an extra", () => {
+  const facts = extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT)
+  assert.equal(facts.spokenPerVisitPrice, 467.5)
+  assert.equal(facts.cadence, "two_monthly")
+  assert.equal(facts.greenwasteIncluded, true)
+  assert.equal(facts.spokenGreenwasteTotal, null, "included greenwaste yields no separate figure")
+  assert.deepEqual(facts.extras.map((e) => e.name), ["Petrol"])
+})
+
+test("M1 — the same transcript yields identical facts across repeated runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT), extractMaintenancePricingFacts(M1_NADIA_TRANSCRIPT))
+    assert.deepEqual(extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT), extractMaintenancePricingFacts(M1_BRETT_TRANSCRIPT))
+  }
+})
+
+// ── M2 — per-visit price anchor (reuses the tidy labour engine) ─────────────
+// A spoken per-visit total wins; otherwise the tidy engine computes hours × people × rate. The
+// computed rule number is graded on correct computation + being editable (Joe adjusts by feel).
+
+function resolveVisitPrice(transcript: string) {
+  return resolveMaintenanceVisitPrice(extractMaintenancePricingFacts(transcript), transcript)
+}
+
+function priceLine(transcript: string) {
+  const assembly = assembleMaintenanceCustomerQuote({ quote: EMPTY_PROCESSED_QUOTE, rawTranscript: transcript })
+  return assembly.sections.find((s) => s.title === "Price")?.items ?? []
+}
+
+test("M2 — a spoken per-visit total wins (Stella $405, Nadia $285, Brett $467.50)", () => {
+  const stella = resolveVisitPrice(acceptanceTranscript())
+  assert.deepEqual([stella.pricingSource, stella.amount], ["spoken_per_visit", 405])
+  const nadia = resolveVisitPrice(M1_NADIA_TRANSCRIPT)
+  assert.deepEqual([nadia.pricingSource, nadia.amount], ["spoken_per_visit", 285])
+  const brett = resolveVisitPrice(M1_BRETT_TRANSCRIPT)
+  assert.deepEqual([brett.pricingSource, brett.amount], ["spoken_per_visit", 467.5])
+})
+
+test("M2 — with no spoken total, the price is computed as hours × rate via the tidy engine", () => {
+  // "3 hours per visit at $75 an hour" → 3 × 1 × 75 = $225. The "$75 an hour" is the rate, not the
+  // per-visit total, so it must NOT be read as a spoken price.
+  const resolved = resolveVisitPrice("Fortnightly maintenance for Tom. Allow 3 hours per visit at $75 an hour.")
+  assert.equal(resolved.pricingSource, "computed_day_rate")
+  assert.equal(resolved.amount, 225)
+})
+
+test("M2 — a per-visit rate PER PERSON multiplies by crew size (full-day rule reused)", () => {
+  // "full day, two people at $80/hr" → 7.5h × 2 × $80 = $1,200 (the tidy day-rate rule, reused).
+  const resolved = resolveVisitPrice("Weekly maintenance. Full day, two people at $80 an hour.")
+  assert.equal(resolved.pricingSource, "computed_day_rate")
+  assert.equal(resolved.amount, 1200)
+})
+
+test("M2 — no spoken total and no rate stays unpriced (flagged, never guessed)", () => {
+  // Stella's "4.5 hours labour per visit" alone (no rate) computes nothing — but she DOES state a
+  // spoken $405, so isolate the rate-less case here.
+  const resolved = resolveVisitPrice("Monthly maintenance for Kate. Allow 4.5 hours labour per visit.")
+  assert.equal(resolved.pricingSource, "unpriced")
+  assert.equal(resolved.amount, 0)
+})
+
+test("M2 — the assembled customer quote shows a deterministic '$X per visit' line", () => {
+  assert.deepEqual(priceLine(M1_NADIA_TRANSCRIPT), ["$285 per visit"])
+  assert.deepEqual(priceLine(M1_BRETT_TRANSCRIPT), ["$467.50 per visit"])
+  assert.deepEqual(priceLine(acceptanceTranscript()), ["$405 per visit"])
+})
+
+test("M2 — the resolved per-visit price is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.equal(resolveVisitPrice(M1_NADIA_TRANSCRIPT).amount, 285)
+    assert.equal(resolveVisitPrice("Fortnightly maintenance. Allow 3 hours per visit at $75 an hour.").amount, 225)
+  }
+})
+
+// ── M3 — greenwaste line: separate priced line by default, folded when "included" ───────────
+// Applies Joe's rule: fold greenwaste into the visit price when spoken as included (Brett/Stella);
+// itemise it as its own priced line when charged separately (Nadia $26.50, with the range note).
+
+function assemblySection(transcript: string, title: string) {
+  const assembly = assembleMaintenanceCustomerQuote({ quote: EMPTY_PROCESSED_QUOTE, rawTranscript: transcript })
+  return assembly.sections.find((s) => s.title === title)?.items ?? []
+}
+
+test("M3 Nadia — greenwaste is its own $26.50 line with the range note, not folded into the service", () => {
+  const greenWaste = assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste")
+  assert.equal(greenWaste.length, 1, greenWaste.join(" | "))
+  assert.match(greenWaste[0] ?? "", /\$26\.50/)
+  assert.match(greenWaste[0] ?? "", /range \$26\.50–\$66\.25/)
+  // Not also duplicated in Service Includes when it is a separate priced line.
+  const includes = assemblySection(M1_NADIA_TRANSCRIPT, "Service Includes")
+  assert.ok(!includes.some((i) => /green\s*waste/i.test(i)), `Greenwaste must not double up in Service Includes. Got: ${includes.join(" | ")}`)
+})
+
+test("M3 Brett — greenwaste is included in the service, so there is no separate Green Waste line", () => {
+  const greenWaste = assemblySection(M1_BRETT_TRANSCRIPT, "Green Waste")
+  assert.deepEqual(greenWaste, [], `Included greenwaste must not show a priced line. Got: ${greenWaste.join(" | ")}`)
+})
+
+test("M3 Stella — greenwaste is included ($405 covers it), so no separate line but still a service inclusion", () => {
+  const transcript = acceptanceTranscript()
+  assert.deepEqual(assemblySection(transcript, "Green Waste"), [])
+  const includes = assemblySection(transcript, "Service Includes")
+  assert.ok(includes.some((i) => /green\s*waste/i.test(i)), `Stella's included greenwaste should remain a service inclusion. Got: ${includes.join(" | ")}`)
+})
+
+test("M3 — a stated bag/trailer quantity prices greenwaste via the tidy rule when no $ is spoken", () => {
+  // "two bags of greenwaste" → 2 × $26.50 = $53.00 (tidy rule, reused). Not spoken as included.
+  const greenWaste = assemblySection(
+    "Six-weekly maintenance for Ken. $300 per visit. Weeding and pruning. Two bags of greenwaste removed each visit.",
+    "Green Waste",
+  )
+  assert.equal(greenWaste.length, 1, greenWaste.join(" | "))
+  // "$53" (whole dollars, no cents) is consistent with the per-visit format; M6 standardises every
+  // line to 2dp ("$53.00") as part of the GST/TOTAL invoice pass.
+  assert.match(greenWaste[0] ?? "", /\$53\b/)
+})
+
+test("M3 — the greenwaste line is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste"), assemblySection(M1_NADIA_TRANSCRIPT, "Green Waste"))
+  }
+})
+
+// ── M4 — priced extras: fold when included, itemise as own line when separately priced ──────
+
+test("M4 Nadia — sprays $10 and tool servicing $12 each itemise as their own line", () => {
+  const extras = assemblySection(M1_NADIA_TRANSCRIPT, "Extras")
+  assert.deepEqual(extras, ["Sprays / extras — $10", "Tool servicing — $12"], extras.join(" | "))
+  // Not double-counted under Service Includes.
+  const includes = assemblySection(M1_NADIA_TRANSCRIPT, "Service Includes")
+  assert.ok(!includes.some((i) => /spray|tool/i.test(i)), `Itemised extras must not double up. Got: ${includes.join(" | ")}`)
+})
+
+test("M4 Brett — petrol $7 itemises as its own line", () => {
+  assert.deepEqual(assemblySection(M1_BRETT_TRANSCRIPT, "Extras"), ["Petrol — $7"])
+})
+
+test("M4 Stella — herbicide spraying is included in the visit price, so it does not itemise", () => {
+  const transcript = acceptanceTranscript()
+  const extras = assemblySection(transcript, "Extras")
+  assert.ok(!extras.some((i) => /spray|herbicide/i.test(i)), `Included herbicide must not itemise. Got: ${extras.join(" | ")}`)
+  // It remains a service inclusion (per the MVP acceptance).
+  const includes = assemblySection(transcript, "Service Includes")
+  assert.ok(includes.some((i) => /spray|herbicide/i.test(i)), `Stella's included spraying should stay a service inclusion. Got: ${includes.join(" | ")}`)
+})
+
+test("M4 — an extra mentioned with no price is flagged, never guessed", () => {
+  const extras = assemblySection(
+    "Six-weekly maintenance for Ivy. $260 per visit. Weeding and pruning. Petrol for the mower each visit.",
+    "Extras",
+  )
+  assert.deepEqual(extras, ["Petrol — price to confirm"])
+})
+
+test("M4 — the extras lines are identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Extras"), ["Sprays / extras — $10", "Tool servicing — $12"])
+  }
+})
+
+// ── M5 — subtotal + GST-inclusive + TOTAL (per-line GST, matches the answer keys) ───────────
+
+test("M5 Nadia — TOTAL $333.50 with GST $43.50 (285 + 26.50 + 10 + 12)", () => {
+  const totals = assemblySection(M1_NADIA_TRANSCRIPT, "Totals")
+  assert.deepEqual(totals, ["Includes GST (15%): $43.50", "Total (NZD): $333.50 per visit"], totals.join(" | "))
+})
+
+test("M5 Brett — TOTAL $474.50 with GST $61.89 (467.50 + 7)", () => {
+  const totals = assemblySection(M1_BRETT_TRANSCRIPT, "Totals")
+  assert.deepEqual(totals, ["Includes GST (15%): $61.89", "Total (NZD): $474.50 per visit"], totals.join(" | "))
+})
+
+test("M5 — no TOTAL until the visit price is priced (the visit price is the anchor)", () => {
+  // A rate-less "4.5 hours" with no spoken per-visit price computes nothing → no totals block.
+  assert.deepEqual(assemblySection("Monthly maintenance for Kate. Allow 4.5 hours labour per visit.", "Totals"), [])
+})
+
+test("M5 — the totals block is identical across repeat runs (deterministic)", () => {
+  for (const _ of [1, 2, 3, 4, 5]) {
+    assert.deepEqual(assemblySection(M1_NADIA_TRANSCRIPT, "Totals"), ["Includes GST (15%): $43.50", "Total (NZD): $333.50 per visit"])
+  }
 })

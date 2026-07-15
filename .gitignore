@@ -5,3 +5,13 @@ node_modules
 .env.local
 .env
 .next/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+repomix-output.xml
+
+# Local supplier price-list CSVs for import spot-checks (not committed)
+import-samples/

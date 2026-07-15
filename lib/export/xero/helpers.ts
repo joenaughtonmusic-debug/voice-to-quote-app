@@ -1,6 +1,20 @@
 import type { CustomerPreviewQuote } from "../../customer-quote-preview"
+import type { PricingFact } from "../../core/pricing-extraction"
 import type { QuoteOption } from "../../quote-options"
-import type { MakeXeroQuoteLineItem, XeroExportLineItem, XeroQuoteLineItem } from "./types"
+import type { MakeXeroQuoteLineItem, XeroExportLineItem, XeroPayloadQuote, XeroQuoteLineItem } from "./types"
+
+export const CUSTOMER_PRICE_NOT_CAPTURED_WARNING =
+  "Customer price not captured. Enter price before sending/exporting."
+
+export function spokenCustomerFixedPrice(quote: Pick<XeroPayloadQuote, "pricing_facts">) {
+  return (quote.pricing_facts ?? []).find(
+    (fact: PricingFact) => fact.type === "fixed_price" && typeof fact.amount === "number" && Number.isFinite(fact.amount),
+  )
+}
+
+export function hasSpokenCustomerFixedPrice(quote: Pick<XeroPayloadQuote, "pricing_facts">) {
+  return Boolean(spokenCustomerFixedPrice(quote))
+}
 
 export function numberFromMoney(value: string | undefined) {
   if (!value) return null
@@ -117,6 +131,36 @@ export function labourLineItem(quote: CustomerPreviewQuote) {
     .sort((a, b) => b.total - a.total)
 
   return priced[0]?.item ?? null
+}
+
+function greenwasteLineItemScore(item: CustomerPreviewQuote["line_items"][number]) {
+  const text = lineItemText(item)
+  if (/\blabou?r\b/i.test(text)) return -1
+  if (/\bgreen\s*waste|greenwaste\b/i.test(text)) return 3
+  if (/\btip fee|off loading|vehicle servicing\b/i.test(text)) return 2
+  if (/\bwaste|removal|disposal\b/i.test(text)) return 1
+  return 0
+}
+
+export function greenwasteLineItem(quote: CustomerPreviewQuote) {
+  const wasteItems = quote.line_items
+    .filter((item) => greenwasteLineItemScore(item) > 0)
+    .sort((a, b) => greenwasteLineItemScore(b) - greenwasteLineItemScore(a))
+
+  return wasteItems[0] ?? null
+}
+
+export function pricedAmountFromLineItem(item: CustomerPreviewQuote["line_items"][number] | null | undefined) {
+  if (!item) return null
+  const total = numberFromValue(item.total)
+  if (total !== null) return total
+
+  const rate = numberFromValue(item.final_rate_used ?? item.rate ?? item.knowledge_base_rate ?? item.override_rate)
+  const quantity = numberFromValue(item.quantity)
+  if (rate !== null && quantity !== null) return rate * quantity
+  if (rate !== null) return rate
+
+  return explicitPriceFromText([item.description, item.item_name, item.match_reason].filter(Boolean).join(" "))
 }
 
 export function materialQuantityFromText(item: CustomerPreviewQuote["line_items"][number], label: RegExp) {

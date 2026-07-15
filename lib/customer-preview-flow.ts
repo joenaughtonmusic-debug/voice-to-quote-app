@@ -30,6 +30,9 @@ export function buildCustomerPreviewQuoteInput({
     customer_scope: uniqueLines([...(processedQuote.customer_scope ?? []), ...transcriptScope]),
     selected_template: selectedTemplateForPreview(selectedTemplate),
     pricing_facts: resolvedPricingFacts,
+    // Carry the raw transcript so the deterministic tidy pricing facts (T1) fire identically on
+    // the export payload as on the customer draft — keeping draft and Xero export in parity.
+    raw_transcript: rawTranscript ?? originalTranscript ?? null,
   }
 }
 
@@ -100,7 +103,6 @@ function quoteTextForPricing(quote: ProcessedQuote) {
     ...(quote.materials ?? []),
     quote.greenwaste,
     ...(quote.exclusions ?? []),
-    ...(quote.internal_notes ?? []),
     ...(quote.missing_information ?? []),
     ...(quote.confidence_warnings ?? []),
   ].join("\n")

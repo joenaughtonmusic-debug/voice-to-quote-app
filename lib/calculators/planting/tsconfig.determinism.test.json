@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../../.tmp/planting-determinism-tests",
+    "rootDir": "../../..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["./index.ts", "./determinism.test.ts"]
+}

@@ -2,10 +2,12 @@ import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput } from "./types"
 import { assembleDeckingCustomerQuote, hasDeckingAssemblyFacts } from "./decking"
 import { assembleFencingCustomerQuote, hasFencingAssemblyFacts } from "./fencing"
 import { assembleGardenTidyCustomerQuote } from "./garden-tidy"
+import { assembleGeneralLandscapingCustomerQuote, hasGeneralLandscapingFacts } from "./general-landscaping"
 import { assembleMaintenanceCustomerQuote } from "./maintenance"
 import { assemblePavingCustomerQuote, hasPavingAssemblyFacts } from "./paving"
 import { assemblePlantingCustomerQuote } from "./planting"
 import { assembleRetainingCustomerQuote, hasRetainingAssemblyFacts } from "./retaining"
+import { isPrimaryLandscapingQuote, isPrimaryPlantingQuote } from "../customer-renderer-intent"
 
 function isMaintenance(value: string | null | undefined) {
   return /\bmaintenance|garden\s+maintenance\b/i.test(value ?? "")
@@ -34,6 +36,10 @@ function isDecking(value: string | null | undefined) {
 
 function isRetaining(value: string | null | undefined) {
   return /\bretaining|retaining\s+wall\b/i.test(value ?? "")
+}
+
+function isGeneralLandscaping(value: string | null | undefined) {
+  return /\blandscaping|general_landscaping|garden_bed(?:_renovation)?|garden.bed.(?:works?|renov)|miscellaneous\b/i.test(value ?? "")
 }
 
 function isFencing(value: string | null | undefined) {
@@ -137,16 +143,40 @@ export function assembleCustomerQuote(input: CustomerQuoteAssemblyInput): Custom
     return assemblePavingCustomerQuote(input)
   }
 
-  if ((isPlanting(input.quote.job_type) || isPlanting(input.quote.primary_quote.job_type)) && hasPlantingFacts(input)) {
+  // Milestone 2 — the planting assembler is used only when the PRIMARY work is genuinely
+  // planting. A mixed landscaping job whose job_type was mutated to a planting label (once
+  // its OPTIONAL hedge was calculated) must not collapse into the planting quote.
+  if (
+    (isPlanting(input.quote.job_type) || isPlanting(input.quote.primary_quote.job_type)) &&
+    hasPlantingFacts(input) &&
+    isPrimaryPlantingQuote(input.quote)
+  ) {
     return assemblePlantingCustomerQuote(input)
   }
 
-  if (isPlanting(selectedTemplateText(input)) && hasPlantingFacts(input)) {
+  // A selected planting TEMPLATE likewise cannot force the planting assembler unless the
+  // primary work is genuinely planting (template stays metadata, never hijacks the quote).
+  if (isPlanting(selectedTemplateText(input)) && hasPlantingFacts(input) && isPrimaryPlantingQuote(input.quote)) {
     return assemblePlantingCustomerQuote(input)
   }
 
   if (isMaintenance(input.quote.job_type) || isMaintenance(input.quote.primary_quote.job_type)) {
     return assembleMaintenanceCustomerQuote(input)
+  }
+
+  // General landscaping: job types like "landscaping", "garden_bed_renovation", "general_landscaping".
+  // Activates when the job_type signals general landscaping, OR when the QuotePlan's
+  // primary trade is landscaping (Milestone 2) — the latter catches mixed jobs whose
+  // job_type was mutated to a planting/retaining label by the output normalisers. The
+  // specific-trade routes above (retaining/decking/paving/fencing/planting) run first and
+  // fire on their own job_type, so a genuine single-trade job never reaches here.
+  if (
+    (isGeneralLandscaping(input.quote.job_type) ||
+      isGeneralLandscaping(input.quote.primary_quote.job_type) ||
+      isPrimaryLandscapingQuote(input.quote)) &&
+    hasGeneralLandscapingFacts(input)
+  ) {
+    return assembleGeneralLandscapingCustomerQuote(input)
   }
 
   return null

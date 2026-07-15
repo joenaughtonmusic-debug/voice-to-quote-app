@@ -79,3 +79,44 @@ export function transcriptMentionsHedgeTrimming(transcript: string) {
     transcript,
   )
 }
+
+/**
+ * The single source of truth for distinct NON-PLANTING structural-trade items. A tight allow-list
+ * of unambiguous construction nouns — it must NOT match planting-adjacent edging like a "timber
+ * board border" around a planting bed, so a pure planting job (Michelia / Client A) is never
+ * mistaken for a mixed one. Both the AI-0 classification guard and the AI-0b extraction coverage
+ * check derive from this list, so "what should be there" is deterministic, never an AI guess.
+ */
+export const NON_PLANTING_STRUCTURAL_TRADES: ReadonlyArray<{ label: string; pattern: RegExp }> = [
+  { label: "paving / paver area", pattern: /\b(pavers?|paving|paved\s+area)\b/i },
+  { label: "retaining wall", pattern: /\bretaining\s+wall\b/i },
+  { label: "decking", pattern: /\bdecking\b/i },
+  { label: "hard fill", pattern: /\bhard\s?fill\b/i },
+]
+
+/** True when the transcript mentions any distinct non-planting structural trade (see the list). */
+export function transcriptMentionsNonPlantingStructuralTrade(transcript: string) {
+  return NON_PLANTING_STRUCTURAL_TRADES.some((trade) => trade.pattern.test(transcript))
+}
+
+/**
+ * AI-0 mixed-trade guard. When a job is classified as pure planting but the transcript ALSO
+ * describes a distinct non-planting structural trade (e.g. a paver area alongside planting),
+ * it is a MIXED landscaping job: re-route it to `general_landscaping` so the general-landscaping
+ * extraction/assembly captures ALL scope (the paver would otherwise be dropped by the planting
+ * specialist). Deterministic, plan/model-agnostic, and narrow: it only overrides `planting`, and
+ * only when a hard structural-trade noun is present. Any other classification is returned as-is.
+ */
+export function refineMixedLandscapingClassification(
+  classification: QuoteClassification,
+  transcript: string,
+): QuoteClassification {
+  if (classification.specialist !== "planting") return classification
+  if (!transcriptMentionsNonPlantingStructuralTrade(transcript)) return classification
+  return {
+    specialist: "landscaping",
+    reason:
+      "Mixed landscaping: planting plus a distinct non-planting structural trade (paving/retaining/decking/hard fill) " +
+      `was detected, so the job is routed to general landscaping rather than pure planting. Original: ${classification.reason}`,
+  }
+}

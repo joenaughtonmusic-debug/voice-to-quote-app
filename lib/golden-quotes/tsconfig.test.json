@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/golden-quotes-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./index.test.ts",
+    "./contracts.ts",
+    "./runner.ts",
+    "./fixtures/michelia-planting.ts",
+    "./fixtures/garden-bed-renovation.ts",
+    "./fixtures/client-b-titirangi.ts"
+  ]
+}

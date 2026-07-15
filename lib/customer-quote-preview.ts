@@ -2,6 +2,7 @@ import type { PlantCalculatorResult } from "./calculators/planting"
 import type { PricingFact } from "./core/pricing-extraction"
 import { quoteFactsFromProcessedQuote } from "./core/quote-facts"
 import { resolveServiceLineLabel } from "./core/service-line-labels"
+import { hasInternalScopeSignal } from "./customer-quote-assembly/internal-scope-signals"
 import { groupCustomerQuoteOptions, type CustomerQuoteOptionGroup } from "./customer-quote-options"
 import { renderDeckingCustomerScopeFromQuoteFacts } from "./trades/decking/customer-renderer"
 import { renderRetainingCustomerScopeFromQuoteFacts } from "./trades/retaining/customer-renderer"
@@ -48,6 +49,8 @@ export type CustomerPreviewQuote = {
   plant_calculator_results?: PlantCalculatorResult[]
   selected_template?: SelectedQuoteTemplate | null
   pricing_facts?: PricingFact[]
+  /** Raw transcript — fixed source for deterministic tidy pricing facts (T1). */
+  raw_transcript?: string | null
 }
 
 export type CustomerPreviewPlantOption = {
@@ -414,8 +417,14 @@ export function buildCustomerQuotePreview(
   const deckingScopeItems = options.includeDeckingScope ? renderDeckingCustomerScopeFromQuoteFacts(quoteFacts) : []
   const retainingScopeItems = options.includeRetainingScope ? renderRetainingCustomerScopeFromQuoteFacts(quoteFacts) : []
   const renderedScopeItems = rendered.customerScope.length > 0 ? rendered.customerScope : fallbackCustomerScope(quote)
-  const scopeItems =
+  const scopeItems = (
     retainingScopeItems.length > 0 ? retainingScopeItems : deckingScopeItems.length > 0 ? deckingScopeItems : renderedScopeItems
+  )
+    // PRODUCTION_DIRECTION hard rule: a labour basis, greenwaste quantity/price, dump/tip
+    // rate, weekday/"labour note" reminder, or option-planning chatter must never reach the
+    // customer scope — regardless of whether it came from primary_quote.notes or an
+    // AI-narrated customer_scope line. Genuine work activities carry no such signal.
+    .filter((item) => !hasInternalScopeSignal(item))
 
   return {
     scopeItems,

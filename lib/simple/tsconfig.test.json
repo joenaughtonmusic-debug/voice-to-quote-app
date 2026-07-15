@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/simple-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": [
+    "./simple.test.ts",
+    "./types.ts",
+    "./draft-row.ts",
+    "./pricing.ts",
+    "./templates.ts",
+    "./extraction.ts",
+    "./xero.ts"
+  ]
+}

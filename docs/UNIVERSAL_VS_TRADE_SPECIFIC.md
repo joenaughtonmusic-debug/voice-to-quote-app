@@ -1,8 +1,8 @@
 # Universal vs Trade-Specific Architecture
 
-This document audits which parts of Quotecord should remain universal across trades and which parts are currently trade-specific. It exists to protect Quotecord from quietly becoming a gardening or landscaping-only product while planting features are being built out.
+This document audits which parts of Talk to Quote should remain universal across trades and which parts are currently trade-specific. It exists to protect Talk to Quote from quietly becoming a gardening or landscaping-only product while planting features are being built out.
 
-Quotecord's product direction remains universal: the app should support gardening maintenance, landscaping, building, electrical, plumbing, painting, cleaning, arborist, and multi-trade businesses. Trade-specific intelligence is encouraged, but it must be isolated behind clear modules, renderers, calculators, templates, mappings, or user configuration.
+Talk to Quote's product direction remains universal: the app should support gardening maintenance, landscaping, building, electrical, plumbing, painting, cleaning, arborist, and multi-trade businesses. Trade-specific intelligence is encouraged, but it must be isolated behind clear modules, renderers, calculators, templates, mappings, or user configuration.
 
 ## Current Architecture Summary
 

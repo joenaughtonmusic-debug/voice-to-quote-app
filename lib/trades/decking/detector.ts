@@ -1,5 +1,12 @@
 import type { DeckingAreaRequest, DeckingDetectionResult } from "./types"
 
+// Explicit decking intent. A job is only decking when the transcript names a
+// deck or a deck-specific structural element. "posts"/"timber" and bare area
+// dimensions ("6m by 16.8m") are shared with retaining, fencing, and lawn work
+// and must NOT classify a job as decking on their own (see
+// .cursor/rules/specialist-classification.mdc).
+const DECKING_INTENT_PATTERN = /\bdeck(?:ing)?\b|\bdeck\s*boards?\b|\bjoists?\b|\bbearers?\b|\bsubframe\b/i
+
 function cleanSentence(value: string) {
   return value.replace(/\s+/g, " ").replace(/[.]+$/g, "").trim()
 }
@@ -81,12 +88,18 @@ export function detectDeckingFromText(text: string): DeckingDetectionResult {
     reasons.push("Waste/removal note detected.")
   }
 
-  const confidence = score >= 75 ? "high" : score >= 45 ? "medium" : score >= 20 ? "low" : "none"
+  // Gate: without explicit decking intent, dimensions + "posts" are not decking.
+  const hasDeckingIntent = DECKING_INTENT_PATTERN.test(text)
+  const scoredConfidence = score >= 75 ? "high" : score >= 45 ? "medium" : score >= 20 ? "low" : "none"
+  const confidence = hasDeckingIntent ? scoredConfidence : "none"
+  if (!hasDeckingIntent && score > 0) {
+    reasons.push("No explicit decking intent (deck/decking/joists/bearers/subframe); not classified as decking.")
+  }
 
   return {
     is_decking: confidence !== "none",
     confidence,
-    confidence_score: Math.min(score, 100),
+    confidence_score: hasDeckingIntent ? Math.min(score, 100) : 0,
     reasons,
     request: {
       areas,

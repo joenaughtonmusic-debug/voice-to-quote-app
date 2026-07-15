@@ -8,9 +8,11 @@ import {
   detectPlantMapping,
   parsePlantPrice,
   plantPriceMappingWarnings,
+  resolvePlantRowSellPrice,
   type PlantColumnMapping,
   type PlantFieldKey,
 } from "@/lib/plant-library-import"
+import { type SellPriceSource } from "@/lib/pricing/cost-markup"
 import { classifyPlantCatalogItem, type KnowledgeItemType } from "@/lib/plant-item-classification"
 import { supabase } from "@/lib/supabase"
 
@@ -27,6 +29,8 @@ type PlantImportItem = {
   spacing_mm: number | null
   cost_price: number | null
   sell_price: number | null
+  sell_price_source: SellPriceSource
+  sell_price_rule: string | null
   account_code: string
   sales_account_code: string
   tax_code: string
@@ -105,6 +109,10 @@ function mapPlantRow(row: ParsedRow, mapping: PlantColumnMapping): PlantImportIt
   const plantName = toText(row[mapping.plant_name])
   const itemCode = toText(row[mapping.item_code])
   const defaultSpacing = toText(row[mapping.default_spacing])
+  // Cost -> sell via the default markup rule. An explicit sell column always
+  // wins; otherwise sell is computed from cost (deterministic), editable per line.
+  const costPrice = parsePlantPrice(row[mapping.cost_price])
+  const sellResolution = resolvePlantRowSellPrice(row, mapping)
   const rawImport = {
     ...row,
     plant_name: plantName,
@@ -112,6 +120,8 @@ function mapPlantRow(row: ParsedRow, mapping: PlantColumnMapping): PlantImportIt
     pot_size: toText(row[mapping.plant_type]),
     spacing_mm: parseSpacingMm(defaultSpacing),
     markup_percent: toText(row[mapping.markup_percent]),
+    sell_price_source: sellResolution.source,
+    sell_price_rule: sellResolution.rule_label,
     account_code: toText(row[mapping.account_code]),
     sales_account_code: toText(row[mapping.sales_account_code]),
     tax_code: toText(row[mapping.tax_code]),
@@ -140,8 +150,10 @@ function mapPlantRow(row: ParsedRow, mapping: PlantColumnMapping): PlantImportIt
     plant_type: toText(row[mapping.plant_type]),
     default_spacing: defaultSpacing,
     spacing_mm: parseSpacingMm(defaultSpacing),
-    cost_price: parsePlantPrice(row[mapping.cost_price]),
-    sell_price: parsePlantPrice(row[mapping.sell_price]),
+    cost_price: costPrice,
+    sell_price: sellResolution.sell_price,
+    sell_price_source: sellResolution.source,
+    sell_price_rule: sellResolution.rule_label,
     account_code: toText(row[mapping.account_code]),
     sales_account_code: toText(row[mapping.sales_account_code]),
     tax_code: toText(row[mapping.tax_code]),

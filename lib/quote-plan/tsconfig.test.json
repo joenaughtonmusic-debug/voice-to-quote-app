@@ -1,0 +1,37 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "../../.tmp/quote-plan-tests",
+    "rootDir": "../..",
+    "types": ["node"],
+    "noEmit": false,
+    "incremental": false,
+    "isolatedModules": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "./build-plan.test.ts",
+    "./build-plan.ts",
+    "./optional-priced-works.test.ts",
+    "./optional-priced-works.ts",
+    "./validate.test.ts",
+    "./validate.ts",
+    "./shadow.test.ts",
+    "./shadow.ts",
+    "./ai-planner.test.ts",
+    "./ai-planner.ts",
+    "./shadow-report-store.test.ts",
+    "./shadow-report-store.ts",
+    "./shadow-card-model.test.ts",
+    "./shadow-card-model.ts",
+    "./types.ts",
+    "../processed-quote.ts",
+    "../quote-options.ts",
+    "../calculators/planting/index.ts",
+    "../core/labour-allowance-extraction.ts",
+    "../export/labour-line-builder.ts"
+  ]
+}

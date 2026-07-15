@@ -13,7 +13,7 @@ export type DraftRow = {
 export const draftRows: DraftRow[] = [
   {
     id: "q-1042",
-    customer: "John Mac",
+    customer: "Client A",
     suburb: "Devonport, Auckland",
     date: "Today, 9:14am",
     service: "Decking Project",
@@ -22,7 +22,7 @@ export const draftRows: DraftRow[] = [
   },
   {
     id: "q-1041",
-    customer: "Sarah Whitiora",
+    customer: "Client B",
     suburb: "Titirangi, Auckland",
     date: "Today, 7:52am",
     service: "Hedge Trimming",
@@ -31,7 +31,7 @@ export const draftRows: DraftRow[] = [
   },
   {
     id: "q-1039",
-    customer: "Hemi Taurua",
+    customer: "Client C",
     suburb: "Pukekohe, Auckland",
     date: "Yesterday",
     service: "Garden Clean-up",
@@ -40,7 +40,7 @@ export const draftRows: DraftRow[] = [
   },
   {
     id: "q-1037",
-    customer: "Tony & Raewyn Pou",
+    customer: "Client D",
     suburb: "Howick, Auckland",
     date: "Yesterday",
     service: "Retaining Wall",
@@ -49,7 +49,7 @@ export const draftRows: DraftRow[] = [
   },
   {
     id: "q-1034",
-    customer: "Aroha Ngata",
+    customer: "Client E",
     suburb: "New Lynn, Auckland",
     date: "12 May",
     service: "Lawn & Edging",
@@ -58,7 +58,7 @@ export const draftRows: DraftRow[] = [
   },
   {
     id: "q-1031",
-    customer: "Greg Sutherland",
+    customer: "Client F",
     suburb: "Albany, Auckland",
     date: "11 May",
     service: "Tree Removal",
@@ -78,9 +78,9 @@ export type LineItem = {
 }
 
 export const generatedQuote = {
-  customer: "John Mac",
-  site: "15 Dover Lane, Devonport, Auckland 0624",
-  phone: "021 445 9920",
+  customer: "Client A",
+  site: "15 Sample Lane, Devonport, Auckland 0624",
+  phone: "021 000 0000",
   scope: [
     "Supply and install premium Vitex hardwood decking over an existing concrete patio area.",
     "Approx. 24m² deck, 5.4m x 4.4m, with concealed fixings and pre-oiled boards.",
@@ -150,7 +150,7 @@ export const generatedQuote = {
   total: "$7,310.55",
 }
 
-export const transcriptDemo = `Right, this one's for John Mac, 15 Dover Lane out in Devonport. He wants the old concrete patio decked over with the Vitex hardwood, the premium stuff, pre-oiled. Measured it up at roughly five point four by four point four, so call it twenty four square metres. Two steps down to the lawn. Access is a bit tight down the right hand side so it'll be wheelbarrow only. Concealed fixings, H4 framing on the jacks. He's keen to have it sorted before Labour Weekend if we can manage it...`
+export const transcriptDemo = `Right, this one's for Client A, 15 Sample Lane out in Devonport. He wants the old concrete patio decked over with the Vitex hardwood, the premium stuff, pre-oiled. Measured it up at roughly five point four by four point four, so call it twenty four square metres. Two steps down to the lawn. Access is a bit tight down the right hand side so it'll be wheelbarrow only. Concealed fixings, H4 framing on the jacks. He's keen to have it sorted before Labour Weekend if we can manage it...`
 
 // Structured sections for the Quote Review screen (editable AI output)
 export type ReviewSection = {
@@ -169,14 +169,14 @@ export const reviewSections: ReviewSection[] = [
     title: "Customer details",
     kind: "field",
     scope: "both",
-    value: "John Mac\n021 445 9920\njohn.mac@gmail.com",
+    value: "Client A\n021 000 0000\nclient@example.com",
   },
   {
     id: "site",
     title: "Site address",
     kind: "field",
     scope: "both",
-    value: "15 Dover Lane, Devonport, Auckland 0624",
+    value: "15 Sample Lane, Devonport, Auckland 0624",
   },
   {
     id: "jobtype",
@@ -280,12 +280,12 @@ export const quoteDraft = {
   business: {
     name: "Kauri & Co. Property Maintenance",
     abn: "GST 122-445-908",
-    phone: "09 445 9920",
-    email: "jobs@kauriandco.co.nz",
+    phone: "09 000 0000",
+    email: "jobs@example.com",
   },
   client: {
-    name: "John Mac",
-    address: "15 Dover Lane, Devonport, Auckland 0624",
+    name: "Client A",
+    address: "15 Sample Lane, Devonport, Auckland 0624",
   },
   intro:
     "Thank you for the opportunity to quote on your new hardwood deck. Please find the details of the work below. We'd love to have this completed before Labour Weekend.",
@@ -316,7 +316,7 @@ export type UploadFile = {
 
 export const uploadFiles: UploadFile[] = [
   {
-    name: "Pou_RetainingWall_Quote_2024.pdf",
+    name: "Sample_RetainingWall_Quote.pdf",
     size: "248 KB",
     status: "complete",
     insights: {
@@ -327,7 +327,7 @@ export const uploadFiles: UploadFile[] = [
     },
   },
   {
-    name: "Whitiora_HedgeTrim_Invoice_Apr.pdf",
+    name: "Sample_HedgeTrim_Invoice.pdf",
     size: "112 KB",
     status: "complete",
     insights: {
@@ -406,8 +406,8 @@ export const serviceTemplates: ServiceTemplate[] = [
 ]
 
 export const knowledgeFiles = [
-  { name: "Pou_RetainingWall_Quote_2024.pdf", size: "248 KB" },
-  { name: "Whitiora_HedgeTrim_Invoice_Apr.pdf", size: "112 KB" },
+  { name: "Sample_RetainingWall_Quote.pdf", size: "248 KB" },
+  { name: "Sample_HedgeTrim_Invoice.pdf", size: "112 KB" },
 ]
 
 export const jmsOptions = ["Tradify", "Jobber", "Xero", "ServiceM8"]

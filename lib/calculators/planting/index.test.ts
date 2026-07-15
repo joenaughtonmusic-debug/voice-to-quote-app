@@ -1,6 +1,15 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { calculatePlantCount, calculatePlantingQuote, extractPlantCalculatorRequestsFromText, extractSpokenSpacingMmFromText } from "./index"
+import { calculatePlantCount, calculatePlantingQuote, extractPlantCalculatorRequestsFromText, extractSpokenSpacingMmFromText, isStructuralNonPlantLabel } from "./index"
+
+test("isStructuralNonPlantLabel flags structural items but not real plants", () => {
+  for (const structural of ["the retaining wall", "retaining wall", "fence", "topsoil", "timber posts", "polythene", "paving", "decking"]) {
+    assert.equal(isStructuralNonPlantLabel(structural), true, `"${structural}" should be a structural non-plant label`)
+  }
+  for (const plant of ["Ficus Tuffi", "Michelia gracipes", "Griselinia", "Buxus", "Lomandra"]) {
+    assert.equal(isStructuralNonPlantLabel(plant), false, `"${plant}" is a real plant name`)
+  }
+})
 
 test("calculates 11m at 800mm spacing", () => {
   const result = calculatePlantCount({ length_m: 11, spoken_spacing_mm: 800 })
@@ -93,7 +102,66 @@ test("calculates 11.5m hedge at 600mm spacing", () => {
   assert.equal(result.quantity_source, "calculated_from_spacing")
 })
 
-test("extracts Stephanie Cotswold planting area plant name and centimetre spacing", () => {
+// ---------------------------------------------------------------------------
+// Michelia transcript: "plant she wanted was" phrasing + "metres long" length sentence
+// ---------------------------------------------------------------------------
+
+const micheliaTranscriptForCalc = `
+The planting area is approximately 14.2 metres long.
+
+The plant she wanted was Michelia gracipes.
+
+She does not want the biggest size, but please show both size options if available.
+
+Plant spacing should be 50 centimetres.
+`.trim()
+
+test("Michelia transcript: does not extract 'long' as plant name from length sentence", () => {
+  const requests = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  const badRequest = requests.find((r) => /^long$/i.test(r.plant_name ?? ""))
+  assert.ok(
+    !badRequest,
+    `Must not produce plant_name="long" from a length sentence. Requests: ${JSON.stringify(requests)}`,
+  )
+})
+
+test("Michelia transcript: does not produce bogus 'metres long. The' plant name", () => {
+  const requests = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  const badRequest = requests.find((r) => /metres.*long/i.test(r.plant_name ?? ""))
+  assert.ok(
+    !badRequest,
+    `Must not produce a plant_name containing "metres long" from the length/plant sentences. Requests: ${JSON.stringify(requests.map((r) => r.plant_name))}`,
+  )
+})
+
+test("Michelia transcript: produces exactly one calculator request", () => {
+  const requests = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.equal(
+    requests.length,
+    1,
+    `Expected exactly 1 request, got ${requests.length}: ${JSON.stringify(requests.map((r) => r.plant_name))}`,
+  )
+})
+
+test("Michelia transcript: extracts Michelia gracipes as plant name", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.ok(request, `Expected at least one request. Got: ${JSON.stringify(extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc))}`)
+  assert.match(request.plant_name ?? "", /michelia/i)
+})
+
+test("Michelia transcript: extracts 14.2m as planting length", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.ok(request, "Expected a request")
+  assert.equal(request.length_m, 14.2)
+})
+
+test("Michelia transcript: extracts 500mm (50cm) spacing", () => {
+  const [request] = extractPlantCalculatorRequestsFromText(micheliaTranscriptForCalc)
+  assert.ok(request, "Expected a request")
+  assert.equal(request.spoken_spacing_mm, 500)
+})
+
+test("extracts Client A Willow planting area plant name and centimetre spacing", () => {
   const transcript =
     "it was a 14.2 metre planting area, and the plant she wanted planting was Michaelia gracipes. Maybe give both sizes as an option, probably with 50 centimetre spacing"
 
@@ -202,4 +270,39 @@ Include hardfill/removal of old soil at a cost of $154.`)
   assert.equal(requests[1].plant_name, "Ficus Tuffi")
   assert.equal(requests[1].length_m, 13.7)
   assert.deepEqual(requests[1].requested_option_sizes, ["25l", "45l"])
+})
+
+// QA-9: structural landscaping phrases must never be treated as plant names, so a
+// retaining-wall length sentence cannot fabricate a planting request/area. This is
+// what caused the Client B/Titirangi customer preview to be taken over by the planting
+// renderer (it read "16.8m for the retaining wall" as a 16.8m planting row).
+test("does not create a plant calculator request from '16.8m for the retaining wall'", () => {
+  const requests = extractPlantCalculatorRequestsFromText(
+    "And the length is going to be 16.8m for the retaining wall.",
+  )
+  assert.deepEqual(requests, [])
+})
+
+test("'the retaining wall' is not accepted as a plant name (no request, and never as a plant_name)", () => {
+  const requests = extractPlantCalculatorRequestsFromText(
+    "The area is approximately 6m by 16.8m. And the length is going to be 16.8m for the retaining wall.",
+  )
+  assert.ok(
+    !requests.some((r) => /retain|wall|fence|post|polythene|topsoil/i.test(r.plant_name ?? "")),
+    `No request may carry a structural noun as a plant name. Got: ${JSON.stringify(requests)}`,
+  )
+})
+
+test("Client B-style optional Ficus hedge without a count/length produces no fabricated planting request", () => {
+  const requests = extractPlantCalculatorRequestsFromText(
+    "It would be great to also do an optional price for planting a Ficus Tuffi hedge along the fence with roughly one metre sized plants, and the length is going to be 16.8m for the retaining wall.",
+  )
+  assert.deepEqual(requests, [])
+})
+
+test("still extracts a genuine plant request (regression guard for the structural-noun filter)", () => {
+  const [request] = extractPlantCalculatorRequestsFromText("11.5m Ficus Tuffi hedge")
+  assert.ok(request, "a real plant length sentence must still produce a request")
+  assert.equal(request.plant_name, "Ficus Tuffi")
+  assert.equal(request.length_m, 11.5)
 })

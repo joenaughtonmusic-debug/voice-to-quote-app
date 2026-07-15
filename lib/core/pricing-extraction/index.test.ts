@@ -63,6 +63,39 @@ test("ordinary quote text with no pricing returns empty", () => {
   assert.deepEqual(result.pricing, [])
 })
 
+test("bare dollar amounts without spoken price intent are not extracted", () => {
+  assert.deepEqual(extractPricing("$24").pricing, [])
+  assert.deepEqual(extractPricing("$88").pricing, [])
+  assert.deepEqual(extractPricing("$24\n$88").pricing, [])
+})
+
+test("'Allow N hours to task' phrases are not extracted as pricing facts", () => {
+  assert.deepEqual(extractPricing("Allow 7 hours to remove the keystone edging.").pricing, [])
+  assert.deepEqual(extractPricing("Allow 2 hours to remove the mandarin tree.").pricing, [])
+  assert.deepEqual(extractPricing("Allow 8 hours to install the new timber garden bed border.").pricing, [])
+})
+
+test("'Allow N bags of material' is not extracted as a pricing fact", () => {
+  // "Allow 5 bags of garden mix" is a material quantity, not $5.
+  assert.deepEqual(extractPricing("Allow 5 bags of garden mix.").pricing, [])
+  assert.deepEqual(extractPricing("Allow 10 bags of compost and topsoil.").pricing, [])
+  assert.deepEqual(extractPricing("Allow 3 pallets of pavers.").pricing, [])
+})
+
+test("legitimate allowance phrases still produce pricing facts", () => {
+  const result = extractPricing("Allow $700 for materials.")
+  assert.equal(result.pricing.length, 1)
+  assert.equal(result.pricing[0].amount, 700)
+})
+
+test("plant library unit price lines are not treated as spoken customer prices", () => {
+  const result = extractPricing(
+    "selected plant option: Pittosporum 2.5L | unit price: $24.00 | plant count: Not captured",
+  )
+
+  assert.deepEqual(result.pricing, [])
+})
+
 test("creates review notice when spoken fixed price differs from matched labour total", () => {
   const pricing = extractPricing(
     "Price per visit $405 including greenwaste removal, herbicide spraying, and standard maintenance materials.",

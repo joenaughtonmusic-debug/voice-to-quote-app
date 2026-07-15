@@ -116,6 +116,18 @@ function plantingDetailsLines(
     const spokenPlantName = result.plant_name?.trim()
     const libraryPlantName = result.library_match?.plant_name?.trim()
     const displayPlantName = libraryPlantName || spokenPlantName
+    // For customer-facing scope (plantName field), prefer the library name
+    // when it cleans up a typo in the spoken name (e.g. "Michaelia" → "Michelia").
+    // Exception: if the library match introduces an apostrophe-delimited variety name
+    // that the spoken name does not have (e.g. "Michelia 'Gracepies'" from
+    // "Michelia gracipes"), the library variant may be wrong — prefer the spoken name.
+    const libraryIntroducesVarietyApostrophe =
+      libraryPlantName !== undefined &&
+      /'\w/.test(libraryPlantName) &&
+      !(spokenPlantName?.includes("'") ?? false)
+    const scopePlantName = libraryIntroducesVarietyApostrophe
+      ? (spokenPlantName || displayPlantName)
+      : displayPlantName
     if (displayPlantName) {
       if (
         spokenPlantName &&
@@ -132,7 +144,7 @@ function plantingDetailsLines(
         role: "planting_summary",
         customerTitle: "Plant",
         customerDescription: displayPlantName,
-        plantName: displayPlantName,
+        plantName: scopePlantName,
         source: "plant_calculator",
         sourceRef: `plant_calculator_results[${index}]`,
       })
@@ -641,11 +653,23 @@ function optionalWorkLines(quote: ProcessedQuote, rawTranscript?: string | null)
   }
 
   for (const [index, task] of tasks.entries()) {
+    // Strip "Optional work(s):" prefix that appears when transcript sentences are
+    // captured verbatim (e.g. "Optional work: Install a timber border").
+    const cleanedTask = task
+      .replace(/^optional\s+works?\s*:\s*/i, "")
+      .replace(/^\s*:\s*/, "")
+      .replace(/\s+/g, " ")
+      .replace(/[.,]+$/, "")
+      .trim()
+    // Skip pure metadata-label lines with no actual task description.
+    if (!cleanedTask) continue
+    if (/^(?:title|job\s+type|cadence)\s*:/i.test(cleanedTask)) continue
+    if (/^optional\s+works?(?:\s*,\s*if\s+required)?$/i.test(cleanedTask)) continue
     pushLine(lines, {
       lineId: `optional-work-${index}`,
       sectionId: "optional_works",
       role: "optional_work",
-      customerTitle: task,
+      customerTitle: cleanedTask,
       optional: true,
       reviewRequired: true,
       source: quote.follow_up_tasks.includes(task) ? "processed_quote" : "transcript",
@@ -656,11 +680,20 @@ function optionalWorkLines(quote: ProcessedQuote, rawTranscript?: string | null)
 
   for (const [index, optionalQuote] of quote.optional_quotes.entries()) {
     for (const [scopeIndex, scopeLine] of optionalQuote.scope.entries()) {
+      // Filter AI-injected metadata lines and strip leading colons/trailing punctuation.
+      const cleanedLine = scopeLine
+        .replace(/^\s*:\s*/, "")
+        .replace(/\s+/g, " ")
+        .replace(/[.,]+$/, "")
+        .trim()
+      if (!cleanedLine) continue
+      if (/^(?:title|job\s+type|cadence)\s*:/i.test(cleanedLine)) continue
+      if (/^optional\s+works?(?:\s*,\s*if\s+required)?$/i.test(cleanedLine)) continue
       pushLine(lines, {
         lineId: `optional-quote-${index}-${scopeIndex}`,
         sectionId: "optional_works",
         role: "optional_work",
-        customerTitle: scopeLine,
+        customerTitle: cleanedLine,
         optional: true,
         reviewRequired: true,
         source: "processed_quote",
@@ -746,6 +779,14 @@ export function isPlantingWorkflow(quote: ProcessedQuote) {
     ...(quote.customer_scope ?? []),
     ...(quote.primary_quote.scope ?? []),
   ].join(" ")
+
+  if (
+    /\b(?:garden[_\s-]?tidy|one[_\s-]?off[_\s-]?tidy|property[_\s-]?tidy|hedge[_\s-]?trimming|tree[_\s-]?pruning|hedge[_\s-]?reduction)\b/i.test(
+      text,
+    )
+  ) {
+    return false
+  }
 
   const hasPlantCalculator = (quote.plant_calculator_results ?? []).some(
     (result) => result.plant_name || result.plant_count || result.length_m,

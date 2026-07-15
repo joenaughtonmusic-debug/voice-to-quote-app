@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react"
 import { BottomNav, type Tab } from "@/components/bottom-nav"
 import { RecordScreen } from "@/components/record-screen"
+import { LandscapingBuilderScreen } from "@/components/landscaping-builder-screen"
+import { SimpleQuoteScreen } from "@/components/simple-quote-screen"
+import { Leaf, Hammer, Zap } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { DraftsScreen } from "@/components/drafts-screen"
 import { KnowledgeBaseScreen } from "@/components/knowledge-base-screen"
 import { SettingsScreen } from "@/components/settings-screen"
@@ -19,12 +23,20 @@ import {
   type ProcessedQuote,
 } from "@/lib/processed-quote"
 import { supabase } from "@/lib/supabase"
+import { simpleQuoteFromDraft } from "@/lib/simple/draft-row"
+import type { SimpleQuote } from "@/lib/simple/types"
 import type { PricingFact } from "@/lib/core/pricing-extraction"
 import type { QuoteTemplateLibraryItem, QuoteTemplateSectionDraft } from "@/lib/template-import-learning"
 import type { TemplateSelectionSource } from "@/lib/template-selection"
 
+type QuoteMode = "simple" | "gardening" | "landscaping"
+const QUOTE_MODE_STORAGE_KEY = "ttq.quoteMode"
+
 export function VoiceQuoteApp() {
   const [tab, setTab] = useState<Tab>("record")
+  // Simple = maintenance + one-off tidy with confirm-everything flow (the default).
+  // Gardening = the legacy auto-quoter. Landscaping = the you-in-the-loop builder.
+  const [quoteMode, setQuoteMode] = useState<QuoteMode>("simple")
   const [reviewOpen, setReviewOpen] = useState(false)
   const [draftOpen, setDraftOpen] = useState(false)
   const [draftsRefreshKey, setDraftsRefreshKey] = useState(0)
@@ -44,6 +56,7 @@ export function VoiceQuoteApp() {
   const [currentQuoteSaved, setCurrentQuoteSaved] = useState(false)
   const [openDraftLoading, setOpenDraftLoading] = useState(false)
   const [openDraftError, setOpenDraftError] = useState("")
+  const [simpleDraft, setSimpleDraft] = useState<{ quote: SimpleQuote; draftId: string } | null>(null)
   const { user, loading, displayName, signInWithGoogle, signOut } = useAuth()
   const signedIn = Boolean(user)
 
@@ -52,6 +65,17 @@ export function VoiceQuoteApp() {
     setReviewOpen(false)
     setDraftOpen(false)
   }, [signedIn])
+
+  // Restore the last-used mode on mount (client only, avoids hydration mismatch).
+  useEffect(() => {
+    const saved = window.localStorage.getItem(QUOTE_MODE_STORAGE_KEY)
+    if (saved === "simple" || saved === "gardening" || saved === "landscaping") setQuoteMode(saved)
+  }, [])
+
+  function handleModeChange(nextMode: QuoteMode) {
+    setQuoteMode(nextMode)
+    window.localStorage.setItem(QUOTE_MODE_STORAGE_KEY, nextMode)
+  }
 
   function handleDraftSaved(savedDraftId?: string | null) {
     setDraftsRefreshKey((key) => key + 1)
@@ -150,6 +174,16 @@ export function VoiceQuoteApp() {
       return
     }
 
+    // Simple Mode drafts carry their full state in quote_options — route them back
+    // into the Simple screen instead of the legacy review flow.
+    const simpleQuote = simpleQuoteFromDraft(data)
+    if (simpleQuote) {
+      handleModeChange("simple")
+      setSimpleDraft({ quote: simpleQuote, draftId: data.id })
+      setTab("record")
+      return
+    }
+
     const editableState = savedDraftToEditableState(data)
     setRawTranscript(editableState.rawTranscript)
     setCorrectedTranscript(editableState.rawTranscript)
@@ -173,11 +207,24 @@ export function VoiceQuoteApp() {
       <main className="mx-auto min-h-screen max-w-md pb-24">
         {tab === "record" && (
           signedIn ? (
-            <RecordScreen
-              key={recordResetKey}
-              initialPastedNotes={fixtureTranscriptForPaste}
-              onProcess={handleQuoteProcessed}
-            />
+            <>
+              <QuoteModeSwitch mode={quoteMode} onChange={handleModeChange} />
+              {quoteMode === "simple" ? (
+                <SimpleQuoteScreen
+                  key={simpleDraft?.draftId ?? "new"}
+                  initialDraft={simpleDraft}
+                  onDraftSaved={() => setDraftsRefreshKey((key) => key + 1)}
+                />
+              ) : quoteMode === "gardening" ? (
+                <RecordScreen
+                  key={recordResetKey}
+                  initialPastedNotes={fixtureTranscriptForPaste}
+                  onProcess={handleQuoteProcessed}
+                />
+              ) : (
+                <LandscapingBuilderScreen />
+              )}
+            </>
           ) : (
             <SignInRequired onSignIn={signInWithGoogle} />
           )
@@ -247,6 +294,52 @@ export function VoiceQuoteApp() {
           pricingFacts={draftPricingFacts}
         />
       )}
+    </div>
+  )
+}
+
+function QuoteModeSwitch({ mode, onChange }: { mode: QuoteMode; onChange: (mode: QuoteMode) => void }) {
+  const options: { value: QuoteMode; label: string; icon: typeof Leaf }[] = [
+    { value: "simple", label: "Simple", icon: Zap },
+    { value: "gardening", label: "Gardening", icon: Leaf },
+    { value: "landscaping", label: "Landscaping", icon: Hammer },
+  ]
+  return (
+    <div className="px-5 pt-6">
+      <div
+        role="tablist"
+        aria-label="Quote mode"
+        className="grid grid-cols-3 gap-1 rounded-2xl border border-border bg-muted/50 p-1"
+      >
+        {options.map(({ value, label, icon: Icon }) => {
+          const active = mode === value
+          return (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onChange(value)}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-colors",
+                active
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <p className="mt-2 px-1 text-xs text-muted-foreground">
+        {mode === "simple"
+          ? "Maintenance & one-off tidies: extract, confirm every field, send."
+          : mode === "gardening"
+            ? "Auto-quoter: record or paste, and it drafts the quote."
+            : "Builder: you split the job and approve every line. Nothing auto-finalises."}
+      </p>
     </div>
   )
 }

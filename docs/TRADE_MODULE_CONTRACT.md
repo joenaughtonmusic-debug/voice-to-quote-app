@@ -1,8 +1,8 @@
 # Trade Module Contract
 
-This document defines how trade modules plug into Quotecord without polluting the universal core. It is intended for future modules such as retaining, fencing, electrical, plumbing, painting, cleaning, arborist work, and other specialist trades.
+This document defines how trade modules plug into Talk to Quote without polluting the universal core. It is intended for future modules such as retaining, fencing, electrical, plumbing, painting, cleaning, arborist work, and other specialist trades.
 
-The contract keeps Quotecord's core universal while allowing trade-specific detection, calculations, rendering, export intent, and internal review support to live behind clear module boundaries.
+The contract keeps Talk to Quote's core universal while allowing trade-specific detection, calculations, rendering, export intent, and internal review support to live behind clear module boundaries.
 
 For the practical folder scaffold and step-by-step implementation checklist, use [Trade Module Scaffold](./TRADE_MODULE_SCAFFOLD.md).
 
@@ -213,4 +213,4 @@ Recommended order for a new trade:
 6. Add internal review support from QuoteFacts.
 7. Add an end-to-end regression baseline.
 
-This sequence keeps Quotecord universal while letting each trade become smarter in its own module.
+This sequence keeps Talk to Quote universal while letting each trade become smarter in its own module.

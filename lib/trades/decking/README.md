@@ -4,7 +4,7 @@ This module is the first isolated foundation for decking-specific intelligence. 
 
 ## Boundary
 
-Universal Quotecord behaviour remains outside this module:
+Universal Talk to Quote behaviour remains outside this module:
 
 - transcript capture
 - transcription

@@ -1,0 +1,258 @@
+import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
+
+function cleanLine(value: string) {
+  return value
+    .replace(/^\s*(?:scope|note|site\s+note|optional\s*:)\s*/i, "")
+    .replace(/^\s*:\s*/, "")
+    .replace(/\s+/g, " ")
+    .replace(/[.]+$/g, "")
+    .replace(/^\[\s*\]$/, "")
+    .trim()
+}
+
+function unique(values: string[]) {
+  const seen = new Set<string>()
+  return values
+    .map(cleanLine)
+    .filter((value) => {
+      const key = value.toLowerCase()
+      if (!value || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function normalizeLine(value: string) {
+  const cleaned = cleanLine(value)
+  if (!cleaned) return ""
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+}
+
+function isEmptyOrPlaceholder(value: string) {
+  const cleaned = cleanLine(value)
+  return !cleaned || cleaned === "[]" || /^\[\s*\]$/.test(value.trim())
+}
+
+/** Labour allowance lines are internal — not shown in the customer quote. */
+function isLabourLine(value: string) {
+  const lower = value.toLowerCase()
+  return (
+    /\ballow\s+\d+(?:\.\d+)?\s*(?:hours?|hrs?)\b/i.test(value) ||
+    /\b(?:\d+|one|two|three|four|five)\s+(?:people|persons?|staff|men|man)\b.*?\b(?:day|hour|hr)s?\b/i.test(value) ||
+    /\bjob\s+will\s+take\b.*?\b(?:day|hour|hr)s?\b/i.test(value) ||
+    /\blabour\s+allowance\b/i.test(lower)
+  )
+}
+
+function isInternalNote(value: string) {
+  const lower = value.toLowerCase()
+  return (
+    /\binternal\s+note\b/i.test(lower) ||
+    /\bnot\s+a\s+retaining\s+wall\b/i.test(lower) ||
+    /\bkeep\s+optional\s+works?\s+separate\b/i.test(lower)
+  )
+}
+
+function isMaterialListLine(value: string) {
+  // Lines that are pure material names without action context are in the Materials section.
+  // But scope lines like "Install 200x50 timber" are scope, not materials.
+  const lower = value.toLowerCase()
+  return (
+    /^(?:200x50|timber\s+pegs?|bugle\s+screws?|fixings?|nails?|bolts?|coach\s+screws?)\b/i.test(value) ||
+    /^materials?\s*:/i.test(lower)
+  )
+}
+
+function isOptionalLine(value: string) {
+  return /^optional\s*(?:works?\s*)?:/i.test(value.trim())
+}
+
+/** Strip leading "Optional [works]: " prefix when extracting items from notes/scope. */
+function stripOptionalPrefix(value: string) {
+  return value.replace(/^optional\s*(?:works?\s*)?:\s*/i, "").trim()
+}
+
+function scopeOfWorkItems(input: CustomerQuoteAssemblyInput): string[] {
+  return unique([
+    ...input.quote.customer_scope,
+    ...input.quote.primary_quote.scope,
+  ])
+    .filter((item) => !isEmptyOrPlaceholder(item))
+    .filter((item) => !/^(?:title|job\s+type|cadence)\s*:/i.test(item))
+    .filter((item) => !isLabourLine(item))
+    .filter((item) => !isInternalNote(item))
+    .filter((item) => !isMaterialListLine(item))
+    .filter((item) => !isOptionalLine(item))
+    .map(normalizeLine)
+    .filter(Boolean)
+}
+
+function materialItems(input: CustomerQuoteAssemblyInput): string[] {
+  return unique(input.quote.materials)
+    .filter((item) => !isEmptyOrPlaceholder(item))
+    .map(normalizeLine)
+    .filter(Boolean)
+}
+
+// Generic words that carry no dedup signal — a shared "optional"/"labour"/"plant"
+// must not count towards matching an old optional line to a priced optional work.
+const GENERIC_OPTIONAL_TOKENS = new Set([
+  "optional",
+  "works",
+  "work",
+  "labour",
+  "labor",
+  "plant",
+  "planting",
+  "quote",
+  "price",
+  "along",
+  "with",
+  "this",
+  "that",
+])
+
+function distinctiveOptionalTokens(text: string): Set<string> {
+  const tokens = new Set<string>()
+  for (const match of text.toLowerCase().matchAll(/[a-zāēīōū]{4,}/gi)) {
+    if (!GENERIC_OPTIONAL_TOKENS.has(match[0])) tokens.add(match[0])
+  }
+  return tokens
+}
+
+/**
+ * True when an old-style optional line clearly refers to the same work as one of the
+ * priced optional works (shares ≥2 distinctive tokens with a priced work label). This
+ * catches BOTH the optional_quotes scope path and the "Optional:"-prefixed notes/scope
+ * path, so a priced optional work never also renders as an old optional scope line.
+ */
+function matchesPricedOptionalWork(item: string, pricedLabelTokenSets: Set<string>[]): boolean {
+  if (pricedLabelTokenSets.length === 0) return false
+  const itemTokens = distinctiveOptionalTokens(item)
+  return pricedLabelTokenSets.some((labelTokens) => {
+    let shared = 0
+    for (const token of itemTokens) {
+      if (labelTokens.has(token)) {
+        shared += 1
+        if (shared >= 2) return true
+      }
+    }
+    return false
+  })
+}
+
+function optionalWorkItems(input: CustomerQuoteAssemblyInput): string[] {
+  // QuotePlan Slice 3b — an optional work that is now a priced optional work
+  // (optional_priced_works) has its own customer-facing "Optional works" section, so
+  // drop it here to avoid a duplicate optional works section for the same work.
+  const pricedOptionalTitles = new Set(
+    (input.quote.optional_priced_works ?? [])
+      .map((work) => (work.label ?? "").trim().toLowerCase())
+      .filter(Boolean),
+  )
+  const pricedLabelTokenSets = (input.quote.optional_priced_works ?? [])
+    .map((work) => distinctiveOptionalTokens(work.label ?? ""))
+    .filter((tokens) => tokens.size > 0)
+
+  const fromOptionalQuotes = input.quote.optional_quotes
+    .filter((q) => !pricedOptionalTitles.has((q.quote_title ?? "").trim().toLowerCase()))
+    .flatMap((q) => q.scope)
+
+  // Fallback: scan notes and scope for lines with an "Optional [works]:" prefix — the AI
+  // sometimes uses primary_quote.notes instead of optional_quotes, particularly when the
+  // landscaping extractor instructions said "optional_works field" (incorrect field name).
+  const optionalPrefixSources = [
+    ...input.quote.primary_quote.notes,
+    ...input.quote.primary_quote.scope,
+    ...input.quote.customer_scope,
+  ]
+  const fromPrefixedLines = optionalPrefixSources
+    .filter((item) => isOptionalLine(item))
+    .map(stripOptionalPrefix)
+
+  const items = unique([...fromOptionalQuotes, ...fromPrefixedLines])
+    .filter((item) => !isEmptyOrPlaceholder(item))
+    .filter((item) => !/^(?:title|job\s+type|cadence)\s*:/i.test(item))
+    // Labour allowances (e.g. "…two people one day") are never customer-facing optional
+    // scope — they are priced separately via optional_priced_works.
+    .filter((item) => !isLabourLine(item))
+    // Content-based dedup: drop any old optional line that refers to the same work as a
+    // priced optional work (covers the optional_quotes AND "Optional:"-prefixed paths).
+    .filter((item) => !matchesPricedOptionalWork(item, pricedLabelTokenSets))
+    .map(normalizeLine)
+    .filter(Boolean)
+
+  return items
+}
+
+function section(title: string, items: string[]): CustomerQuoteAssemblySection | null {
+  const cleaned = unique(items).filter(Boolean)
+  return cleaned.length > 0 ? { title, items: cleaned } : null
+}
+
+/** Returns true when a title is a raw machine slug (e.g. "garden_bed_renovation", "landscaping"). */
+function isRawJobTypeSlug(value: string) {
+  // All lowercase, only word chars and underscores — never a human-readable title
+  return /^[a-z][a-z0-9_]*$/.test(value)
+}
+
+function prettifyJobType(jobType: string): string {
+  const jt = jobType.toLowerCase()
+  if (/garden_bed_renovation|garden.bed.renov/i.test(jt)) return "Garden Bed Renovation"
+  if (/garden_bed|garden.bed/i.test(jt)) return "Garden Bed Works"
+  if (/general_landscaping|general.landscaping/i.test(jt)) return "General Landscaping"
+  if (/^landscaping$/.test(jt)) return "Landscaping"
+  return "General Landscaping"
+}
+
+function inferTitle(input: CustomerQuoteAssemblyInput): string {
+  const title = input.quote.quote_title?.trim()
+  // Milestone 2 — when the QuotePlan confirms the primary work is NOT planting, a
+  // planting/hedge-flavoured title (left behind after the output normalisers mutated a
+  // mixed landscaping job's job_type/quote_title) must not be shown to the customer.
+  const primaryIsNotPlanting = input.quote.render_intent?.mainIsPlanting === false
+  const titleLooksPlanting = /\b(planting|hedge)\b/i.test(title ?? "")
+  // Pass through human-readable titles that aren't retaining, planting-mislabelled, or raw slugs
+  if (
+    title &&
+    !/\bretaining\b/i.test(title) &&
+    !(primaryIsNotPlanting && titleLooksPlanting) &&
+    !isRawJobTypeSlug(title)
+  ) {
+    return title
+  }
+  // Raw slug / retaining / planting-mislabelled title — derive a readable label. When we
+  // know the primary work is landscaping, prefer the general landscaping label over a
+  // mutated planting/retaining job_type.
+  const jobType = input.quote.job_type?.trim() ?? ""
+  if (primaryIsNotPlanting || input.quote.render_intent?.primaryTrade === "landscaping") return "General Landscaping"
+  if (jobType) return prettifyJobType(jobType)
+  // Final fallback: prettify the raw title if it happens to be a job_type slug
+  if (title && isRawJobTypeSlug(title)) return prettifyJobType(title)
+  return "General Landscaping"
+}
+
+export function assembleGeneralLandscapingCustomerQuote(input: CustomerQuoteAssemblyInput): CustomerQuoteAssembly {
+  const sections = [
+    section("Scope of Work", scopeOfWorkItems(input)),
+    section("Materials", materialItems(input)),
+    section("Optional Works", optionalWorkItems(input)),
+    section("Exclusions", input.quote.exclusions.map(normalizeLine).filter(Boolean)),
+  ].filter((s): s is CustomerQuoteAssemblySection => s !== null)
+
+  return {
+    title: inferTitle(input),
+    customer_name: input.quote.client_name,
+    site_address: input.quote.site_address,
+    sections,
+  }
+}
+
+export function hasGeneralLandscapingFacts(input: CustomerQuoteAssemblyInput): boolean {
+  const hasScope = [
+    ...input.quote.customer_scope,
+    ...input.quote.primary_quote.scope,
+  ].some((item) => item.trim().length > 3 && !isEmptyOrPlaceholder(item))
+
+  return hasScope
+}

@@ -1,6 +1,8 @@
 import { detectRetainingFromText } from "../trades/retaining"
 import type { CustomerQuoteAssembly, CustomerQuoteAssemblyInput, CustomerQuoteAssemblySection } from "./types"
 
+const RETAINING_NEGATION_PATTERN = /\bnot\s+a\s+retaining\s+wall\b|\bgarden\s+bed\s+renovation\b|\btimber\s+(?:border|edging)\s+job\b/i
+
 function cleanLine(value: string) {
   return value
     .replace(/^\s*(?:scope|note|site\s+note)\s*:\s*/i, "")
@@ -91,6 +93,11 @@ export function assembleRetainingCustomerQuote(input: CustomerQuoteAssemblyInput
 }
 
 export function hasRetainingAssemblyFacts(input: CustomerQuoteAssemblyInput) {
-  const detection = detectRetainingFromText(quoteText(input))
-  return detection.is_retaining || /\bretaining\s+wall\b/i.test(quoteText(input))
+  const text = quoteText(input)
+  if (RETAINING_NEGATION_PATTERN.test(text)) return false
+  if (/\bretaining\s+wall\b/i.test(text)) return true
+  const detection = detectRetainingFromText(text)
+  // Require at least medium confidence — "low" confidence from timber-only detection
+  // is not sufficient to route a quote through the retaining assembler.
+  return detection.is_retaining && detection.confidence !== "low"
 }

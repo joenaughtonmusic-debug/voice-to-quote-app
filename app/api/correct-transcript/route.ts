@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { defaultTradeVocabulary } from "@/lib/trade-vocabulary"
+import { authenticateRequest } from "@/lib/api-auth"
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 const CORRECTION_MODEL = process.env.OPENAI_CORRECTION_MODEL ?? "gpt-4o-mini"
@@ -77,6 +78,9 @@ function errorDetails(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const auth = await authenticateRequest(request)
+  if (!auth.ok) return auth.response
+
   const startedAt = Date.now()
   let transcript = ""
 

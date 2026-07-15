@@ -1,6 +1,8 @@
 import type { CustomerQuotePreview } from "../customer-quote-preview"
 import type { ProcessedQuote } from "../processed-quote"
+import { buildGardenTidyPresentationModel, isGardenTidyWorkflow } from "./garden-tidy"
 import { buildPlantingPresentationModel, isPlantingWorkflow } from "./planting"
+import { buildTradeCalculatorPresentationModel, isTradeCalculatorWorkflow } from "./trade-calculator"
 import type { QuotePresentationLine, QuotePresentationModel } from "./types"
 
 export type QuotePresentationInput = {
@@ -12,6 +14,14 @@ export type QuotePresentationInput = {
 export function buildQuotePresentationModel(input: QuotePresentationInput): QuotePresentationModel | null {
   if (isPlantingWorkflow(input.quote)) {
     return buildPlantingPresentationModel(input)
+  }
+
+  if (isGardenTidyWorkflow(input.quote)) {
+    return buildGardenTidyPresentationModel(input)
+  }
+
+  if (isTradeCalculatorWorkflow(input.quote)) {
+    return buildTradeCalculatorPresentationModel(input)
   }
 
   return null
@@ -29,7 +39,13 @@ export function exportViewLines(model: QuotePresentationModel): QuotePresentatio
   return model.lines.filter((line) => line.exportable)
 }
 
+export { buildGardenTidyPresentationModel, isGardenTidyWorkflow } from "./garden-tidy"
 export { buildPlantingPresentationModel, isPlantingWorkflow, materialLineIsPriced } from "./planting"
+export {
+  buildTradeCalculatorPresentationModel,
+  hasTradeBillOptions,
+  isTradeCalculatorWorkflow,
+} from "./trade-calculator"
 export {
   buildPresentationCustomerPreview,
   buildPresentationInternalReviewNotes,

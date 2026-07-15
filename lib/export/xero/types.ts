@@ -37,6 +37,10 @@ export type XeroPayloadQuote = CustomerPreviewQuote & {
   site_address?: string
   quote_title?: string
   job_type?: string
+  /** Raw site-visit transcript — the fixed source for deterministic tidy pricing facts (T1). */
+  raw_transcript?: string | null
+  labour_allowance?: string
+  selected_template_name?: string
   customer_scope?: string[]
   primary_quote?: {
     quote_title?: string

@@ -1,8 +1,8 @@
-# Quotecord Architecture
+# Talk to Quote Architecture
 
 ## Overview
 
-Quotecord is a Next.js application backed by Supabase for authentication, database storage, and file storage. Server-side API routes handle AI transcription, correction, quote extraction, uploaded document analysis, and business knowledge processing.
+Talk to Quote is a Next.js application backed by Supabase for authentication, database storage, and file storage. Server-side API routes handle AI transcription, correction, quote extraction, uploaded document analysis, and business knowledge processing.
 
 ## Frontend
 
