@@ -289,11 +289,22 @@ test("6-monthly cadence via 'other' frequency carries through title and body", (
 
 test("every Xero line carries the legacy account codes (labour 10010, waste/extras 10011)", () => {
   const payload = buildSimpleXeroPayload(xavierQuote())
-  const byDescription = Object.fromEntries(payload.quote.xeroLineItemsArray.map((line) => [line.Description, line.AccountCode]))
-  assert.equal(byDescription["Labour — main scope"], "10010")
-  assert.equal(byDescription["Removal of greenwaste"], "10011")
-  assert.equal(byDescription["Weedkiller — extra strength"], "10011")
+  const [labour, greenwaste, weedkiller] = payload.quote.xeroLineItemsArray
+  assert.equal(labour.AccountCode, "10010")
+  assert.equal(greenwaste.AccountCode, "10011")
+  assert.equal(greenwaste.Description, "Removal of greenwaste")
+  assert.equal(weedkiller.AccountCode, "10011")
+  assert.equal(weedkiller.Description, "Weedkiller — extra strength")
   assert.ok(payload.quote.xeroLineItemsArray.every((line) => line.AccountCode && line.TaxType === "OUTPUT2"))
+})
+
+test("labour line Description carries the full customer body, like the sent quotes", () => {
+  const payload = buildSimpleXeroPayload(xavierQuote())
+  const labour = payload.quote.xeroLineItemsArray[0]
+  assert.ok(labour.Description.startsWith("One-Off Garden Tidy – 90a Owens Road"))
+  assert.ok(labour.Description.includes("Scope of work:"))
+  assert.ok(labour.Description.includes("Trim and clear star jasmine from gutters"))
+  assert.ok(!/\b\d+(\.\d+)?\s*hours?\b/i.test(labour.Description), "no hour figures in the Xero description")
 })
 
 test("draft round-trip: a saved Simple draft restores the exact quote state", () => {
