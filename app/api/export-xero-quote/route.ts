@@ -65,6 +65,30 @@ function createXeroExportStore(
   }
 }
 
+/**
+ * Shape/sanity check for a client-built payload before it reaches the live Xero
+ * webhook: real line items, finite positive amounts, sane sizes. Returns an error
+ * message, or null when the payload is acceptable.
+ */
+function validatePrebuiltPayload(payload: unknown): string | null {
+  const candidate = payload as ReturnType<typeof buildXeroQuotePayload>
+  if (!candidate?.quote || typeof candidate.quote !== "object") return "Payload is missing its quote."
+  if (candidate.action !== "create_draft_quote") return "Payload has an unsupported action."
+  const lines = candidate.quote.xeroLineItemsArray
+  if (!Array.isArray(lines) || lines.length === 0) return "Payload has no line items."
+  if (lines.length > 50) return "Payload has too many line items."
+  for (const line of lines) {
+    if (typeof line?.Description !== "string" || !line.Description.trim()) return "A line item is missing its description."
+    if (typeof line.UnitAmount !== "number" || !Number.isFinite(line.UnitAmount) || line.UnitAmount <= 0)
+      return "A line item has an invalid amount."
+    if (typeof line.Quantity !== "number" || !Number.isFinite(line.Quantity) || line.Quantity <= 0)
+      return "A line item has an invalid quantity."
+    if (line.UnitAmount * line.Quantity > 100000) return "A line item amount is implausibly large."
+  }
+  if (typeof candidate.quote.title !== "string" || !candidate.quote.title.trim()) return "Payload is missing a quote title."
+  return null
+}
+
 export async function POST(request: Request) {
   try {
     const auth = await authenticateRequest(request)
@@ -72,16 +96,34 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     const processedQuote = body?.processed_quote
+    // Simple Mode sends a ready-built payload; the legacy path sends a processed quote.
+    const prebuiltPayload =
+      body?.payload && typeof body.payload === "object" && body.payload.provider === "xero"
+        ? (body.payload as ReturnType<typeof buildXeroQuotePayload>)
+        : null
+
+    if (prebuiltPayload) {
+      const validationError = validatePrebuiltPayload(prebuiltPayload)
+      if (validationError) {
+        return NextResponse.json({ ok: false, error: validationError }, { status: 400 })
+      }
+    }
     const draftId = typeof body?.draft_id === "string" ? body.draft_id : null
     const exportMappings = Array.isArray(body?.export_mappings) ? body.export_mappings : []
 
-    if (!processedQuote || typeof processedQuote !== "object") {
+    if (!prebuiltPayload && (!processedQuote || typeof processedQuote !== "object")) {
       return NextResponse.json({ ok: false, error: "Processed quote is required." }, { status: 400 })
     }
 
-    const payload = buildXeroQuotePayload(processedQuote, { draftId, exportMappings })
+    const payload = prebuiltPayload ?? buildXeroQuotePayload(processedQuote, { draftId, exportMappings })
 
-    if (!xeroContactName(processedQuote)) {
+    const contactName = prebuiltPayload
+      ? prebuiltPayload.contact.name && prebuiltPayload.contact.name !== "Not captured"
+        ? prebuiltPayload.contact.name
+        : ""
+      : xeroContactName(processedQuote)
+
+    if (!contactName) {
       return NextResponse.json(
         {
           ok: false,
