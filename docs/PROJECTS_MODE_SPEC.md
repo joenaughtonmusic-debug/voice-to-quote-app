@@ -63,6 +63,30 @@ sell prices as cited from Joe's lists — re-verify on CSV import):
    without them the materials engine has nothing real to price from.
 2. Joe approves this spec.
 
+## v2 backlog — defined by the paver-job backtest (15 Jul 2026, live run)
+
+The real "Driveway/pavers" transcript (two alternative builds: GAP 7 screed vs
+hex mat + GAP 20; "plus 20 percent labour"; "gap 40 100mm"; tree side "same
+again except lengths") exposed these gaps, in priority order. Golden test: that
+transcript, kept in the session scratchpad and re-pasteable from Joe's email.
+
+1. **Quote options within an area** — the engine has no alternatives concept, so
+   the two builds were extracted as two areas: a plausible-looking $4,796.52
+   that priced BOTH options and lost the real tree-side job. Render options via
+   the answer keys' "$0.00 — not included in quote, only as a reference" pattern.
+2. **Spoken contingency override** ("plus 20 percent labour" → 20%, not the 15%
+   default) and **spoken depth** ("gap 40 100mm" → 100mm, not 50mm).
+3. **Multiple bulk materials per area** (base course + screed + top layer).
+4. **Area derived from paver count** (22 × 600×600 → 7.92 m², flagged as derived).
+5. **Per-unit / linear materials**: pavers, timber borders, hex mat (add to the
+   price table; formulas by count / linear metre / area).
+6. **Prompt fix**: the scoria-correction example causes a hallucinated internal
+   note on jobs that never mention scoring.
+
+What the backtest confirmed works: per-option labour compiled exactly (25.5h /
+23.5h), multi-length summing, no-dimension and assumed-width flags, no invented
+prices.
+
 ## Non-goals
 
 Decking/retaining/paving calculators, plant-spacing logic (Builder mode keeps
